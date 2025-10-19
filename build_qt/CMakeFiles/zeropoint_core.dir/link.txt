@@ -1,0 +1,2 @@
+/usr/bin/ar qc libzeropoint_core.a CMakeFiles/zeropoint_core.dir/zeropoint_core_autogen/mocs_compilation.cpp.o CMakeFiles/zeropoint_core.dir/src/display.cpp.o CMakeFiles/zeropoint_core.dir/src/rom.cpp.o CMakeFiles/zeropoint_core.dir/src/dma.cpp.o CMakeFiles/zeropoint_core.dir/src/ppu.cpp.o
+/usr/bin/ranlib libzeropoint_core.a
