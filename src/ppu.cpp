@@ -1,20 +1,21 @@
 #include "ppu.h"
+#include "display.h"
 #include <cstring>
+#include <iostream>
 
 namespace ZeroPoint {
 
 PPU::PPU()
     : executionPointer(0)
-    , state(PPUState::WaitingForInterrupts)
-    , vblankInterruptAddr(0)
-    , hblankInterruptAddr(0)
+    , state(PPUState::WaitingForStart)
     , vblank(false)
     , hblank(false)
-    , renderMode(RenderMode::RGBA16)
     , regBankX(0)
     , regBankY(0)
     , cycleCounter(0)
-    , initStage(0)
+    , display(nullptr)
+    , currentTileId(0)
+    , currentTileMode(0)
 {
     reset();
 }
@@ -23,50 +24,38 @@ PPU::~PPU() {
 }
 
 void PPU::reset() {
-    // Clear all registers
+    // Clear all registers (including R59/R60 interrupt addresses)
     registers.fill(0);
+
+    // Clear target registers
+    targetRegisters.fill(0);
+    targetBytes.fill(0);
 
     // Clear memory
     memory.fill(0);
 
     // Reset state
     executionPointer = 0;
-    state = PPUState::WaitingForInterrupts;
+    state = PPUState::WaitingForStart;
     flags = PPUFlags();
     cycleCounter = 0;
-    initStage = 0;
 
-    vblankInterruptAddr = 0;
-    hblankInterruptAddr = 0;
     vblank = false;
     hblank = false;
-    renderMode = RenderMode::RGBA16;
     regBankX = 0;
     regBankY = 0;
+
+    // Reset tile system
+    for (auto& tile : tileStorage) {
+        tile.fill(0);
+    }
+    currentTileId = 0;
+    currentTileMode = 0;
 }
 
 void PPU::loadMicrocode(const uint8_t* code, size_t length, uint16_t offset) {
     size_t copyLength = (length + offset > 65536) ? (65536 - offset) : length;
     std::memcpy(&memory[offset], code, copyLength);
-}
-
-void PPU::setVBlankInterrupt(uint16_t address) {
-    vblankInterruptAddr = address;
-    if (state == PPUState::WaitingForInterrupts && initStage == 0) {
-        initStage = 1;
-    }
-}
-
-void PPU::setHBlankInterrupt(uint16_t address) {
-    hblankInterruptAddr = address;
-    if (state == PPUState::WaitingForInterrupts && initStage == 1) {
-        initStage = 2;
-        // Move to boot ROM stage
-        state = PPUState::RunningBootROM;
-        // TODO: Actually run boot ROM animation
-        // For now, immediately move to waiting for start
-        state = PPUState::WaitingForStart;
-    }
 }
 
 void PPU::start() {
@@ -78,6 +67,34 @@ void PPU::start() {
 
 void PPU::tick() {
     if (state != PPUState::Running) {
+        return;
+    }
+
+    // Check for VBlank interrupt (R59)
+    if (vblank && registers[REG_VBLANK_INT] != 0) {
+        // Push return address onto stack (little-endian)
+        // Stack grows downward, so decrement BEFORE writing
+        uint16_t returnAddr = executionPointer;
+        registers[REG_SP] -= 2;
+        memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
+        memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
+
+        // Jump to interrupt handler
+        executionPointer = registers[REG_VBLANK_INT];
+        return;
+    }
+
+    // Check for HBlank interrupt (R60)
+    if (hblank && registers[REG_HBLANK_INT] != 0) {
+        // Push return address onto stack (little-endian)
+        // Stack grows downward, so decrement BEFORE writing
+        uint16_t returnAddr = executionPointer;
+        registers[REG_SP] -= 2;
+        memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
+        memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
+
+        // Jump to interrupt handler
+        executionPointer = registers[REG_HBLANK_INT];
         return;
     }
 
@@ -100,14 +117,26 @@ void PPU::executeInstruction() {
 
     switch (static_cast<PPUOpcode>(opcode)) {
         case PPUOpcode::DEFCALL: {
-            // defcall 0xXX - define callable at address XX
+            // defcall X, Y - define callable function
+            // Encoding: 0000 XXXXXX YYYYYY
+            // Address in register X, ID in LSB of register Y
+            uint8_t regX = (operand >> 6) & 0x3F;
+            uint8_t regY = operand & 0x3F;
+            // uint16_t address = registers[regX];
+            // uint8_t callID = registers[regY] & 0xFF;
             // For now, this is a no-op marker
+            // TODO: Implement call table registration
             break;
         }
 
         case PPUOpcode::ENDDEFCALL: {
-            // enddefcall - end function definition
-            // No-op marker
+            // enddefcall X - end function definition
+            // Encoding: 0001 000000 XXXXXX
+            // ID in LSB of register X
+            uint8_t regX = operand & 0x3F;
+            // uint8_t callID = registers[regX] & 0xFF;
+            // For now, this is a no-op marker
+            // TODO: Implement call table finalization
             break;
         }
 
@@ -224,17 +253,87 @@ void PPU::executeInstruction() {
             break;
         }
 
-        case PPUOpcode::HALT: {
-            // halt - stop execution
-            state = PPUState::Halted;
+        case PPUOpcode::PRESET_E: {
+            // preset E Z W - immediate/byte operations
+            uint8_t subopcode = (operand >> 8) & 0x03;  // 2 bits for sub-opcode
+            uint8_t suboperand = operand & 0xFF;
+            executePresetE(subopcode, suboperand);
             break;
         }
 
-        case PPUOpcode::PRESET: {
-            // preset Z W - extended instructions
-            uint8_t subopcode = (operand >> 8) & 0x0F;
+        case PPUOpcode::PRESET_F: {
+            // preset F Z W - extended instructions
+            uint8_t subopcode = (operand >> 8) & 0x0F;  // 4 bits for sub-opcode
             uint8_t suboperand = operand & 0xFF;
             executePresetF(subopcode, suboperand);
+            break;
+        }
+    }
+}
+
+void PPU::executePresetE(uint8_t subopcode, uint8_t operand) {
+    switch (static_cast<PresetEOpcode>(subopcode)) {
+        case PresetEOpcode::TARREG: {
+            // tarreg T, Y, X - set target register T to point to register X, target byte Y
+            // Encoding: 00 TT Y 0 XXXXXX
+            uint8_t targetReg = (operand >> 6) & 0x03;     // 2 bits for target register (0-3)
+            uint8_t targetByte = (operand >> 5) & 0x01;    // 1 bit for byte select (0=LSB, 1=MSB)
+            uint8_t sourceReg = operand & 0x3F;            // 6 bits for source register (0-63)
+
+            targetRegisters[targetReg] = sourceReg;
+            targetBytes[targetReg] = targetByte;
+            break;
+        }
+
+        case PresetEOpcode::SETBYTE: {
+            // setbyte T, 0xXX - set byte in target register to immediate value
+            // Encoding: 01 TT XXXXXXXX
+            uint8_t targetReg = (operand >> 6) & 0x03;     // 2 bits for target register (0-3)
+            uint8_t immediate = operand & 0xFF;            // 8 bits immediate value (already in operand)
+
+            // Get the register pointed to by target register
+            uint8_t regIndex = targetRegisters[targetReg];
+            uint8_t byteSel = targetBytes[targetReg];
+
+            if (byteSel == 0) {
+                // LSB
+                registers[regIndex] = (registers[regIndex] & 0xFF00) | immediate;
+            } else {
+                // MSB
+                registers[regIndex] = (registers[regIndex] & 0x00FF) | (immediate << 8);
+            }
+            break;
+        }
+
+        case PresetEOpcode::BUILD: {
+            // build T1, T2, X - set register X's MSB from target T1, LSB from target T2
+            // Encoding: 10 TT TT XXXXXX
+            uint8_t targetReg1 = (operand >> 6) & 0x03;    // First target (MSB source)
+            uint8_t targetReg2 = (operand >> 4) & 0x03;    // Second target (LSB source)
+            uint8_t destReg = operand & 0x3F;              // Destination register (0-63)
+
+            // Get values from the registers pointed to by target registers
+            uint8_t regIndex1 = targetRegisters[targetReg1];
+            uint8_t regIndex2 = targetRegisters[targetReg2];
+            uint8_t byteSel1 = targetBytes[targetReg1];
+            uint8_t byteSel2 = targetBytes[targetReg2];
+
+            // Extract the bytes
+            uint8_t msb = (byteSel1 == 0) ? (registers[regIndex1] & 0xFF) : ((registers[regIndex1] >> 8) & 0xFF);
+            uint8_t lsb = (byteSel2 == 0) ? (registers[regIndex2] & 0xFF) : ((registers[regIndex2] >> 8) & 0xFF);
+
+            // Build the 16-bit value
+            registers[destReg] = (msb << 8) | lsb;
+            break;
+        }
+
+        case PresetEOpcode::CPREG: {
+            // cpreg X, Y - copy register X to register Y (using register banks)
+            // Encoding: 11 00 XXXX YYYY
+            uint8_t regX = ((operand >> 4) & 0x0F) | (regBankX << 4);  // 4-bit reg ID with bank
+            uint8_t regY = (operand & 0x0F) | (regBankY << 4);         // 4-bit reg ID with bank
+
+            registers[regY] = registers[regX];
             break;
         }
     }
@@ -253,8 +352,13 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
         }
 
         case PresetFOpcode::SETTILE: {
-            // settile W - set tile ID
-            // uint8_t tileId = operand;
+            // settile X, Y - set tile pointed to by register X, in mode Y
+            // Encoding: 0001 XXXXXX YY
+            uint8_t regX = (operand >> 2) & 0x3F;   // 6 bits for register
+            uint8_t mode = operand & 0x03;          // 2 bits for mode (0-3)
+
+            currentTileId = registers[regX] & 0xFF;
+            currentTileMode = mode;
             break;
         }
 
@@ -272,14 +376,20 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
             if (addr < 65535) {
                 memory[addr] = registers[regX] & 0xFF;
                 memory[addr + 1] = (registers[regX] >> 8) & 0xFF;
+
+                // Check for memory-mapped I/O
+                handleMemoryWrite(addr, memory[addr]);
+                handleMemoryWrite(addr + 1, memory[addr + 1]);
             }
             break;
         }
 
         case PresetFOpcode::SETRENDMOD: {
             // setrendmod - set render mode
-            bool is32bit = (operand & 0x80) != 0;
-            renderMode = is32bit ? RenderMode::RGBA32 : RenderMode::RGBA16;
+            if (display != nullptr) {
+                bool is32bit = (operand & 0x80) != 0;
+                display->setRenderMode(is32bit ? RenderMode::RGBA32 : RenderMode::RGBA16);
+            }
             break;
         }
 
@@ -308,7 +418,9 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
             uint8_t regX = (operand >> 2) & 0x3F;
             uint16_t addr = registers[REG_DP];
             if (addr < 65535) {
-                registers[regX] = memory[addr] | (memory[addr + 1] << 8);
+                uint8_t low = handleMemoryRead(addr);
+                uint8_t high = handleMemoryRead(addr + 1);
+                registers[regX] = low | (high << 8);
             }
             break;
         }
@@ -321,26 +433,47 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
         }
 
         case PresetFOpcode::CLRTILE: {
-            // clrtile - clear current tile
-            // Placeholder
+            // clrtile - clear tile storage
+            for (auto& tile : tileStorage) {
+                tile.fill(0);
+            }
             break;
         }
 
         case PresetFOpcode::CLRPALETTE: {
             // clrpalette - clear palette
-            // Placeholder
+            // Placeholder - not implemented yet
             break;
         }
 
-        case PresetFOpcode::STRTDEFTILE: {
-            // strtdeftile - start defining tile
-            // Placeholder
+        case PresetFOpcode::TILEDRAW: {
+            // tiledraw - draw tile using position from SETPOS and tile from SETTILE
+            // Position stored at memory-mapped I/O (similar to pixel drawing)
+            if (display != nullptr) {
+                // Get position from memory-mapped region (0x0200-0x0203)
+                uint16_t x = memory[0x0200] | (memory[0x0201] << 8);
+                uint16_t y = memory[0x0202] | (memory[0x0203] << 8);
+
+                // Draw 8x8 tile
+                for (int ty = 0; ty < 8; ty++) {
+                    for (int tx = 0; tx < 8; tx++) {
+                        uint8_t pixelValue = tileStorage[currentTileId][ty * 8 + tx];
+
+                        // For now, treat as grayscale (mode handling can be added later)
+                        uint32_t color = (pixelValue << 24) |  // R
+                                        (pixelValue << 16) |   // G
+                                        (pixelValue << 8) |    // B
+                                        0xFF;                  // A = 255
+
+                        display->setPixel32(x + tx, y + ty, color);
+                    }
+                }
+            }
             break;
         }
 
-        case PresetFOpcode::ENDDEFTILE: {
-            // enddeftile - end defining tile
-            // Placeholder
+        case PresetFOpcode::RESERVED_D: {
+            // Reserved - no-op
             break;
         }
 
@@ -374,6 +507,90 @@ void PPU::updateFlags(uint16_t result, uint16_t left, uint16_t right) {
 void PPU::clearFlags() {
     flags.zero = false;
     flags.greater = false;
+}
+
+uint8_t PPU::handleMemoryRead(uint16_t address) const {
+    // Framebuffer region: 0xE000-0xFFFF (8 KiB max)
+    if (address >= 0xE000 && address <= 0xFFFF && display != nullptr) {
+        uint16_t offset = address - 0xE000;
+
+        if (display->getRenderMode() == RenderMode::RGBA16) {
+            // 4 KiB framebuffer (0xE000-0xEFFF)
+            if (offset < 0x1000) {
+                const uint8_t* fbBytes = reinterpret_cast<const uint8_t*>(display->getFramebuffer16());
+                return fbBytes[offset];
+            }
+        } else {
+            // 8 KiB framebuffer (0xE000-0xFFFF)
+            if (offset < 0x2000) {
+                const uint8_t* fbBytes = reinterpret_cast<const uint8_t*>(display->getFramebuffer32());
+                return fbBytes[offset];
+            }
+        }
+        return 0; // Out of bounds
+    }
+
+    // Normal memory
+    return memory[address];
+}
+
+void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
+    // Framebuffer region: 0xE000-0xFFFF (8 KiB max)
+    if (address >= 0xE000 && address <= 0xFFFF && display != nullptr) {
+        uint16_t offset = address - 0xE000;
+
+        if (display->getRenderMode() == RenderMode::RGBA16) {
+            // 4 KiB framebuffer (0xE000-0xEFFF)
+            if (offset < 0x1000) {
+                uint8_t* fbBytes = reinterpret_cast<uint8_t*>(display->getFramebuffer16());
+                fbBytes[offset] = value;
+            }
+        } else {
+            // 8 KiB framebuffer (0xE000-0xFFFF)
+            if (offset < 0x2000) {
+                uint8_t* fbBytes = reinterpret_cast<uint8_t*>(display->getFramebuffer32());
+                fbBytes[offset] = value;
+            }
+        }
+        return; // Don't also write to regular memory
+    }
+
+    // Memory-mapped display I/O region: 0x0100-0x010B (word-aligned for MOVDP)
+    // 0x0100-0x0101: X position (16-bit)
+    // 0x0102-0x0103: Y position (16-bit)
+    // 0x0104-0x0105: Red component (16-bit, low byte used)
+    // 0x0106-0x0107: Green component (16-bit, low byte used)
+    // 0x0108-0x0109: Blue component (16-bit, low byte used)
+    // 0x010A-0x010B: Alpha component (16-bit, low byte used) - writing triggers pixel draw
+
+    if (address == 0x010A && display != nullptr) {
+        // Extract position and color from memory (little-endian 16-bit values)
+        uint16_t x = memory[0x0100] | (memory[0x0101] << 8);
+        uint16_t y = memory[0x0102] | (memory[0x0103] << 8);
+
+        // Build RGBA32 color (RRGGBBAA format) - use low bytes of 16-bit values
+        uint32_t color = (memory[0x0104] << 24) |  // R
+                        (memory[0x0106] << 16) |   // G
+                        (memory[0x0108] << 8) |    // B
+                        memory[0x010A];            // A
+
+        // Draw pixel to display
+        display->setPixel32(x, y, color);
+    }
+
+    // Tile data region: 0x0300-0x033F (64 bytes for direct tile storage access)
+    // Can be written to directly for tile definition
+    if (address >= 0x0300 && address <= 0x033F) {
+        uint8_t offset = address - 0x0300;
+        if (offset < TILE_SIZE && currentTileId < MAX_TILES) {
+            tileStorage[currentTileId][offset] = value;
+        }
+    }
+
+    // Tile position region: 0x0200-0x0203 (word-aligned)
+    // 0x0200-0x0201: X position (16-bit) for TILEDRAW
+    // 0x0202-0x0203: Y position (16-bit) for TILEDRAW
+    // Position is used by TILEDRAW instruction in Preset F
 }
 
 } // namespace ZeroPoint

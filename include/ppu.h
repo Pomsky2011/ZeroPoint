@@ -6,6 +6,9 @@
 
 namespace ZeroPoint {
 
+// Forward declaration
+class Display;
+
 // PPU operates at 64 MHz (64*1024*1024 Hz)
 // Executes 1 instruction per cycle
 constexpr uint32_t PPU_CLOCK_HZ = 64 * 1024 * 1024;
@@ -27,14 +30,22 @@ enum class PPUOpcode : uint8_t {
     SUB        = 0xB,  // Subtract registers
     MUL        = 0xC,  // Multiply registers
     INTDIV     = 0xD,  // Integer division
-    HALT       = 0xE,  // Halt execution
-    PRESET     = 0xF   // Extended preset instructions
+    PRESET_E   = 0xE,  // Preset E: immediate operations
+    PRESET_F   = 0xF   // Preset F: extended instructions
+};
+
+// Preset E sub-opcodes (immediate/byte operations)
+enum class PresetEOpcode : uint8_t {
+    TARREG     = 0x0,  // Set target register
+    SETBYTE    = 0x1,  // Set byte in target register
+    BUILD      = 0x2,  // Build register from target registers
+    CPREG      = 0x3   // Copy register to register
 };
 
 // Preset F sub-opcodes
 enum class PresetFOpcode : uint8_t {
     SETPOS           = 0x0,  // Set position
-    SETTILE          = 0x1,  // Set tile
+    SETTILE          = 0x1,  // Set tile with mode
     SETDP            = 0x2,  // Set data pointer
     MOVDP            = 0x3,  // Move to (DP)
     SETRENDMOD       = 0x4,  // Set render mode (16/32-bit RGBA)
@@ -45,8 +56,8 @@ enum class PresetFOpcode : uint8_t {
     SETREGBANK       = 0x9,  // Set register bank
     CLRTILE          = 0xA,  // Clear tile
     CLRPALETTE       = 0xB,  // Clear palette
-    STRTDEFTILE      = 0xC,  // Start define tile
-    ENDDEFTILE       = 0xD,  // End define tile
+    TILEDRAW         = 0xC,  // Draw tile at position
+    RESERVED_D       = 0xD,  // Reserved
     CALL             = 0xE,  // Call function
     GBLS             = 0xF   // Get blank status
 };
@@ -59,17 +70,9 @@ struct PPUFlags {
     PPUFlags() : zero(false), greater(false) {}
 };
 
-// Render mode
-enum class RenderMode {
-    RGBA16,  // 16-bit RGBA
-    RGBA32   // 32-bit RGBA
-};
-
 // PPU state
 enum class PPUState {
-    WaitingForInterrupts,  // Waiting for VBlank/HBlank interrupt addresses
-    RunningBootROM,        // Displaying logo
-    WaitingForStart,       // Stalled until CPU sends start interrupt
+    WaitingForStart,       // Waiting for start signal
     Running,               // Executing microcode
     Halted                 // Halted by instruction
 };
@@ -85,11 +88,7 @@ public:
     // Load microcode into memory
     void loadMicrocode(const uint8_t* code, size_t length, uint16_t offset = 0);
 
-    // Set interrupt jump addresses (called during init)
-    void setVBlankInterrupt(uint16_t address);
-    void setHBlankInterrupt(uint16_t address);
-
-    // Start execution (after boot ROM)
+    // Start execution
     void start();
 
     // Reset PPU
@@ -104,10 +103,20 @@ public:
         this->hblank = hblank;
     }
 
+    // Set display pointer (for memory-mapped display I/O)
+    void setDisplay(Display* disp) {
+        display = disp;
+    }
+
     // Get register value (for debugging)
     uint16_t getRegister(uint8_t reg) const {
         if (reg < 64) return registers[reg];
         return 0;
+    }
+
+    // Get execution pointer (for HLT detection)
+    uint16_t getExecutionPointer() const {
+        return executionPointer;
     }
 
     // Direct memory access (for debugging)
@@ -122,6 +131,13 @@ private:
     // Special register indices
     static constexpr uint8_t REG_DP = 63;  // Data Pointer
     static constexpr uint8_t REG_PC = 62;  // Program Counter
+    static constexpr uint8_t REG_SP = 61;  // Stack Pointer
+    static constexpr uint8_t REG_HBLANK_INT = 60;  // H-Blank Interrupt Address
+    static constexpr uint8_t REG_VBLANK_INT = 59;  // V-Blank Interrupt Address
+
+    // Target registers for Preset E (4 target registers, each 16-bit)
+    std::array<uint16_t, 4> targetRegisters;
+    std::array<uint8_t, 4> targetBytes;  // 0 = LSB, 1 = MSB
 
     // 64 KiB memory (shared with ROM)
     std::array<uint8_t, 65536> memory;
@@ -135,16 +151,9 @@ private:
     // Current state
     PPUState state;
 
-    // Interrupt addresses
-    uint16_t vblankInterruptAddr;
-    uint16_t hblankInterruptAddr;
-
     // Blank status
     bool vblank;
     bool hblank;
-
-    // Render mode
-    RenderMode renderMode;
 
     // Register banks for preset F setpos (4-bit register IDs)
     uint8_t regBankX;
@@ -153,11 +162,19 @@ private:
     // Cycle counter
     uint32_t cycleCounter;
 
-    // Boot ROM state
-    uint8_t initStage;  // 0 = waiting for VBlank addr, 1 = waiting for HBlank addr, 2+ = done
+    // Display pointer (for memory-mapped I/O)
+    Display* display;
+
+    // Tile system (8x8 tiles, 64 bytes each, up to 256 tiles)
+    static constexpr size_t TILE_SIZE = 64;      // 8x8 pixels
+    static constexpr size_t MAX_TILES = 256;
+    std::array<std::array<uint8_t, TILE_SIZE>, MAX_TILES> tileStorage;
+    uint8_t currentTileId;                        // Currently selected tile for drawing
+    uint8_t currentTileMode;                      // Tile mode (0-3): 16BBGR 4bpp, 32RGBA 4bpp, 16BBGR 8bpp, 32RGBA 8bpp
 
     // Execution methods
     void executeInstruction();
+    void executePresetE(uint8_t subopcode, uint8_t operand);
     void executePresetF(uint8_t subopcode, uint8_t operand);
 
     // Fetch instruction
@@ -166,6 +183,10 @@ private:
     // Helper methods
     void updateFlags(uint16_t result, uint16_t left, uint16_t right);
     void clearFlags();
+
+    // Memory-mapped I/O handlers
+    void handleMemoryWrite(uint16_t address, uint8_t value);
+    uint8_t handleMemoryRead(uint16_t address) const;
 };
 
 } // namespace ZeroPoint
