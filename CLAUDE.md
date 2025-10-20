@@ -37,6 +37,20 @@ A fantasy console emulator featuring a tile-based PPU (Picture Processing Unit) 
 - **Overlap**: Fully supported, tiles can draw over each other
 - **No Layers**: No automatic sprite/background system - fully DIY
 
+### APU (Audio Processing Unit)
+- **Architecture**: 8-bit RISC processor
+- **Clock**: 4.2 MHz (4,200,000 Hz)
+- **CPI**: 4 cycles per instruction
+- **Performance**: 1.048 MIPS (1,050,000 instructions/second)
+- **Instruction Set**: 41 instructions (5-bit opcode + 11-bit operands)
+- **Instruction Format**: 16-bit big-endian
+- **Memory**: 64 KiB addressable + 448 KiB banked AROM
+- **Registers**: Up to 256 8-bit general purpose + special registers (PC, RP, DP, DB, BF)
+- **MMP**: Hardware mixer for 16 stereo channels (32 mono)
+- **SST**: Sample storage system with looping and dynamic range clamping
+- **Effects**: Per-channel reverb, echo, Gaussian interpolation
+- **DEF88186**: Bidirectional CPU communication interface
+
 ## Memory Map
 
 ### Memory-Mapped I/O
@@ -485,33 +499,69 @@ make
 ```
 
 ### Executables
+
+#### Emulators
 - `bin/zeropoint_sdl` - SDL frontend
 - `bin/zeropoint_qt` - Qt frontend
+
+#### PPU Tools
 - `bin/run_demo <demo.bin>` - Run PPU demo with SDL window
 - `bin/test_demo <demo.bin>` - Run PPU demo headless (testing)
+- `bin/test_ppu` - PPU test
 - `bin/make_test_rom` - ROM creation tool
 - `bin/test_dma` - DMA controller test
-- `bin/test_ppu` - PPU test
 
-## ZPdevtools (Assembler)
+#### APU Tools
+- `bin/test_apu <program.bin> [max_cycles]` - Run APU program headless
+- `bin/run_apu_demo <program.bin>` - Run APU program with audio output
+
+## ZPdevtools (Assemblers)
 
 Located in `/Users/alexanderwhite/Documents/Code/ZPdevtools`
 
-### Building zpasm
+### PPU Assembler (zpasm)
+
+#### Building
 ```bash
 gcc -o zpasm zpasm.c
 ```
 
-### Using zpasm
+#### Usage
 ```bash
 ./zpasm input.asm output.bin
 ```
 
-### Example Programs
-- `examples/simple_pixel_test.asm` - Draw single pixel
-- `examples/tile_simple_demo.asm` - Draw 8×8 tile
-- `examples/gradient_demo_expanded.asm` - Gradient pattern
-- `examples/gradient_demo_grid.asm` - 8×8 grid of pixels
+#### PPU Example Programs
+- `examples/ppu/simple_pixel_test.asm` - Draw single pixel
+- `examples/ppu/tile_simple_demo.asm` - Draw 8×8 tile
+- `examples/ppu/gradient_demo_expanded.asm` - Gradient pattern
+- `examples/ppu/gradient_demo_grid.asm` - 8×8 grid of pixels
+
+### APU Assembler (apuasm)
+
+#### Building
+```bash
+gcc -o apuasm apuasm.c
+```
+
+#### Usage
+```bash
+./apuasm input.asm [output.bin]
+```
+
+If no output file is specified, uses input filename with `.bin` extension.
+
+#### APU Example Programs
+- `examples/apu/hello.asm` - Simple register operations (X=42, Y=100, R2=X+Y)
+- `examples/apu/counter.asm` - Hardware loop counting from 0 to 10
+- `examples/apu/tone_gen.asm` - Writes sample data to ARAM
+
+#### Assemble and Run
+```bash
+./apuasm examples/apu/hello.asm
+cd ../ZeroPoint/build
+./bin/test_apu ../ZPdevtools/examples/apu/hello.bin 10000
+```
 
 ## Known Issues & Limitations
 
@@ -553,10 +603,12 @@ gcc -o zpasm zpasm.c
 - [x] APU architecture documentation (8-bit RISC @ 4.2 MHz)
 - [x] MMP (Music Mixing Processor) specification
 - [x] SST (Sample Storage System) format
-- [ ] APU implementation (hardware emulation)
-- [ ] APU assembler (apuasm)
-- [ ] Audio output integration with SDL/Qt
+- [x] APU implementation (hardware emulation)
+- [x] APU assembler (apuasm)
+- [x] Audio output integration with SDL
+- [ ] Full MMP audio mixing implementation
 - [ ] Sample library and tools
+- [ ] APU integration with main emulator
 
 ### Development Tools
 - [ ] Debugger with register inspection

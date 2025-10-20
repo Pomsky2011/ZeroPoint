@@ -31,6 +31,8 @@ set(CORE_SOURCES
     src/rom.cpp
     src/dma.cpp
     src/ppu.cpp
+    src/apu.cpp
+    src/window.cpp
 )
 
 set(CORE_HEADERS
@@ -38,6 +40,8 @@ set(CORE_HEADERS
     include/rom.h
     include/dma.h
     include/ppu.h
+    include/apu.h
+    include/window.h
 )
 
 add_library(zeropoint_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
@@ -46,8 +50,6 @@ target_link_libraries(zeropoint_core ${SDL2_LIBRARIES})
 # SDL frontend (old standalone version)
 add_executable(zeropoint_sdl
     src/main.cpp
-    src/window.cpp
-    include/window.h
 )
 target_link_libraries(zeropoint_sdl zeropoint_core ${SDL2_LIBRARIES})
 
@@ -98,6 +100,22 @@ target_link_libraries(test_dma zeropoint_core)
 add_executable(test_ppu tools/test_ppu.cpp)
 target_link_libraries(test_ppu zeropoint_core)
 
+# Demo runner (with SDL)
+add_executable(run_demo tools/run_demo.cpp)
+target_link_libraries(run_demo zeropoint_core ${SDL2_LIBRARIES})
+
+# Demo test (no SDL)
+add_executable(test_demo tools/test_demo.cpp)
+target_link_libraries(test_demo zeropoint_core)
+
+# APU test tool
+add_executable(test_apu tools/test_apu.cpp)
+target_link_libraries(test_apu zeropoint_core)
+
+# APU demo runner (with SDL audio)
+add_executable(run_apu_demo tools/run_apu_demo.cpp)
+target_link_libraries(run_apu_demo zeropoint_core ${SDL2_LIBRARIES})
+
 # Set output directories
 set_target_properties(zeropoint_sdl PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -116,5 +134,21 @@ set_target_properties(test_dma PROPERTIES
 )
 
 set_target_properties(test_ppu PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(run_demo PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_demo PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_apu PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(run_apu_demo PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
