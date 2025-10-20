@@ -541,15 +541,27 @@ gcc -o zpasm zpasm.c
 
 ## Future Enhancements
 
+### PPU
 - [ ] Palette system implementation
 - [ ] DMA-based tile copying
 - [ ] Indexed color tile format (reduce from 64 to 64 palette indices)
 - [ ] Hardware scrolling
 - [ ] Sprite system (optional layer over DIY tiles)
-- [ ] Sound/Audio PPU
+- [ ] Window scaling options (2×, 4×, 8×)
+
+### APU (Audio Processing Unit)
+- [x] APU architecture documentation (8-bit RISC @ 4.2 MHz)
+- [x] MMP (Music Mixing Processor) specification
+- [x] SST (Sample Storage System) format
+- [ ] APU implementation (hardware emulation)
+- [ ] APU assembler (apuasm)
+- [ ] Audio output integration with SDL/Qt
+- [ ] Sample library and tools
+
+### Development Tools
 - [ ] Debugger with register inspection
 - [ ] Better assembler with macros and immediate value support
-- [ ] Window scaling options (2×, 4×, 8×)
+- [ ] Disassembler for both PPU and APU
 
 ## File Structure
 
@@ -588,10 +600,22 @@ ZeroPoint/
 
 ## Documentation
 
+### PPU Documentation
 - `docs/display.md` - Display system architecture and color modes
 - `docs/ppu/ucode.txt` - Complete PPU microcode reference (2000+ lines)
-- `ZPdevtools/README.md` - Assembler documentation
+- `ZPdevtools/README.md` - PPU assembler documentation
 - `ZPdevtools/docs/ppu/ucode.txt` - Assembly language reference
+- `ZPdevtools/docs/ppu/preset-e-and-shorthands.txt` - Preset E and assembler shorthands
+
+### APU Documentation (New!)
+- `ZPdevtools/docs/apu/README.txt` - APU documentation index
+- `ZPdevtools/docs/apu/overview.txt` - Architecture overview (8-bit RISC @ 4.2 MHz)
+- `ZPdevtools/docs/apu/instruction-set.txt` - All 41 APU instructions
+- `ZPdevtools/docs/apu/memory-map.txt` - Memory layout and banking
+- `ZPdevtools/docs/apu/registers.txt` - Register reference (X, Y, PC, RP, DP, DB, BF)
+- `ZPdevtools/docs/apu/sst.txt` - Sample Storage System format
+- `ZPdevtools/docs/apu/mmp.txt` - Music Mixing Processor (16 stereo channels)
+- `ZPdevtools/docs/apu/programming-guide.txt` - Complete programming examples
 
 ## License
 
