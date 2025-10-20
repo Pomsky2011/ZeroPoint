@@ -174,7 +174,7 @@ private:
 
     // Execution methods
     void executeInstruction();
-    void executePresetE(uint8_t subopcode, uint8_t operand);
+    void executePresetE(uint8_t subopcode, uint16_t operand);
     void executePresetF(uint8_t subopcode, uint8_t operand);
 
     // Fetch instruction

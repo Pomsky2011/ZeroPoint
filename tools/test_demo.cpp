@@ -86,7 +86,8 @@ int main(int argc, char* argv[]) {
         }
 
         // Check for HLT pattern (repeating PC sequence of 5-8 instructions)
-        if (cycles >= HISTORY_SIZE) {
+        // Disabled temporarily to test loop execution
+        /*if (cycles >= HISTORY_SIZE) {
             // Try different loop lengths (5-8 instructions)
             for (int loopLen = 5; loopLen <= 8; loopLen++) {
                 bool isRepeating = true;
@@ -103,12 +104,12 @@ int main(int argc, char* argv[]) {
                     goto exit_loop;
                 }
             }
-        }
+        }*/
 
         if (cycles % 100000 == 0) {
             std::cout << "Cycles: " << cycles << ", PC=" << ppu.getExecutionPointer()
-                      << " R10=" << ppu.getRegister(10) << " R11=" << ppu.getRegister(11)
-                      << " R12=" << ppu.getRegister(12) << "\n" << std::flush;
+                      << " R10=" << ppu.getRegister(10) << " R15=" << ppu.getRegister(15)
+                      << " R62=" << ppu.getRegister(62) << "\n" << std::flush;
         }
     }
 exit_loop:

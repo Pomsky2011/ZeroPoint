@@ -255,8 +255,8 @@ void PPU::executeInstruction() {
 
         case PPUOpcode::PRESET_E: {
             // preset E Z W - immediate/byte operations
-            uint8_t subopcode = (operand >> 8) & 0x03;  // 2 bits for sub-opcode
-            uint8_t suboperand = operand & 0xFF;
+            uint8_t subopcode = (operand >> 10) & 0x03;  // 2 bits for sub-opcode (bits 11-10)
+            uint16_t suboperand = operand & 0x3FF;        // 10 bits for operand (bits 9-0)
             executePresetE(subopcode, suboperand);
             break;
         }
@@ -271,14 +271,14 @@ void PPU::executeInstruction() {
     }
 }
 
-void PPU::executePresetE(uint8_t subopcode, uint8_t operand) {
+void PPU::executePresetE(uint8_t subopcode, uint16_t operand) {
     switch (static_cast<PresetEOpcode>(subopcode)) {
         case PresetEOpcode::TARREG: {
             // tarreg T, Y, X - set target register T to point to register X, target byte Y
-            // Encoding: 00 TT Y 0 XXXXXX
-            uint8_t targetReg = (operand >> 6) & 0x03;     // 2 bits for target register (0-3)
-            uint8_t targetByte = (operand >> 5) & 0x01;    // 1 bit for byte select (0=LSB, 1=MSB)
-            uint8_t sourceReg = operand & 0x3F;            // 6 bits for source register (0-63)
+            // Encoding: 00 TT Y 0 XXXXXX (bits 11-10: subop, bits 9-8: TT, bit 7: Y, bit 6: unused, bits 5-0: XXXXXX)
+            uint8_t targetReg = (operand >> 8) & 0x03;     // 2 bits for target register (bits 9-8)
+            uint8_t targetByte = (operand >> 7) & 0x01;    // 1 bit for byte select (bit 7)
+            uint8_t sourceReg = operand & 0x3F;            // 6 bits for source register (bits 5-0)
 
             targetRegisters[targetReg] = sourceReg;
             targetBytes[targetReg] = targetByte;
@@ -287,9 +287,9 @@ void PPU::executePresetE(uint8_t subopcode, uint8_t operand) {
 
         case PresetEOpcode::SETBYTE: {
             // setbyte T, 0xXX - set byte in target register to immediate value
-            // Encoding: 01 TT XXXXXXXX
-            uint8_t targetReg = (operand >> 6) & 0x03;     // 2 bits for target register (0-3)
-            uint8_t immediate = operand & 0xFF;            // 8 bits immediate value (already in operand)
+            // Encoding: 01 TT XXXXXXXX (bits 11-10: subop, bits 9-8: TT, bits 7-0: XXXXXXXX)
+            uint8_t targetReg = (operand >> 8) & 0x03;     // 2 bits for target register (bits 9-8)
+            uint8_t immediate = operand & 0xFF;            // 8 bits immediate value (bits 7-0)
 
             // Get the register pointed to by target register
             uint8_t regIndex = targetRegisters[targetReg];
