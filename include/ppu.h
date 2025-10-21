@@ -17,7 +17,7 @@ constexpr uint32_t PPU_CYCLES_PER_INSTRUCTION = 1;
 // PPU opcodes (4-bit)
 enum class PPUOpcode : uint8_t {
     DEFCALL    = 0x0,  // Define callable function
-    ENDDEFCALL = 0x1,  // End function definition
+    MOVXP_NOP  = 0x1,  // Move execution pointer / NOP
     SWAPREG    = 0x2,  // Swap two registers
     CLR        = 0x3,  // Clear register
     CMP        = 0x4,  // Compare registers

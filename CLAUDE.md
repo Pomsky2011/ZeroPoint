@@ -138,7 +138,7 @@ vblank_handler:
 | Opcode | Mnemonic | Operands | Description |
 |--------|----------|----------|-------------|
 | 0x0 | DEFCALL | X, Y | Define callable: address in RX, ID in RY.LSB |
-| 0x1 | ENDDEFCALL | X | End call definition for ID in RX.LSB |
+| 0x1 | MOVXP / NOP | X | MOVXP X: Copy EP+2 to RX (bit 11=0); NOP if bit 11=1 |
 | 0x2 | SWAPREG | X, Y | Swap registers X and Y |
 | 0x3 | CLR | X | Clear register X (set to 0) |
 | 0x4 | CMP | X, Y | Compare X and Y, set flags |
@@ -274,6 +274,29 @@ POP R5   →  SETDP SP
 RET      →  POP PC
             JMR
 ```
+
+#### Manual Function Calls with MOVXP
+
+The `MOVXP` instruction (opcode 0x1) copies the execution pointer + 2 (next instruction address) to a register, useful for manual function calls:
+
+```asm
+; Simple call pattern
+MOVXP R0        ; R0 = return address (next instruction)
+PUSH R0         ; Save return address on stack
+JMR function    ; Jump to function
+
+; Function does:
+function:
+    ; ... function body ...
+    POP PC      ; Restore return address
+    JMR         ; Return to caller
+```
+
+**Encoding:**
+- `0x1000-0x103F` (bit 11=0): `MOVXP X` - copies EP+2 to register X
+- `0x1800-0x1FFF` (bit 11=1): `NOP` - does nothing
+
+**Note:** The `JSR` assembler shorthand already handles this pattern automatically, but `MOVXP` is available for custom calling conventions or position-independent code.
 
 #### HLT Shorthand
 ```asm

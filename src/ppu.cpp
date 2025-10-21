@@ -129,14 +129,17 @@ void PPU::executeInstruction() {
             break;
         }
 
-        case PPUOpcode::ENDDEFCALL: {
-            // enddefcall X - end function definition
-            // Encoding: 0001 000000 XXXXXX
-            // ID in LSB of register X
-            uint8_t regX = operand & 0x3F;
-            // uint8_t callID = registers[regX] & 0xFF;
-            // For now, this is a no-op marker
-            // TODO: Implement call table finalization
+        case PPUOpcode::MOVXP_NOP: {
+            // Encoding: 0001 D 00000 XXXXXX
+            // D=0: movxp X - copy execution pointer + 2 to register X
+            // D=1: nop - do nothing
+            bool isNop = (operand >> 11) & 0x01;
+            if (!isNop) {
+                // MOVXP X - copy EP+2 to register X
+                uint8_t regX = operand & 0x3F;
+                registers[regX] = executionPointer + 2;
+            }
+            // If isNop=true, do nothing
             break;
         }
 
