@@ -7,7 +7,7 @@
 
 // ZeroPoint Audio Processing Unit (APU)
 // 8-bit RISC processor @ 4.2 MHz, 4 CPI
-// Instruction set: 41 instructions (5-bit opcode + 11-bit operands)
+// Instruction set: 47 instructions (5-bit opcode + 11-bit operands)
 class APU {
 public:
     APU();
@@ -89,13 +89,19 @@ private:
     void execSDB(uint16_t operand);
     void execWRH(uint16_t operand);
     void execWRL(uint16_t operand);
-    void execCFS(uint16_t operand);
-    void execCFE(uint16_t operand);
+    void execCFN(uint16_t operand);  // Callable Function New (replaces CFS)
+    void execSTACK(uint16_t operand); // Stack operations (replaces CFE)
     void execCCF(uint16_t operand);
     void execCME(uint16_t operand);
     void execCMN(uint16_t operand);
     void execCMG(uint16_t operand);
     void execCML(uint16_t operand);
+
+    // Stack helper functions
+    void pushByte(uint8_t value);
+    uint8_t popByte();
+    void pushWord(uint16_t value);
+    uint16_t popWord();
 
     // MMP helper functions
     void resetMMP();
@@ -137,6 +143,7 @@ private:
 
     // Special registers
     uint16_t pc;        // Program Counter
+    uint16_t sp;        // Stack Pointer (16-bit)
     uint8_t rp;         // ROM Page
     uint8_t dp;         // Data Page
     uint8_t db;         // Data Byte

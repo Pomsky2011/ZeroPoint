@@ -5,7 +5,7 @@
 #include <cmath>
 
 APU::APU()
-    : pc(0), rp(0), dp(0), db(0), bf(false),
+    : pc(0), sp(0), rp(0), dp(0), db(0), bf(false),
       romBank(0), ioBank(0),
       cycleCount(0), instructionCount(0), halted(false),
       reverbFlagsLeft(0), reverbFlagsRight(0),
@@ -25,6 +25,7 @@ void APU::reset() {
     registers.fill(0);
 
     pc = 0x8000;  // Start at BIOS
+    sp = 0x0000;  // Stack pointer (should be initialized by BSP instruction)
     rp = 0x80;
     dp = 0x00;
     db = 0x00;
@@ -337,8 +338,8 @@ void APU::executeInstruction(uint16_t instruction) {
             }
             break;
         }
-        case 0x16: execCFS(operand); break;
-        case 0x17: execCFE(operand); break;
+        case 0x16: execCFN(operand); break;
+        case 0x17: execSTACK(operand); break;
         case 0x18: execCCF(operand); break;
         case 0x19: {
             // CME/CMN/CML/CMG based on bits 7-6
@@ -370,6 +371,9 @@ void APU::execJMP(uint16_t operand) {
     bool mode = (operand >> 8) & 1;        // Bit 8
     uint8_t offset = operand & 0xFF;
 
+    // Push return address onto stack before jumping
+    pushWord(pc);
+
     if ((operand & 0x300) == 0) {
         // Relative jump
         if (direction) {
@@ -393,6 +397,9 @@ void APU::execJNZ(uint16_t operand) {
     uint8_t offset = operand & 0xFF;
 
     if (registers[reg] != 0) {
+        // Push return address only if jump is taken
+        pushWord(pc);
+
         if (mode) {
             pc = (rp << 8) | offset;
         } else {
@@ -679,26 +686,57 @@ void APU::execWRL(uint16_t operand) {
     writeWord(address, (high << 8) | value);
 }
 
-void APU::execCFS(uint16_t operand) {
-    uint16_t funcId = operand & 0x7FF;
+void APU::execCFN(uint16_t operand) {
+    // CFN - Define callable function at PC + offset
+    uint16_t offset = operand & 0x7FF;
+    uint16_t funcId = offset;  // Use offset as function ID
     if (funcId < 2048) {
         functions[funcId].defined = true;
-        functions[funcId].address = pc;
+        functions[funcId].address = pc + offset;
     }
 }
 
-void APU::execCFE(uint16_t operand) {
-    // Return from function
-    if (!callStack.empty()) {
-        pc = callStack.back();
-        callStack.pop_back();
+void APU::execSTACK(uint16_t operand) {
+    // Stack operations based on operand pattern
+    // 10111 D SS 0 XXXXXXX
+    bool D = (operand >> 10) & 1;
+    uint8_t SS = (operand >> 8) & 3;
+
+    if (!D) {
+        // D=0: BSP or RET
+        if ((operand & 0x7F) == 0x40) {
+            // RET: Pop 16-bit PC from stack
+            pc = popWord();
+        } else {
+            // BSP: Build Stack Pointer from X (LSB) and Y (MSB)
+            sp = registers[0] | (registers[1] << 8);  // X is reg 0, Y is reg 1
+        }
+    } else {
+        // D=1: Push/Pop operations
+        switch (SS) {
+            case 0: // PUX: Push X
+                pushByte(registers[0]);
+                break;
+            case 1: // PUY: Push Y
+                pushByte(registers[1]);
+                break;
+            case 2: // POX: Pop to X
+                registers[0] = popByte();
+                break;
+            case 3: // POY: Pop to Y
+                registers[1] = popByte();
+                break;
+        }
     }
 }
 
 void APU::execCCF(uint16_t operand) {
+    // CCF - Call callable function
     uint16_t funcId = operand & 0x7FF;
     if (funcId < 2048 && functions[funcId].defined) {
-        callStack.push_back(pc);
+        // Push return address onto stack
+        pushWord(pc);
+        // Jump to function address
         pc = functions[funcId].address;
     }
 }
@@ -761,6 +799,31 @@ void APU::execCML(uint16_t operand) {
             pc += (offset * 2);
         }
     }
+}
+
+// Stack operations
+
+void APU::pushByte(uint8_t value) {
+    writeByte(sp, value);
+    sp++;
+}
+
+uint8_t APU::popByte() {
+    sp--;
+    return readByte(sp);
+}
+
+void APU::pushWord(uint16_t value) {
+    // Push high byte first, then low byte
+    pushByte((value >> 8) & 0xFF);
+    pushByte(value & 0xFF);
+}
+
+uint16_t APU::popWord() {
+    // Pop low byte first, then high byte
+    uint8_t low = popByte();
+    uint8_t high = popByte();
+    return (high << 8) | low;
 }
 
 // MMP implementation (simplified for now)
