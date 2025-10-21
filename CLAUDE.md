@@ -631,10 +631,15 @@ cd ../ZeroPoint/build
 - [x] SST (Sample Storage System) format
 - [x] APU implementation (hardware emulation)
 - [x] APU assembler (apuasm)
+- [x] Stack operations (BSP, PUX, PUY, POX, POY, RET)
+- [x] Function call system (CFN, CCF with return address handling)
+- [x] JMP/JNZ with automatic return address pushing
 - [x] Audio output integration with SDL
 - [ ] Full MMP audio mixing implementation
 - [ ] Sample library and tools
 - [ ] APU integration with main emulator
+- [ ] Test stack operations with real programs
+- [ ] Test nested function calls
 
 ### Development Tools
 - [ ] Debugger with register inspection
