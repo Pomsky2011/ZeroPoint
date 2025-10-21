@@ -35,6 +35,52 @@ loop:
 3. Test JNG instruction in isolation
 4. Check if manual PC loading works better than JNG shorthand
 
+## Recent Implementations (2025-10-21)
+
+### ✅ DEF88186 Main CPU - Complete Documentation and Assembler
+**Added**: Comprehensive documentation for the main system CPU
+**Status**: Documentation complete, assembler functional
+
+**Architecture**:
+- Hybrid 65C816/8086 16-bit processor
+- 24-bit address space (16 MB, 256 banks × 64 KB)
+- System master with arbitration over PPU, APU, memory, and I/O
+- 65C816 base: Clean instruction set, superior addressing modes, bank-based memory
+- 8086 enhancements: Hardware MUL/DIV, LOOP/LPEND, XCHG, SDB
+
+**Documentation Created** (12 files, 8000+ lines):
+- `docs/cpu/README.txt` - Documentation index and quick start
+- `docs/cpu/overview.txt` - Architecture overview (hybrid 65C816/8086)
+- `docs/cpu/instruction-set.txt` - All 256 instructions categorized
+- `docs/cpu/addressing-modes.txt` - 14+ addressing modes with examples
+- `docs/cpu/flags.txt` - All 8 processor flags (NVMXDIZC)
+- `docs/cpu/programming-guide.txt` - Patterns, algorithms, optimization
+- `docs/cpu/encoding.txt` - Binary encoding, little-endian format
+- `docs/cpu/interrupts.txt` - 5 interrupt types, vectors, handlers
+- `docs/cpu/memory-map.txt` - 16 MB organization, banking, I/O
+- `docs/cpu/conventions.txt` - Calling conventions, ABI, register usage
+- `docs/cpu/timing.txt` - Cycle counts, performance optimization
+- `docs/cpu/comparison.txt` - 65C816 vs 8086 comparison
+
+**Assembler (cpuasm)**:
+- ✅ Two-pass assembler for DEF88186
+- ✅ Supports 123+ instructions (all major opcodes)
+- ✅ Automatic addressing mode detection
+- ✅ Label support with forward references
+- ✅ Little-endian encoding
+- ✅ Directives: .org, .byte, .word, .long
+- ✅ Hex ($), decimal, and binary (0b) numbers
+- ✅ Successfully assembles test programs
+- 📁 `ZPdevtools/cpuasm.c` (~800 lines)
+- 📁 `ZPdevtools/examples/cpu/test.asm`
+
+**Key Features Documented**:
+- Hardware multiply: 8-13 cycles (vs ~120 in software)
+- Hardware divide: 8 cycles (vs ~180 in software)
+- Hardware loops: 1 cycle/iteration (vs 11-17 overhead)
+- Register exchange: 8 cycles
+- Block moves (MVN/MVP): ~1 cycle/byte
+
 ## Recent Implementations (2025-10-20)
 
 ### ✅ APU Stack Operations and Function Calls
@@ -106,6 +152,15 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 
 ## Future Enhancements
 
+### High Priority - CPU (DEF88186)
+- [ ] Implement CPU emulator/interpreter
+- [ ] Test assembler with all 256 instructions
+- [ ] Implement interrupt system in emulator
+- [ ] Memory banking implementation
+- [ ] CPU-PPU communication interface
+- [ ] CPU-APU communication interface
+- [ ] System initialization and boot ROM
+
 ### High Priority - PPU
 - [ ] **Fix loop bug** (CRITICAL - blocking all PPU development)
 - [ ] Add proper HALT opcode (0xE is available)
@@ -138,6 +193,13 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 - [ ] Disassemblers for both PPU and APU
 
 ## Testing Status
+
+### CPU (DEF88186) - Documentation and Tools
+- ✅ Complete documentation (12 files)
+- ✅ Assembler (cpuasm) implemented and tested
+- ✅ Test programs assemble correctly
+- ⚠️ Emulator not yet implemented
+- ⚠️ No hardware testing possible yet
 
 ### PPU - Working
 - ✅ HLT detection

@@ -54,6 +54,38 @@ A fantasy console emulator featuring a tile-based PPU (Picture Processing Unit) 
 - **Effects**: Per-channel reverb, echo, Gaussian interpolation
 - **DEF88186**: Bidirectional CPU communication interface
 
+### DEF88186 Main CPU
+- **Architecture**: Hybrid 65C816/8086 16-bit processor (main system controller)
+- **Arbitration**: Has control over ALL system resources (PPU, APU, memory, I/O)
+- **Instruction Set**: 256 opcodes combining 65816 base + 8086-inspired extensions
+- **Data Bus**: 8/16-bit configurable (M flag controls accumulator, X flag controls indexes)
+- **Address Bus**: 24-bit (16 MB addressable via banking)
+- **Endianness**: Little-endian
+- **Registers**:
+  - A (Accumulator): 16-bit or 8-bit (AL/AH bytes when in 8-bit mode)
+  - X, Y (Index): 16-bit or 8-bit
+  - SP (Stack): 16-bit, grows downward
+  - D (Direct Page): 16-bit base for fast zero-page-like access
+  - PC (Program Counter): 16-bit
+  - PB (Program Bank): 8-bit
+  - DB (Data Bank): 8-bit
+  - P (Status): 8-bit flags (NV-MXDIZC)
+- **65816 Features**:
+  - Full addressing mode support (immediate, absolute, direct page, indirect, indexed, etc.)
+  - 24-bit long addressing for cross-bank access
+  - Stack-relative addressing for local variables
+  - Block moves (MVN/MVP) for fast memory copying
+  - BCD decimal mode
+- **8086-Inspired Extensions**:
+  - **LOOP/LPEND**: Hardware loop counter (more efficient than manual dec/branch)
+  - **MUL**: Hardware multiply (8-13 cycles vs. 100+ software)
+  - **DIV**: Hardware divide (8 cycles)
+  - **XCHG**: Register/memory exchange operations (8 cycles)
+  - **SHL/SHR**: Extended shift operations on index registers
+  - **SDB**: Direct data bank set instruction
+  - **CALL/RET**: Extended system call mechanism (16/8 cycles)
+- **Role**: The DEF88186 is the system master that coordinates the PPU (graphics racing the beam) and APU (audio synthesis), handles game logic, physics, and manages all I/O operations.
+
 ## Memory Map
 
 ### Memory-Mapped I/O
@@ -690,7 +722,7 @@ ZeroPoint/
 - `ZPdevtools/docs/ppu/ucode.txt` - Assembly language reference
 - `ZPdevtools/docs/ppu/preset-e-and-shorthands.txt` - Preset E and assembler shorthands
 
-### APU Documentation (New!)
+### APU Documentation
 - `ZPdevtools/docs/apu/README.txt` - APU documentation index
 - `ZPdevtools/docs/apu/overview.txt` - Architecture overview (8-bit RISC @ 4.2 MHz)
 - `ZPdevtools/docs/apu/instruction-set.txt` - All 47 APU instructions (includes stack ops)
@@ -699,6 +731,39 @@ ZeroPoint/
 - `ZPdevtools/docs/apu/sst.txt` - Sample Storage System format
 - `ZPdevtools/docs/apu/mmp.txt` - Music Mixing Processor (16 stereo channels)
 - `ZPdevtools/docs/apu/programming-guide.txt` - Complete programming examples
+
+### DEF88186 CPU Documentation (New!)
+- `ZPdevtools/docs/cpu/README.txt` - Documentation index and quick start
+- `ZPdevtools/docs/cpu/DEF88186.csv` - Raw instruction set CSV (source data)
+- `ZPdevtools/docs/cpu/overview.txt` - Architecture overview (hybrid 65C816/8086)
+- `ZPdevtools/docs/cpu/instruction-set.txt` - All 256 instructions organized by category
+- `ZPdevtools/docs/cpu/addressing-modes.txt` - Complete addressing mode reference
+- `ZPdevtools/docs/cpu/flags.txt` - Processor status flags (NVMXDIZC) detailed guide
+- `ZPdevtools/docs/cpu/programming-guide.txt` - Programming patterns and examples
+- `ZPdevtools/docs/cpu/encoding.txt` - Binary encoding and instruction format
+- `ZPdevtools/docs/cpu/interrupts.txt` - Interrupt system deep dive
+- `ZPdevtools/docs/cpu/memory-map.txt` - Memory organization and banking
+- `ZPdevtools/docs/cpu/conventions.txt` - Calling conventions and ABI
+- `ZPdevtools/docs/cpu/timing.txt` - Cycle counts and performance optimization
+- `ZPdevtools/docs/cpu/comparison.txt` - 65C816 vs 8086 comparison
+
+### DEF88186 Assembler (New!)
+- `ZPdevtools/cpuasm` - DEF88186 assembler
+- Supports all major instructions and addressing modes
+- Label support with forward references
+- Directives: .org, .byte, .word, .long
+- Example programs in `ZPdevtools/examples/cpu/`
+
+#### Building the Assembler
+```bash
+cd ZPdevtools
+gcc -o cpuasm cpuasm.c -Wall
+```
+
+#### Using the Assembler
+```bash
+./cpuasm input.asm [output.bin]
+```
 
 ## License
 
