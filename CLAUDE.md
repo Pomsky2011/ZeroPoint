@@ -42,7 +42,7 @@ A fantasy console emulator featuring a tile-based PPU (Picture Processing Unit) 
 - **Clock**: 4.2 MHz (4,200,000 Hz)
 - **CPI**: 4 cycles per instruction
 - **Performance**: 1.048 MIPS (1,050,000 instructions/second)
-- **Instruction Set**: 43 instructions (5-bit opcode + 11-bit operands)
+- **Instruction Set**: 47 instructions (5-bit opcode + 11-bit operands)
 - **Instruction Format**: 16-bit big-endian
 - **Memory**: 64 KiB addressable + 448 KiB banked AROM
 - **Registers**: Up to 256 8-bit general purpose + special registers (PC, RP, DP, DB, BF, SP)
@@ -687,7 +687,7 @@ ZeroPoint/
 ### APU Documentation (New!)
 - `ZPdevtools/docs/apu/README.txt` - APU documentation index
 - `ZPdevtools/docs/apu/overview.txt` - Architecture overview (8-bit RISC @ 4.2 MHz)
-- `ZPdevtools/docs/apu/instruction-set.txt` - All 43 APU instructions (includes stack ops)
+- `ZPdevtools/docs/apu/instruction-set.txt` - All 47 APU instructions (includes stack ops)
 - `ZPdevtools/docs/apu/memory-map.txt` - Memory layout and banking
 - `ZPdevtools/docs/apu/registers.txt` - Register reference (X, Y, PC, RP, DP, DB, BF, SP)
 - `ZPdevtools/docs/apu/sst.txt` - Sample Storage System format
