@@ -48,6 +48,7 @@ A fantasy console emulator featuring a tile-based PPU (Picture Processing Unit) 
 - **Registers**: Up to 256 8-bit general purpose + special registers (PC, RP, DP, DB, BF, SP)
 - **Stack**: 16-bit stack pointer with push/pop operations (PUX, PUY, POX, POY, RET)
 - **Functions**: CFN/CCF system with automatic return address handling
+- **Jumps**: JMP and JNZ push return addresses onto stack (use RET to return)
 - **MMP**: Hardware mixer for 16 stereo channels (32 mono)
 - **SST**: Sample storage system with looping and dynamic range clamping
 - **Effects**: Per-channel reverb, echo, Gaussian interpolation
