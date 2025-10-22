@@ -32,6 +32,7 @@ set(CORE_SOURCES
     src/dma.cpp
     src/ppu.cpp
     src/apu.cpp
+    src/cpu.cpp
     src/window.cpp
 )
 
@@ -41,6 +42,7 @@ set(CORE_HEADERS
     include/dma.h
     include/ppu.h
     include/apu.h
+    include/cpu.h
     include/window.h
 )
 
@@ -116,6 +118,10 @@ target_link_libraries(test_apu zeropoint_core)
 add_executable(run_apu_demo tools/run_apu_demo.cpp)
 target_link_libraries(run_apu_demo zeropoint_core ${SDL2_LIBRARIES})
 
+# CPU test tool
+add_executable(test_cpu tools/test_cpu.cpp)
+target_link_libraries(test_cpu zeropoint_core)
+
 # Set output directories
 set_target_properties(zeropoint_sdl PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -150,5 +156,9 @@ set_target_properties(test_apu PROPERTIES
 )
 
 set_target_properties(run_apu_demo PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_cpu PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
