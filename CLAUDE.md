@@ -576,9 +576,65 @@ make
 #### CPU Tools
 - `bin/test_cpu` - DEF88186 CPU interpreter test
 
-## ZPdevtools (Assemblers)
+## ZPdevtools (Development Tools)
 
 Located in `/Users/alexanderwhite/Documents/Code/ZPdevtools`
+
+### C Compiler (def88186cc)
+
+**Complete C-to-Assembly Compiler for DEF88186 CPU**
+
+A full-featured compiler toolchain that translates a practical subset of C into native DEF88186 assembly language.
+
+#### Building
+```bash
+cd ZPdevtools/c_compiler
+make
+```
+
+#### Usage
+```bash
+./def88186cc input.c -o output.asm  # Compile C to assembly
+./cpuasm output.asm output.bin       # Assemble to binary
+```
+
+#### Supported C Features
+- **Data types**: `int` (16-bit), `char` (8-bit), `void`
+- **Arrays**: Fixed-size arrays with subscript access (`int arr[10]`)
+- **Functions**: Parameters, return values, recursion
+- **Variables**: Local and global variables
+- **Control flow**: `if/else`, `while`, `for` loops
+- **Operators**: Arithmetic, comparison, logical, bitwise
+- **Hardware optimization**: Automatic `LOOP`/`LPEND` for counted loops
+
+#### Compiler Pipeline
+1. **Flex Lexer** (`lexer.l`) - Tokenization
+2. **Bison Parser** (`parser.y`) - Syntax analysis
+3. **AST Builder** (`ast.c`) - Abstract syntax tree construction
+4. **Code Generator** (`codegen.c`) - DEF88186 assembly emission
+
+#### Example
+```c
+int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+}
+
+int main() {
+    int result = factorial(5);
+    return result;
+}
+```
+
+Compiles to optimized DEF88186 assembly with:
+- Hardware `MUL`/`DIV` instructions
+- Automatic `LOOP`/`LPEND` for simple loops
+- Proper stack frame management
+- ABI-compliant calling conventions
+
+#### Documentation
+- 📁 `ZPdevtools/c_compiler/README.md` - Complete compiler documentation
+- 📁 `ZPdevtools/c_compiler/examples/` - Example C programs
 
 ### PPU Assembler (zpasm)
 
