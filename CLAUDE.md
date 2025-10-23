@@ -136,9 +136,9 @@ make
 ## ZPdevtools (`/Users/alexanderwhite/Documents/Code/ZPdevtools`)
 
 ### C Compiler (def88186cc)
-Complete C-to-DEF88186 compiler with Flex/Bison frontend.
+Complete C89-compliant C-to-DEF88186 compiler with Flex/Bison frontend.
 
-**Features**: int/char/void, arrays, functions, recursion, if/else, while/for, operators, hardware LOOP/LPEND optimization
+**Features**: int/char/void/short/long, unsigned/signed, const/volatile, static/extern, arrays, unions, enums, typedef, functions, recursion, if/else, while/for/do-while, switch/case, goto/labels, operators, hardware LOOP/LPEND optimization
 
 ```bash
 cd ZPdevtools/c_compiler && make
