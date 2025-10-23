@@ -37,6 +37,46 @@ loop:
 
 ## Recent Updates (2025-10-23)
 
+### ✅ Tile System with Palette and Translucency
+**Added**: Complete tile rendering system with 4bpp/8bpp modes, palette lookups, and translucency
+**Status**: ✅ **IMPLEMENTED** - Full tile system operational
+
+**Features Implemented**:
+- **Tile modes**: 4 modes fully functional
+  - Mode 0: 16-bit BGR, 4bpp (2 pixels per byte, 16-color palette)
+  - Mode 1: 32-bit RGBA, 4bpp (2 pixels per byte, 16-color palette)
+  - Mode 2: 16-bit BGR, 8bpp (1 pixel per byte, 16-color palette)
+  - Mode 3: 32-bit RGBA, 8bpp (1 pixel per byte, 256-color palette)
+- **Palette system**: Dual palette storage
+  - 16-color palette (16-bit BBGGGRRRRR-A format)
+  - 256-color palette (32-bit RRGGBBAA format)
+  - PALETTE16 instruction loads 16 colors from DP (32 bytes)
+  - PALETTE256 instruction loads 256 colors from DP (1024 bytes)
+  - CLRPALETTE resets to default grayscale palettes
+- **Translucency**: Per-tile opacity control
+  - 4 tile slots tracked (0-3) with 4-bit opacity (0-15)
+  - 4 blending modes: Multiply, Average, Subtract, Add
+  - VOC registers $00FC-$00FF control translucency
+  - Push flag (bit 3 of $00FD) applies settings
+- **Color conversion**: Automatic 16-bit to 32-bit palette expansion
+
+**Technical Implementation**:
+- `SETTILE`: Selects tile ID and mode (src/ppu.cpp:373-382)
+- `TILEDRAW`: Decodes 4bpp/8bpp with palette lookup (src/ppu.cpp:477-584)
+- `loadPalette16()`: Loads 16-color palette from memory (src/ppu.cpp:767-777)
+- `loadPalette256()`: Loads 256-color palette from memory (src/ppu.cpp:779-791)
+- `applyTranslucency()`: Applies per-tile opacity (src/ppu.cpp:853-873)
+- `blendColors()`: 4 blending modes implementation (src/ppu.cpp:793-851)
+
+**Files Modified**:
+- `include/ppu.h`: Added palette storage, translucency arrays, helper methods
+- `src/ppu.cpp`: Implemented tile decoding, palette loading, translucency blending
+- Default palettes: Grayscale ramps on reset
+
+**Limitations**:
+- Tile blending requires framebuffer read-modify-write (not yet implemented)
+- Translucency only applies alpha, full blending needs destination pixel read
+
 ### ✅ Video Output Coprocessor (VOC) Implementation
 **Added**: Complete VOC register emulation at $00F0-$00FF
 **Status**: ✅ **IMPLEMENTED** - All 16 registers functional
@@ -277,10 +317,9 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 
 ## Known Issues
 
-1. **No Palette System**: Palette instructions (PALETTE16, PALETTE256) defined but not implemented
-2. **Grayscale Tiles**: Tile system treats each byte as grayscale (R=G=B) instead of using palette indices
-3. **No Immediate Values**: Constants must be built step-by-step using INC, ADD, MUL
-4. **HLT is not HALT**: HLT is a macro that creates an infinite loop, not a real CPU halt state
+1. **No Immediate Values**: Constants must be built step-by-step using INC, ADD, MUL
+2. **HLT is not HALT**: HLT is a macro that creates an infinite loop, not a real CPU halt state
+3. **Tile Blending Incomplete**: Translucency alpha works, but full blending (multiply/average/subtract/add) requires framebuffer read-modify-write
 
 ## Future Enhancements
 
@@ -316,8 +355,9 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 - [ ] Test function call/return mechanisms
 
 ### Medium Priority - PPU
-- [ ] Implement palette system
-- [ ] Add indexed color tile format
+- [x] Implement palette system ✅ **DONE!**
+- [x] Add indexed color tile format ✅ **DONE!**
+- [ ] Implement full tile blending with framebuffer read-modify-write
 - [ ] DMA-based tile copying
 - [ ] Hardware scrolling
 - [ ] Window scaling options (2×, 4×, 8×)

@@ -27,7 +27,10 @@ A fantasy console featuring custom PPU (graphics), APU (audio), and DEF88186 CPU
 - **8×8 pixels**, 64 bytes each, 256 tiles max
 - Unbound placement at any pixel coordinate
 - No automatic layering - fully DIY
-- Modes: 16BBGR/32RGBA in 4bpp or 8bpp
+- **4 tile modes**: 16BBGR 4bpp, 32RGBA 4bpp, 16BBGR 8bpp, 32RGBA 8bpp
+- **Palette system**: 16-color (16-bit) and 256-color (32-bit) palettes
+- **Translucency**: Per-tile opacity (0-15) with 4 blending modes
+  - Multiply (darken), Average (50/50), Subtract, Add (lighten)
 
 ### APU (Audio Processing Unit)
 - **8-bit RISC @ 4.2 MHz**, 4 CPI (1.048 MIPS)
@@ -231,9 +234,8 @@ Creates:
 1. **⚠️ CRITICAL**: Loop counters get stuck at value 1 (infinite loops)
 2. No immediate values - constants built step-by-step
 3. MOVDP/MOV are 16-bit word-aligned
-4. Palette system not implemented
-5. Grayscale tiles only (R=G=B)
-6. HLT is 6-instruction infinite loop, not true halt
+4. HLT is 6-instruction infinite loop, not true halt
+5. Tile blending (multiply/average/subtract/add) requires framebuffer read-modify-write
 
 ## Status
 
@@ -241,13 +243,15 @@ Creates:
 - ✅ DEF88186 CPU: All 256 opcodes implemented (1560 lines)
 - ✅ APU: Full implementation with stack ops and functions
 - ✅ PPU: Core instruction set and rendering
+- ✅ Tile system: 4bpp/8bpp modes with palette lookups and translucency
+- ✅ Palette system: 16-color and 256-color palettes with load operations
+- ✅ VOC: Video Output Coprocessor with 16 control registers
 - ✅ C compiler: Full toolchain (Flex/Bison/AST/Codegen)
 - ✅ Assemblers: ppuasm, apuasm, cpuasm (with `.include` support)
 - ✅ ROM Builder: rombuilder (combines CPU/PPU/APU into single ROM)
 
 ### In Progress
 - ⏳ MMP audio mixing implementation
-- ⏳ Palette system
 - ⏳ CPU/PPU/APU integration
 - ⏳ Extended test suites
 
@@ -256,6 +260,7 @@ Creates:
 - 🔲 DMA-based tile copying
 - 🔲 Hardware scrolling
 - 🔲 Window scaling options
+- 🔲 Tile blending with framebuffer read-modify-write
 
 ## File Structure
 

@@ -52,6 +52,17 @@ void PPU::reset() {
     currentTileId = 0;
     currentTileMode = 0;
 
+    // Initialize palette system (default grayscale palettes)
+    for (int i = 0; i < 16; i++) {
+        uint8_t gray = (i << 4) | i;  // 0x00, 0x11, 0x22, ... 0xFF
+        palette16[i] = ((gray >> 3) << 11) | ((gray >> 3) << 6) | ((gray >> 3) << 1) | 1;  // 16-bit BBGR
+    }
+    for (int i = 0; i < 256; i++) {
+        palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;  // 32-bit RGBA grayscale
+    }
+    tileTranslucency.fill(0x0F);  // Fully opaque by default
+    tileBlendMode = 0;
+
     // Initialize VOC registers
     vocRegisters.renderModeControl = 0x00;  // 16-bit mode, auto-roll enabled by default
     vocRegisters.paletteAddrLow = 0x00;
@@ -414,15 +425,13 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
 
         case PresetFOpcode::PALETTE16_LOAD: {
             // 16cpaletteload(dp) - load 16-color palette from DP
-            // Size: 32 bytes (16-bit) or 64 bytes (32-bit)
-            // Placeholder - would load into palette memory
+            loadPalette16();
             break;
         }
 
         case PresetFOpcode::PALETTE256_LOAD: {
             // 256cpaletteload(dp) - load 256-color palette from DP
-            // Size: 512 bytes (16-bit) or 1024 bytes (32-bit)
-            // Placeholder - would load into palette memory
+            loadPalette256();
             break;
         }
 
@@ -460,8 +469,14 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
         }
 
         case PresetFOpcode::CLRPALETTE: {
-            // clrpalette - clear palette
-            // Placeholder - not implemented yet
+            // clrpalette - clear both palettes to default grayscale
+            for (int i = 0; i < 16; i++) {
+                uint8_t gray = (i << 4) | i;
+                palette16[i] = ((gray >> 3) << 11) | ((gray >> 3) << 6) | ((gray >> 3) << 1) | 1;
+            }
+            for (int i = 0; i < 256; i++) {
+                palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;
+            }
             break;
         }
 
@@ -473,16 +488,99 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                 uint16_t x = memory[0x0200] | (memory[0x0201] << 8);
                 uint16_t y = memory[0x0202] | (memory[0x0203] << 8);
 
+                // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp
+                bool is4bpp = (currentTileMode & 0x02) == 0;
+                bool is32bit = (currentTileMode & 0x01) != 0;
+
                 // Draw 8x8 tile
                 for (int ty = 0; ty < 8; ty++) {
                     for (int tx = 0; tx < 8; tx++) {
-                        uint8_t pixelValue = tileStorage[currentTileId][ty * 8 + tx];
+                        uint32_t color = 0;
 
-                        // For now, treat as grayscale (mode handling can be added later)
-                        uint32_t color = (pixelValue << 24) |  // R
-                                        (pixelValue << 16) |   // G
-                                        (pixelValue << 8) |    // B
-                                        0xFF;                  // A = 255
+                        if (is4bpp) {
+                            // 4bpp mode: 2 pixels per byte, use palette lookup
+                            uint8_t byteIndex = (ty * 8 + tx) / 2;
+                            uint8_t pixelByte = tileStorage[currentTileId][byteIndex];
+
+                            // Get 4-bit palette index (high nibble for even pixels, low nibble for odd)
+                            uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
+
+                            if (is32bit) {
+                                // 32-bit RGBA mode with 16-color palette
+                                // Convert 16-bit palette entry to 32-bit
+                                uint16_t pal16 = palette16[paletteIndex];
+
+                                // Extract 5-bit components (BBBBBGGGGGRRRRR-A format)
+                                uint8_t r5 = (pal16 >> 1) & 0x1F;
+                                uint8_t g5 = (pal16 >> 6) & 0x1F;
+                                uint8_t b5 = (pal16 >> 11) & 0x1F;
+                                uint8_t a1 = pal16 & 0x01;
+
+                                // Expand 5-bit to 8-bit
+                                uint8_t r8 = (r5 << 3) | (r5 >> 2);
+                                uint8_t g8 = (g5 << 3) | (g5 >> 2);
+                                uint8_t b8 = (b5 << 3) | (b5 >> 2);
+                                uint8_t a8 = a1 ? 0xFF : 0x00;
+
+                                color = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
+                            } else {
+                                // 16-bit mode with 16-color palette - use 16-bit palette directly
+                                uint16_t pal16 = palette16[paletteIndex];
+
+                                // Extract and expand to 32-bit for drawing
+                                uint8_t r5 = (pal16 >> 1) & 0x1F;
+                                uint8_t g5 = (pal16 >> 6) & 0x1F;
+                                uint8_t b5 = (pal16 >> 11) & 0x1F;
+                                uint8_t a1 = pal16 & 0x01;
+
+                                uint8_t r8 = (r5 << 3) | (r5 >> 2);
+                                uint8_t g8 = (g5 << 3) | (g5 >> 2);
+                                uint8_t b8 = (b5 << 3) | (b5 >> 2);
+                                uint8_t a8 = a1 ? 0xFF : 0x00;
+
+                                color = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
+                            }
+                        } else {
+                            // 8bpp mode: 1 pixel per byte, use palette lookup
+                            uint8_t paletteIndex = tileStorage[currentTileId][ty * 8 + tx];
+
+                            if (is32bit) {
+                                // 32-bit RGBA mode with 256-color palette
+                                color = palette256[paletteIndex];
+                            } else {
+                                // 16-bit mode with 256-color palette
+                                // Use lower 16 entries or convert to 16-bit format
+                                if (paletteIndex < 16) {
+                                    uint16_t pal16 = palette16[paletteIndex];
+
+                                    uint8_t r5 = (pal16 >> 1) & 0x1F;
+                                    uint8_t g5 = (pal16 >> 6) & 0x1F;
+                                    uint8_t b5 = (pal16 >> 11) & 0x1F;
+                                    uint8_t a1 = pal16 & 0x01;
+
+                                    uint8_t r8 = (r5 << 3) | (r5 >> 2);
+                                    uint8_t g8 = (g5 << 3) | (g5 >> 2);
+                                    uint8_t b8 = (b5 << 3) | (b5 >> 2);
+                                    uint8_t a8 = a1 ? 0xFF : 0x00;
+
+                                    color = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
+                                } else {
+                                    // Fallback: grayscale for palette indices >= 16
+                                    color = (paletteIndex << 24) | (paletteIndex << 16) |
+                                           (paletteIndex << 8) | 0xFF;
+                                }
+                            }
+                        }
+
+                        // Apply translucency to the color
+                        color = applyTranslucency(color, currentTileId);
+
+                        // Get existing pixel for blending (if needed)
+                        if (tileBlendMode != 0 && display->getRenderMode() == RenderMode::RGBA16) {
+                            // Read existing pixel at destination
+                            // For now, just draw directly (blending requires framebuffer read)
+                            // TODO: Implement proper read-modify-write blending
+                        }
 
                         display->setPixel32(x + tx, y + ty, color);
                     }
@@ -667,17 +765,36 @@ void PPU::handleVOCWrite(uint16_t address, uint8_t value) {
             vocRegisters.autoRollToggle = value;
             break;
 
-        case 0x0C:  // $00FC: Translucency byte 0
-        case 0x0D:  // $00FD: Translucency byte 1
-        case 0x0E:  // $00FE: Translucency byte 2
-        case 0x0F:  // $00FF: Translucency byte 3
+        case 0x0C:  // $00FC: Translucency byte 0 (MM - blend mode)
+        case 0x0D:  // $00FD: Translucency byte 1 (PH - push/halt flags)
+        case 0x0E:  // $00FE: Translucency byte 2 (TT - translucency values 0-1)
+        case 0x0F:  // $00FF: Translucency byte 3 (TT - translucency values 2-3)
             // In 32-bit RGBA mode, translucency is read-only
             if (display != nullptr && display->getRenderMode() == RenderMode::RGBA16) {
                 vocRegisters.translucency[offset - 0x0C] = value;
 
-                // Check for halt switch (bit 2 of byte 1, which is $00FD)
-                if (offset == 0x0D && (value & 0x04)) {
-                    state = PPUState::Halted;
+                // Extract settings when byte 1 (PH) is written
+                if (offset == 0x0D) {
+                    // Check for halt switch (bit 2)
+                    if (value & 0x04) {
+                        state = PPUState::Halted;
+                    }
+
+                    // Check for push flag (bit 3)
+                    if (value & 0x08) {
+                        // Extract blend mode from byte 0 (bits 0-1)
+                        tileBlendMode = vocRegisters.translucency[0] & 0x03;
+
+                        // Extract translucency values from bytes 2-3
+                        // Each tile gets 4 bits (0-15 for opacity)
+                        uint8_t byte2 = vocRegisters.translucency[2];
+                        uint8_t byte3 = vocRegisters.translucency[3];
+
+                        tileTranslucency[0] = byte2 & 0x0F;        // Low nibble of byte 2
+                        tileTranslucency[1] = (byte2 >> 4) & 0x0F; // High nibble of byte 2
+                        tileTranslucency[2] = byte3 & 0x0F;        // Low nibble of byte 3
+                        tileTranslucency[3] = (byte3 >> 4) & 0x0F; // High nibble of byte 3
+                    }
                 }
             }
             break;
@@ -753,6 +870,114 @@ void PPU::applyVOCReset() {
     currentTileMode = 0;
 
     // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
+}
+
+void PPU::loadPalette16() {
+    // Load 16-color palette from memory address pointed to by DP
+    uint16_t addr = registers[REG_DP];
+
+    // Read 16 palette entries (16-bit format: BBGGGRRRRR-A)
+    for (int i = 0; i < 16; i++) {
+        uint8_t low = memory[addr + i * 2];
+        uint8_t high = memory[addr + i * 2 + 1];
+        palette16[i] = (high << 8) | low;
+    }
+}
+
+void PPU::loadPalette256() {
+    // Load 256-color palette from memory address pointed to by DP
+    uint16_t addr = registers[REG_DP];
+
+    // Read 256 palette entries (32-bit format: RRGGBBAA)
+    for (int i = 0; i < 256; i++) {
+        uint8_t b0 = memory[addr + i * 4];
+        uint8_t b1 = memory[addr + i * 4 + 1];
+        uint8_t b2 = memory[addr + i * 4 + 2];
+        uint8_t b3 = memory[addr + i * 4 + 3];
+        palette256[i] = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+    }
+}
+
+uint32_t PPU::blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alpha) {
+    // Extract RGBA components from source (new pixel)
+    uint8_t srcR = (src >> 24) & 0xFF;
+    uint8_t srcG = (src >> 16) & 0xFF;
+    uint8_t srcB = (src >> 8) & 0xFF;
+    uint8_t srcA = src & 0xFF;
+
+    // Extract RGBA components from destination (existing pixel)
+    uint8_t dstR = (dst >> 24) & 0xFF;
+    uint8_t dstG = (dst >> 16) & 0xFF;
+    uint8_t dstB = (dst >> 8) & 0xFF;
+    uint8_t dstA = dst & 0xFF;
+
+    uint8_t outR, outG, outB, outA;
+
+    // Apply translucency alpha (0-15 range mapped to 0-255)
+    uint16_t alphaFull = (alpha << 4) | alpha;  // 0-15 -> 0-255
+
+    switch (mode) {
+        case 0:  // Multiply (darken)
+            outR = (srcR * dstR) >> 8;
+            outG = (srcG * dstG) >> 8;
+            outB = (srcB * dstB) >> 8;
+            outA = (srcA * alphaFull) >> 8;
+            break;
+
+        case 1:  // Average (50/50 blend)
+            outR = (srcR + dstR) >> 1;
+            outG = (srcG + dstG) >> 1;
+            outB = (srcB + dstB) >> 1;
+            outA = (srcA * alphaFull) >> 8;
+            break;
+
+        case 2:  // Subtract (color subtraction)
+            outR = (dstR > srcR) ? (dstR - srcR) : 0;
+            outG = (dstG > srcG) ? (dstG - srcG) : 0;
+            outB = (dstB > srcB) ? (dstB - srcB) : 0;
+            outA = (srcA * alphaFull) >> 8;
+            break;
+
+        case 3:  // Add (lighten/additive)
+            outR = std::min(255, srcR + dstR);
+            outG = std::min(255, srcG + dstG);
+            outB = std::min(255, srcB + dstB);
+            outA = (srcA * alphaFull) >> 8;
+            break;
+
+        default:
+            return src;
+    }
+
+    // Alpha blend based on output alpha
+    uint16_t blend = alphaFull;
+    outR = ((srcR * blend) + (dstR * (255 - blend))) >> 8;
+    outG = ((srcG * blend) + (dstG * (255 - blend))) >> 8;
+    outB = ((srcB * blend) + (dstB * (255 - blend))) >> 8;
+
+    return (outR << 24) | (outG << 16) | (outB << 8) | outA;
+}
+
+uint32_t PPU::applyTranslucency(uint32_t color, uint8_t tileIndex) {
+    // Get translucency value for this tile (last 4 tiles are tracked)
+    uint8_t tileSlot = tileIndex & 0x03;  // 0-3
+    uint8_t alpha = tileTranslucency[tileSlot];
+
+    // If fully opaque (15), return color as-is
+    if (alpha == 0x0F) {
+        return color;
+    }
+
+    // If fully transparent (0), return transparent
+    if (alpha == 0x00) {
+        return color & 0xFFFFFF00;  // Set alpha to 0
+    }
+
+    // Apply alpha to color's alpha channel
+    uint8_t colorAlpha = color & 0xFF;
+    uint8_t newAlpha = (colorAlpha * ((alpha << 4) | alpha)) >> 8;
+
+    return (color & 0xFFFFFF00) | newAlpha;
 }
 
 } // namespace ZeroPoint

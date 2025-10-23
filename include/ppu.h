@@ -172,6 +172,12 @@ private:
     uint8_t currentTileId;                        // Currently selected tile for drawing
     uint8_t currentTileMode;                      // Tile mode (0-3): 16BBGR 4bpp, 32RGBA 4bpp, 16BBGR 8bpp, 32RGBA 8bpp
 
+    // Palette system
+    std::array<uint16_t, 16> palette16;           // 16-color palette (16-bit BBGR format)
+    std::array<uint32_t, 256> palette256;         // 256-color palette (32-bit RGBA format)
+    std::array<uint8_t, 4> tileTranslucency;      // Translucency for last 4 tiles (4 bits each)
+    uint8_t tileBlendMode;                        // Blend mode for tiles (0-3)
+
     // Video Output Coprocessor (VOC) registers at $00F0-$00FF
     struct VOCRegisters {
         uint8_t renderModeControl;      // $00F0: CRHVPLIW
@@ -211,6 +217,12 @@ private:
     uint8_t handleVOCRead(uint16_t address) const;
     void applyVOCRenderMode();
     void applyVOCReset();
+
+    // Palette helper methods
+    void loadPalette16();
+    void loadPalette256();
+    uint32_t applyTranslucency(uint32_t color, uint8_t tileIndex);
+    uint32_t blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alpha);
 };
 
 } // namespace ZeroPoint
