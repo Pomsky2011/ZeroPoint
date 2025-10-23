@@ -35,6 +35,19 @@ loop:
 3. Test JNG instruction in isolation
 4. Check if manual PC loading works better than JNG shorthand
 
+## Recent Updates (2025-10-22)
+
+### ✅ Documentation Consolidation
+**Condensed**: CLAUDE.md from 877 lines to 225 lines (74% reduction)
+**Changes**:
+- Removed verbose code examples (kept reference to examples in ZPdevtools)
+- Condensed instruction set tables to mnemonics only
+- Merged development notes, recent updates, and future enhancements into single "Status" section
+- Simplified documentation references (paths only, not descriptions)
+- Removed redundant assembler expansion examples
+- Streamlined ZPdevtools section
+- **Result**: More scannable and concise while preserving all critical technical information
+
 ## Recent Implementations (2025-10-22)
 
 ### ✅ DEF88186 C Compiler - COMPLETE IMPLEMENTATION

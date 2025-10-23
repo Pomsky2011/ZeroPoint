@@ -93,8 +93,12 @@ cd ../ZeroPoint/build
 
 ## Documentation
 
+### Core Documentation
+- `CLAUDE.md` - **Condensed system architecture** (225 lines, all essential info)
+- `README.md` - This file (quick start and overview)
+- `TODO.md` - Development status and roadmap
+
 ### CPU (DEF88186) ✨ NEW!
-- `CLAUDE.md` - Complete system architecture with CPU details
 - `ZPdevtools/docs/cpu/README.txt` - CPU documentation index
 - `ZPdevtools/docs/cpu/instruction-set.txt` - All 256 instructions
 - `ZPdevtools/docs/cpu/addressing-modes.txt` - 14 addressing modes
@@ -103,7 +107,6 @@ cd ../ZeroPoint/build
 - Complete documentation: 12 files, 8000+ lines
 
 ### PPU
-- `CLAUDE.md` - Complete architecture overview
 - `docs/display.md` - Display system and color modes
 - `ZPdevtools/docs/ppu/ucode.txt` - Complete instruction reference (2000+ lines)
 - `ZPdevtools/docs/ppu/preset-e-and-shorthands.txt` - Preset E instructions
