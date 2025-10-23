@@ -231,10 +231,8 @@ Creates:
 
 ## Known Issues
 
-1. **⚠️ CRITICAL**: Loop counters get stuck at value 1 (infinite loops)
-2. No immediate values - constants built step-by-step
-3. MOVDP/MOV are 16-bit word-aligned
-4. HLT is 6-instruction infinite loop, not true halt
+1. MOVDP/MOV are 16-bit word-aligned
+2. HLT is 6-instruction infinite loop, not true halt
 
 ## Status
 

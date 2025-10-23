@@ -2,38 +2,34 @@
 
 ## Critical Bugs
 
-### 🔴 Loop Counters Get Stuck (2025-10-19)
-**Status**: BLOCKING - Loops fundamentally broken
-**Description**: Even simple increment/compare/jump loops get stuck with counters at value 1
-**Test Case**:
-```asm
-R10 = COUNTER
-start:
-    CLR COUNTER
-loop:
-    INC COUNTER
-    TARREG 2, LSB, R15
-    SETBYTE 2, 5
-    CMP COUNTER, R15
-    JNG loop
-    HLT
-```
-**Expected**: Counter increments 0→1→2→3→4→5, then exits loop
-**Actual**: Counter increments to 1 and gets stuck in infinite loop at PC cycling through same addresses
+**NONE** - All critical bugs resolved! 🎉
 
-**Possible Causes**:
-1. zpasm label encoding might be incorrect (jumping to wrong address)
-2. JNG instruction might not be evaluating flags correctly
-3. JNG might not be jumping to the address in PC correctly
-4. Label resolution might be placing loop: at wrong offset
+## Recent Updates (2025-10-23)
 
-**Impact**: All demos using loops (color_bars, gradients, etc.) cannot complete execution
+### ✅ CRITICAL FIX: PPU Loop Bug - Preset E Encoding
+**Fixed**: Loop counters no longer get stuck - all Preset E instructions had incorrect bit shifts
+**Status**: ✅ **RESOLVED** - All loops now work correctly
+**Root Cause**: ppuasm assembler was using wrong bit shifts for Preset E instruction encoding
+**Details**:
+- TARREG: target_reg was in bits 7-6, should be bits 9-8
+- SETBYTE: target_reg was in bits 7-6, should be bits 9-8
+- BUILD: t1/t2 were in bits 7-6/5-4, should be bits 9-8/7-6
+- This caused label addresses to be corrupted when used in JNG/JMR shorthands
+- Fixed by changing bit shifts from <<6 to <<8 (and <<4 to <<6 for BUILD)
 
-**Next Steps**:
-1. Disassemble loop_test.bin and verify label addresses
-2. Add PC and flag tracing to PPU
-3. Test JNG instruction in isolation
-4. Check if manual PC loading works better than JNG shorthand
+**Test Results**:
+- ✅ test_loop.asm now runs correctly (R10 counts 1→6, exits at 6)
+- ✅ All PPU test suite tests still pass (backward compatible)
+- ✅ Loop detection working properly (HLT at correct PC)
+
+**Files Modified**:
+- `ZPdevtools/ppuasm.c`: Fixed assemble_preset_e() encoding (lines 313, 329, 336)
+
+**Impact**: All loop-based programs can now execute correctly. This unblocks:
+- color_bars_clean.asm demos
+- gradient demos
+- Any program using INC + CMP + JNG patterns
+- Proper TARREG/SETBYTE operations for constant loading
 
 ## Recent Updates (2025-10-23)
 
@@ -345,8 +341,7 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 
 ## Known Issues
 
-1. **No Immediate Values**: Constants must be built step-by-step using INC, ADD, MUL
-2. **HLT is not HALT**: HLT is a macro that creates an infinite loop, not a real CPU halt state
+1. **HLT is not HALT**: HLT is a macro that creates an infinite loop, not a real CPU halt state
 
 ## Future Enhancements
 
@@ -370,8 +365,8 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 - [ ] System initialization and boot ROM
 
 ### High Priority - PPU
-- [ ] **Fix loop bug** (CRITICAL - blocking all PPU development)
-- [ ] Add proper HALT opcode (0xE is available)
+- [x] **Fix loop bug** ✅ **DONE!** (Preset E encoding fixed)
+- [ ] Add proper HALT opcode
 - [ ] Add PPU debugger with PC tracing and flag inspection
 - [ ] Add register/memory watch points
 
@@ -429,19 +424,21 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 - ✅ **Production ready - can compile practical C programs**
 
 ### PPU - Working
+- ✅ **Loops and jump instructions** (Preset E encoding fixed!)
+- ✅ **TARREG/SETBYTE/BUILD** (correct encoding)
 - ✅ HLT detection
 - ✅ Interrupts (R59/R60) with automatic return address push
 - ✅ Bank-based rolling framebuffer
 - ✅ SETRENDMOD (color mode switching)
 - ✅ Pixel I/O (0x0100-0x010B)
-- ✅ Simple programs (no loops)
 - ✅ MOVXP/NOP instruction
+- ✅ All test suite tests passing
 
-### PPU - Broken
-- ❌ All loop-based programs (counters stuck at 1)
-- ❌ color_bars_clean.asm
-- ❌ gradient demos
-- ❌ Any program using INC + CMP + JNG pattern
+### PPU - Unblocked (Ready to Test)
+- 🟢 Loop-based programs (test_loop.asm now works!)
+- 🟢 color_bars_clean.asm
+- 🟢 gradient demos
+- 🟢 Any program using INC + CMP + JNG pattern
 
 ### PPU - Not Tested
 - ⚠️ Tile drawing
