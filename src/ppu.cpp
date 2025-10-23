@@ -51,6 +51,20 @@ void PPU::reset() {
     }
     currentTileId = 0;
     currentTileMode = 0;
+
+    // Initialize VOC registers
+    vocRegisters.renderModeControl = 0x00;  // 16-bit mode, auto-roll enabled by default
+    vocRegisters.paletteAddrLow = 0x00;
+    vocRegisters.paletteAddrHigh = 0x00;
+    // Default bank order: 0, 1, 2, 3, 4, 5, 6, 7
+    for (int i = 0; i < 8; i++) {
+        vocRegisters.bankOrder[i] = i;
+    }
+    vocRegisters.autoRollToggle = 0x01;  // Auto-roll enabled by default
+    vocRegisters.translucency[0] = 0x00;
+    vocRegisters.translucency[1] = 0x00;
+    vocRegisters.translucency[2] = 0x00;
+    vocRegisters.translucency[3] = 0x00;
 }
 
 void PPU::loadMicrocode(const uint8_t* code, size_t length, uint16_t offset) {
@@ -70,8 +84,9 @@ void PPU::tick() {
         return;
     }
 
-    // Check for VBlank interrupt (R59)
-    if (vblank && registers[REG_VBLANK_INT] != 0) {
+    // Check for VBlank interrupt (R59 + VOC bit 4)
+    bool vblankIntEnabled = (vocRegisters.renderModeControl & VOC_VBLANK_INT) != 0;
+    if (vblank && vblankIntEnabled && registers[REG_VBLANK_INT] != 0) {
         // Push return address onto stack (little-endian)
         // Stack grows downward, so decrement BEFORE writing
         uint16_t returnAddr = executionPointer;
@@ -84,8 +99,9 @@ void PPU::tick() {
         return;
     }
 
-    // Check for HBlank interrupt (R60)
-    if (hblank && registers[REG_HBLANK_INT] != 0) {
+    // Check for HBlank interrupt (R60 + VOC bit 5)
+    bool hblankIntEnabled = (vocRegisters.renderModeControl & VOC_HBLANK_INT) != 0;
+    if (hblank && hblankIntEnabled && registers[REG_HBLANK_INT] != 0) {
         // Push return address onto stack (little-endian)
         // Stack grows downward, so decrement BEFORE writing
         uint16_t returnAddr = executionPointer;
@@ -513,6 +529,11 @@ void PPU::clearFlags() {
 }
 
 uint8_t PPU::handleMemoryRead(uint16_t address) const {
+    // VOC registers: 0x00F0-0x00FF
+    if (address >= 0x00F0 && address <= 0x00FF) {
+        return handleVOCRead(address);
+    }
+
     // Framebuffer region: 0xE000-0xFFFF (8 KiB max)
     if (address >= 0xE000 && address <= 0xFFFF && display != nullptr) {
         uint16_t offset = address - 0xE000;
@@ -538,6 +559,12 @@ uint8_t PPU::handleMemoryRead(uint16_t address) const {
 }
 
 void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
+    // VOC registers: 0x00F0-0x00FF
+    if (address >= 0x00F0 && address <= 0x00FF) {
+        handleVOCWrite(address, value);
+        return;  // Don't also write to regular memory
+    }
+
     // Framebuffer region: 0xE000-0xFFFF (8 KiB max)
     if (address >= 0xE000 && address <= 0xFFFF && display != nullptr) {
         uint16_t offset = address - 0xE000;
@@ -594,6 +621,138 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
     // 0x0200-0x0201: X position (16-bit) for TILEDRAW
     // 0x0202-0x0203: Y position (16-bit) for TILEDRAW
     // Position is used by TILEDRAW instruction in Preset F
+}
+
+void PPU::handleVOCWrite(uint16_t address, uint8_t value) {
+    uint16_t offset = address - 0x00F0;
+
+    switch (offset) {
+        case 0x00:  // $00F0: Render mode control
+            vocRegisters.renderModeControl = value;
+
+            // Check for reset switch (bit 0)
+            if (value & VOC_RESET) {
+                applyVOCReset();
+                // Auto-clear reset bit after applying
+                vocRegisters.renderModeControl &= ~VOC_RESET;
+            }
+
+            // Apply render mode changes
+            applyVOCRenderMode();
+            break;
+
+        case 0x01:  // $00F1: Palette address low
+            vocRegisters.paletteAddrLow = value;
+            break;
+
+        case 0x02:  // $00F2: Palette address high
+            vocRegisters.paletteAddrHigh = value;
+            break;
+
+        case 0x03:  // $00F3: Bank order 0
+        case 0x04:  // $00F4: Bank order 1
+        case 0x05:  // $00F5: Bank order 2
+        case 0x06:  // $00F6: Bank order 3
+        case 0x07:  // $00F7: Bank order 4
+        case 0x08:  // $00F8: Bank order 5
+        case 0x09:  // $00F9: Bank order 6
+        case 0x0A:  // $00FA: Bank order 7
+            // Only writable when auto-roll is disabled
+            if (vocRegisters.autoRollToggle == 0) {
+                vocRegisters.bankOrder[offset - 0x03] = value;
+            }
+            break;
+
+        case 0x0B:  // $00FB: Auto-roll toggle
+            vocRegisters.autoRollToggle = value;
+            break;
+
+        case 0x0C:  // $00FC: Translucency byte 0
+        case 0x0D:  // $00FD: Translucency byte 1
+        case 0x0E:  // $00FE: Translucency byte 2
+        case 0x0F:  // $00FF: Translucency byte 3
+            // In 32-bit RGBA mode, translucency is read-only
+            if (display != nullptr && display->getRenderMode() == RenderMode::RGBA16) {
+                vocRegisters.translucency[offset - 0x0C] = value;
+
+                // Check for halt switch (bit 2 of byte 1, which is $00FD)
+                if (offset == 0x0D && (value & 0x04)) {
+                    state = PPUState::Halted;
+                }
+            }
+            break;
+    }
+}
+
+uint8_t PPU::handleVOCRead(uint16_t address) const {
+    uint16_t offset = address - 0x00F0;
+
+    switch (offset) {
+        case 0x00:  // $00F0: Render mode control
+            return vocRegisters.renderModeControl;
+
+        case 0x01:  // $00F1: Palette address low
+            return vocRegisters.paletteAddrLow;
+
+        case 0x02:  // $00F2: Palette address high
+            return vocRegisters.paletteAddrHigh;
+
+        case 0x03:  // $00F3: Bank order 0
+        case 0x04:  // $00F4: Bank order 1
+        case 0x05:  // $00F5: Bank order 2
+        case 0x06:  // $00F6: Bank order 3
+        case 0x07:  // $00F7: Bank order 4
+        case 0x08:  // $00F8: Bank order 5
+        case 0x09:  // $00F9: Bank order 6
+        case 0x0A:  // $00FA: Bank order 7
+            return vocRegisters.bankOrder[offset - 0x03];
+
+        case 0x0B:  // $00FB: Auto-roll toggle
+            return vocRegisters.autoRollToggle;
+
+        case 0x0C:  // $00FC: Translucency byte 0
+        case 0x0D:  // $00FD: Translucency byte 1
+        case 0x0E:  // $00FE: Translucency byte 2
+        case 0x0F:  // $00FF: Translucency byte 3
+            return vocRegisters.translucency[offset - 0x0C];
+
+        default:
+            return 0x00;
+    }
+}
+
+void PPU::applyVOCRenderMode() {
+    if (display == nullptr) return;
+
+    // Apply color depth setting (bit 7)
+    bool is32bit = (vocRegisters.renderModeControl & VOC_COLOR_DEPTH) != 0;
+    display->setRenderMode(is32bit ? RenderMode::RGBA32 : RenderMode::RGBA16);
+
+    // TODO: Apply rolling mode setting (bit 6) when display supports it
+    // TODO: Apply palette mode setting (bit 3) when palette system is implemented
+}
+
+void PPU::applyVOCReset() {
+    // Reset PPU state but preserve VRAM (memory)
+    // Don't clear memory - only registers and state
+    registers.fill(0);
+    targetRegisters.fill(0);
+    targetBytes.fill(0);
+    executionPointer = 0;
+    state = PPUState::WaitingForStart;
+    flags = PPUFlags();
+    cycleCounter = 0;
+    regBankX = 0;
+    regBankY = 0;
+
+    // Reset tile system
+    for (auto& tile : tileStorage) {
+        tile.fill(0);
+    }
+    currentTileId = 0;
+    currentTileMode = 0;
+
+    // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
 }
 
 } // namespace ZeroPoint

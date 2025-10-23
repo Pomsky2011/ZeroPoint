@@ -172,6 +172,24 @@ private:
     uint8_t currentTileId;                        // Currently selected tile for drawing
     uint8_t currentTileMode;                      // Tile mode (0-3): 16BBGR 4bpp, 32RGBA 4bpp, 16BBGR 8bpp, 32RGBA 8bpp
 
+    // Video Output Coprocessor (VOC) registers at $00F0-$00FF
+    struct VOCRegisters {
+        uint8_t renderModeControl;      // $00F0: CRHVPLIW
+        uint8_t paletteAddrLow;         // $00F1: Palette address LSB
+        uint8_t paletteAddrHigh;        // $00F2: Palette address MSB
+        uint8_t bankOrder[8];           // $00F3-$00FA: Framebuffer bank order
+        uint8_t autoRollToggle;         // $00FB: Auto-roll toggle
+        uint8_t translucency[4];        // $00FC-$00FF: Tile translucency (32-bit)
+    } vocRegisters;
+
+    // VOC bit masks for $00F0
+    static constexpr uint8_t VOC_COLOR_DEPTH = 0x80;   // Bit 7: 0=16-bit, 1=32-bit
+    static constexpr uint8_t VOC_ROLLING_MODE = 0x40;  // Bit 6: 0=block, 1=single
+    static constexpr uint8_t VOC_HBLANK_INT = 0x20;    // Bit 5: H-blank interrupt enable
+    static constexpr uint8_t VOC_VBLANK_INT = 0x10;    // Bit 4: V-blank interrupt enable
+    static constexpr uint8_t VOC_PALETTE_MODE = 0x08;  // Bit 3: 0=16 color, 1=256 color
+    static constexpr uint8_t VOC_RESET = 0x01;         // Bit 0: Reset switch
+
     // Execution methods
     void executeInstruction();
     void executePresetE(uint8_t subopcode, uint16_t operand);
@@ -187,6 +205,12 @@ private:
     // Memory-mapped I/O handlers
     void handleMemoryWrite(uint16_t address, uint8_t value);
     uint8_t handleMemoryRead(uint16_t address) const;
+
+    // VOC helper methods
+    void handleVOCWrite(uint16_t address, uint8_t value);
+    uint8_t handleVOCRead(uint16_t address) const;
+    void applyVOCRenderMode();
+    void applyVOCReset();
 };
 
 } // namespace ZeroPoint

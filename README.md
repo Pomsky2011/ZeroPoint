@@ -28,7 +28,8 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **47 instructions** (4-bit opcode + extended instruction sets)
 - **256×256 display** with dual color modes (16-bit/32-bit RGBA)
 - **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation
-- **Tile system** - 8×8 pixel tiles, 256 tiles max, DIY placement
+- **Video Output Coprocessor (VOC)** - 16 hardware registers for display control ✨ NEW!
+- **Tile system** - 8×8 pixel tiles, 256 tiles max, DIY placement with translucency
 - **Interrupts** - V-Blank and H-Blank with automatic stack management
 - **64 × 16-bit registers** with special registers (PC, DP, SP)
 
@@ -122,7 +123,7 @@ cd ../ZeroPoint/build
 
 **CPU (DEF88186)**: ✅ **COMPLETE!** All 256 opcodes implemented and tested. Production ready. Can execute any valid DEF88186 program.
 
-**PPU**: Display system, tile system, interrupts, and microcode execution implemented. Loop bug blocking complex demos.
+**PPU**: Display system, tile system, interrupts, microcode execution, and VOC (Video Output Coprocessor) implemented. Loop bug blocking complex demos.
 
 **APU**: Full instruction set implemented including stack operations, function calls, and memory operations. MMP audio mixing not yet implemented.
 

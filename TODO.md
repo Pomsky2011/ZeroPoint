@@ -35,6 +35,38 @@ loop:
 3. Test JNG instruction in isolation
 4. Check if manual PC loading works better than JNG shorthand
 
+## Recent Updates (2025-10-23)
+
+### ✅ Video Output Coprocessor (VOC) Implementation
+**Added**: Complete VOC register emulation at $00F0-$00FF
+**Status**: ✅ **IMPLEMENTED** - All 16 registers functional
+
+**Features Implemented**:
+- **$00F0**: Render mode control (color depth, rolling mode, interrupt enables, palette mode, reset switch)
+- **$00F1-$00F2**: 16-bit palette address pointer
+- **$00F3-$00FA**: Manual framebuffer bank ordering (8 banks)
+- **$00FB**: Framebuffer auto-roll toggle
+- **$00FC-$00FF**: Tile translucency settings with blending modes
+
+**Key Functionality**:
+- ✅ Color depth switching (16-bit/32-bit) via bit 7
+- ✅ V-Blank interrupt enable (bit 4) - gates R59 interrupt handler
+- ✅ H-Blank interrupt enable (bit 5) - gates R60 interrupt handler
+- ✅ Reset switch (bit 0) - resets PPU state while preserving VRAM
+- ✅ Manual bank ordering when auto-roll disabled
+- ✅ Tile translucency with 4 blending modes (multiply/average/subtract/add)
+- ✅ PPU halt switch in translucency register
+
+**Documentation Updated**:
+- 📁 `CLAUDE.md` - Added VOC register map and usage
+- 📁 `docs/display.md` - Complete VOC documentation with examples
+- All VOC registers memory-mapped and accessible via MOV/MOVDP
+
+**Files Modified**:
+- `include/ppu.h` - Added VOCRegisters struct, bit masks, helper methods
+- `src/ppu.cpp` - Implemented handleVOCWrite/Read, applyVOCRenderMode, applyVOCReset
+- Integrated VOC interrupts with existing R59/R60 system (backward compatible)
+
 ## Recent Updates (2025-10-22)
 
 ### ✅ Documentation Consolidation

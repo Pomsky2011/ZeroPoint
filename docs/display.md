@@ -36,12 +36,13 @@ Format: `BBBBBGGGGGRRRRR-`
 
 **Total colors**: 32,768 (32 × 32 × 32)
 
-**Memory usage**: 128 KiB per framebuffer (256×256×2 bytes)
+**Memory usage**: 8 KiB framebuffer (8 banks, 16 scanlines buffered)
 
 **Advantages**:
 - Compact memory footprint
 - Authentic retro color depth
 - Fast processing
+- 16 scanlines buffered (excellent for raster effects)
 
 ### 32-bit RGBA (RGBA32)
 
@@ -55,12 +56,13 @@ Format: `RRRRRRRRGGGGGGGGBBBBBBBBAAAAAAAA`
 
 **Total colors**: 16,777,216 (256 × 256 × 256)
 
-**Memory usage**: 256 KiB per framebuffer (256×256×4 bytes)
+**Memory usage**: 8 KiB framebuffer (8 banks, 8 scanlines buffered)
 
 **Advantages**:
 - Full color depth
 - Smooth gradients
 - Full alpha blending support
+- 8 scanlines buffered (good for effects)
 
 ## Switching Render Modes
 
@@ -100,3 +102,155 @@ value_5bit = value_8bit >> 3
 ```
 
 Alpha: value > 127 → 1, otherwise → 0
+
+## Video Output Coprocessor (VOC)
+
+The VOC provides hardware control over the display system through 16 memory-mapped registers at **$00F0-$00FF** in PPU memory.
+
+### VOC Register Map
+
+#### $00F0: Render Mode Control (CRHVPLIW)
+Bit field controlling core display behavior:
+- **Bit 7 (C)**: Color depth
+  - 0 = 16-bit BGR (5-5-5-1)
+  - 1 = 32-bit RGBA (8-8-8-8)
+- **Bit 6 (R)**: Rolling buffer mode
+  - 0 = Block mode (16/8 scanlines together based on color depth)
+  - 1 = Single scanline mode (one scanline at a time)
+- **Bit 5 (H)**: H-Blank interrupt enable
+  - 0 = Disabled
+  - 1 = Trigger interrupt at start of H-Blank
+- **Bit 4 (V)**: V-Blank interrupt enable
+  - 0 = Disabled
+  - 1 = Trigger interrupt at start of V-Blank
+- **Bit 3 (P)**: Palette mode
+  - 0 = 16 colors
+  - 1 = 256 colors
+- **Bit 2 (L)**: Reserved (future use)
+- **Bit 1 (I)**: Reserved (future use)
+- **Bit 0 (W)**: Reset switch
+  - Writing 1 resets PPU state (registers, execution pointer) but preserves VRAM
+  - Automatically clears after reset completes
+
+#### $00F1-$00F2: Palette Address
+16-bit pointer to palette data in PPU memory:
+- **$00F1**: Low byte (LSB)
+- **$00F2**: High byte (MSB)
+
+Used by palette load operations to determine where palette data is located.
+
+#### $00F3-$00FA: Framebuffer Bank Order
+8 bytes controlling the order of framebuffer banks:
+- Each byte represents one bank (0-7)
+- Default order: `00 01 02 03 04 05 06 07`
+- Custom order example: `01 23 45 67 89 AB CD EF`
+- **Only writable when auto-roll is disabled** ($00FB = 0)
+- Allows advanced raster effects and custom scanline ordering
+
+#### $00FB: Framebuffer Auto-Roll Toggle
+Controls automatic bank rotation:
+- **0**: Manual mode - banks don't rotate automatically, $00F3-$00FA can be written
+- **1**: Auto mode (default) - banks rotate each H-Blank, $00F3-$00FA is read-only
+
+#### $00FC-$00FF: Tile Translucency Settings
+32-bit register controlling tile transparency and blending (4 bytes, little-endian):
+
+Format: `0xTTTTPHMM` (stored as 4 bytes: MM, PH, TT, TT)
+- **Bits 31-4 (T)**: Translucency values for 4 tiles (4 bits each, tiles N-3 to N)
+  - Each 4-bit value: 0=fully transparent, 15=fully opaque
+- **Bit 3 (P)**: Push flag - write 1 to apply settings immediately
+- **Bit 2 (H)**: PPU Halt switch
+  - Once set to 1, PPU halts until reset switch ($00F0 bit 0) is triggered
+  - Sticky flag - doesn't auto-clear
+- **Bits 1-0 (M)**: Blending mode for previous 4 tiles
+  - 00: Multiply (darken)
+  - 01: Average (50/50 blend)
+  - 10: Subtract (color subtraction)
+  - 11: Add (lighten/additive)
+
+**Important**: In 32-bit RGBA mode, this register becomes **read-only** since alpha channel handles transparency directly.
+
+### VOC Usage Examples
+
+#### Switching Color Modes
+```asm
+; Switch to 32-bit RGBA mode
+TARREG 2, LSB, DP
+SETBYTE 2, 0xF0
+MOV R1 (DP)           ; Read current mode
+TARREG 2, LSB, R1
+SETBYTE 2, 0x80       ; Set bit 7 (C)
+MOVDP R1              ; Write back
+```
+
+#### Enabling V-Blank Interrupt
+```asm
+; Enable V-Blank interrupt (bit 4)
+TARREG 2, LSB, DP
+SETBYTE 2, 0xF0
+MOV R1 (DP)
+TARREG 2, LSB, R1
+SETBYTE 2, 0x10       ; Set bit 4 (V)
+MOVDP R1
+```
+
+#### Manual Bank Ordering
+```asm
+; Disable auto-roll
+TARREG 2, LSB, DP
+SETBYTE 2, 0xFB
+CLR R1
+MOVDP R1              ; $00FB = 0
+
+; Set custom bank order (reverse)
+TARREG 2, LSB, DP
+SETBYTE 2, 0xF3
+TARREG 2, LSB, R1
+SETBYTE 2, 0x07
+MOVDP R1              ; Bank 0 = physical bank 7
+; ... continue for other banks
+```
+
+## Rolling Framebuffer Architecture
+
+The display uses a **bank-based rolling buffer** instead of a full-frame buffer:
+
+### Design
+- **8 Banks**: Memory organized as 8 banks of 1 KiB each (8 KiB total)
+- **Bank Layout**:
+  - **RGBA16 mode**: 2 scanlines per bank (512 bytes each) = 16 scanlines total
+  - **RGBA32 mode**: 1 scanline per bank (1024 bytes each) = 8 scanlines total
+- **Memory Map**: Directly accessible at **0xE000-0xFFFF** in PPU memory
+
+### Operation
+During each H-Blank (end of scanline), the display rolls banks to make room:
+
+**RGBA32 mode (32-bit color):**
+- Rolls 2 banks per H-Blank
+- Each bank holds 1 scanline (1024 bytes)
+- Buffer window: 8 scanlines ahead
+
+**RGBA16 mode (16-bit color):**
+- Rolls 1 bank per H-Blank (every 2 scanlines)
+- Each bank holds 2 scanlines (512 bytes each)
+- Buffer window: 16 scanlines ahead
+
+### Memory Access
+- **Read/Write**: Use MOV/MOVDP instructions to access framebuffer bytes
+- **Address Range**: 0xE000-0xFFFF (always 8 KiB regardless of mode)
+- **Bank Size**: 1024 bytes per bank
+- **Byte Order**: Little-endian (matches native format)
+
+### Benefits
+- **Low VRAM Usage**: 8 KiB total instead of 256 KiB
+- **Cache-Friendly**: Small buffer fits in CPU cache
+- **Scanline-Based**: Natural fit for raster effects
+- **Mode-Aware**: Automatically adjusts rolling rate based on pixel size
+
+### Limitations
+- **Write Window**:
+  - RGBA16: Can only reliably write to next 16 scanlines
+  - RGBA32: Can only reliably write to next 8 scanlines
+- **No Random Access**: Cannot read pixels from arbitrary Y coordinates outside window
+- **Data Loss**: Writes outside the buffer window are forgotten
+- **Mode Switching**: Clears framebuffer when switching between 16-bit and 32-bit modes

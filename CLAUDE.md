@@ -52,10 +52,50 @@ A fantasy console featuring custom PPU (graphics), APU (audio), and DEF88186 CPU
 ## Memory Map (PPU)
 
 ### Memory-Mapped I/O
+- **0x00F0-0x00FF**: Video Output Coprocessor (VOC) control registers
 - **0x0100-0x010B**: Pixel drawing (X, Y, R, G, B, A - write to 0x010A triggers)
 - **0x0200-0x0207**: Tile drawing (X, Y, tile ID - write to 0x0206 triggers)
 - **0x0300-0x033F**: Tile definition buffer (64 bytes, grayscale values)
 - **0xE000-0xFFFF**: Framebuffer (8 KiB, 8 banks rolling on H-Blank)
+
+### Video Output Coprocessor (VOC) Registers
+
+The VOC manages display control through 16 bytes at **$00F0-$00FF**:
+
+#### $00F0: Render Mode Control (CRHVPLIW)
+- **C** (bit 7): Color depth (0=16-bit BGR, 1=32-bit RGBA)
+- **R** (bit 6): Rolling toggle (0=block scanlines, 1=one scanline at a time)
+- **H** (bit 5): H-Blank interrupt enable
+- **V** (bit 4): V-Blank interrupt enable
+- **P** (bit 3): Palette mode (0=16 colors, 1=256 colors)
+- **L** (bit 2): Reserved
+- **I** (bit 1): Reserved
+- **W** (bit 0): Reset switch (clears PPU state except VRAM)
+
+#### $00F1-$00F2: Palette Address
+- 16-bit pointer to palette data (LSB, MSB)
+
+#### $00F3-$00FA: Framebuffer Bank Order
+- Controls manual ordering of 8 framebuffer banks
+- Example: `01 23 45 67 89 AB CD EF`
+- Only writable when auto-roll ($00FB) is disabled
+
+#### $00FB: Framebuffer Auto-Roll Toggle
+- **0**: Manual bank control (write to $00F3-$00FA enabled)
+- **1**: Automatic bank rotation on H-Blank (default)
+
+#### $00FC-$00FF: Tile Translucency Settings
+Format: `0xTTTTPHMM`
+- **T** (bits 15-4): Translucency values for previous 4 tiles (4 bits each)
+- **P** (bit 3): Push settings now
+- **H** (bit 2): PPU halt switch (sticky until reset)
+- **M** (bits 1-0): Blending mode for previous 4 tiles
+  - 00: Multiply
+  - 01: Average
+  - 10: Subtract
+  - 11: Add
+
+**Note**: Translucency is read-only in 32-bit RGBA mode
 
 ## PPU Interrupts
 
@@ -92,7 +132,7 @@ DEFCALL, MOVXP/NOP, SWAPREG, CLR, CMP, CLRF, JMZ/JMG, JNZ/JNG/JML, INC, DEC, ADD
 ### Preset F (0xF) - Extended
 SETPOS, SETTILE, SETDP, MOVDP, SETRENDMOD, PALETTE16, PALETTE256, JMR, MOV, SETREGBANK, CLRTILE, CLRPALETTE, TILEDRAW, (Reserved), CALL, GBLS
 
-## PPU Assembly (zpasm)
+## PPU Assembly (ppuasm)
 
 ### Shorthands (use target registers 0-1)
 ```asm
@@ -147,9 +187,27 @@ cd ZPdevtools/c_compiler && make
 ```
 
 ### Assemblers
-- **zpasm** (PPU): `gcc -o zpasm zpasm.c`
+- **ppuasm** (PPU): `gcc -o ppuasm ppuasm.c`
 - **apuasm** (APU): `gcc -o apuasm apuasm.c`
 - **cpuasm** (CPU): `gcc -o cpuasm cpuasm.c -Wall`
+
+### ROM Builder
+Combines CPU, PPU, and APU binaries into a single ROM file:
+```bash
+gcc -o rombuilder rombuilder.c
+rombuilder -cpu main.bin -ppu gfx.bin -apu audio.bin -o game.rom
+```
+
+Creates:
+- `game.rom` - Headerless ROM file
+- `game.txt` - Metadata with CPU entry point and memory layout
+
+**Features:**
+- Configurable base addresses for each component
+- Custom CPU entry point specification
+- Automatic metadata generation
+- Memory layout visualization
+- Multi-file support via assembler `.include` directives
 
 ### Example Programs
 - **PPU**: `ZPdevtools/examples/ppu/*.asm`
@@ -184,7 +242,8 @@ cd ZPdevtools/c_compiler && make
 - ✅ APU: Full implementation with stack ops and functions
 - ✅ PPU: Core instruction set and rendering
 - ✅ C compiler: Full toolchain (Flex/Bison/AST/Codegen)
-- ✅ Assemblers: zpasm, apuasm, cpuasm
+- ✅ Assemblers: ppuasm, apuasm, cpuasm (with `.include` support)
+- ✅ ROM Builder: rombuilder (combines CPU/PPU/APU into single ROM)
 
 ### In Progress
 - ⏳ MMP audio mixing implementation
@@ -210,9 +269,10 @@ ZeroPoint/
 
 ZPdevtools/
 ├── c_compiler/     - def88186cc (Flex/Bison/AST/Codegen)
-├── zpasm.c         - PPU assembler
+├── ppuasm.c        - PPU assembler
 ├── apuasm.c        - APU assembler
-├── cpuasm.c        - CPU assembler
+├── cpuasm.c        - CPU assembler (with .include support)
+├── rombuilder.c    - ROM builder tool
 ├── examples/       - Example programs (ppu, apu, cpu)
 └── docs/           - Complete documentation (ppu, apu, cpu)
 ```
