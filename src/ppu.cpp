@@ -575,11 +575,61 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                         // Apply translucency to the color
                         color = applyTranslucency(color, currentTileId);
 
-                        // Get existing pixel for blending (if needed)
-                        if (tileBlendMode != 0 && display->getRenderMode() == RenderMode::RGBA16) {
-                            // Read existing pixel at destination
-                            // For now, just draw directly (blending requires framebuffer read)
-                            // TODO: Implement proper read-modify-write blending
+                        // Apply blending if mode is set and we have a non-zero blend mode
+                        if (tileBlendMode != 0) {
+                            // Calculate framebuffer address for this pixel
+                            uint16_t pixelX = x + tx;
+                            uint16_t pixelY = y + ty;
+
+                            // Read existing pixel from framebuffer
+                            uint32_t dstColor = 0;
+
+                            if (display->getRenderMode() == RenderMode::RGBA32) {
+                                // 32-bit mode: 4 bytes per pixel, 1024 bytes per scanline
+                                uint16_t fbOffset = (pixelY * 1024) + (pixelX * 4);
+                                uint16_t fbAddr = 0xE000 + fbOffset;
+
+                                // Read 4 bytes (RGBA) from framebuffer
+                                if (fbAddr + 3 <= 0xFFFF) {
+                                    uint8_t r = handleMemoryRead(fbAddr + 0);
+                                    uint8_t g = handleMemoryRead(fbAddr + 1);
+                                    uint8_t b = handleMemoryRead(fbAddr + 2);
+                                    uint8_t a = handleMemoryRead(fbAddr + 3);
+                                    dstColor = (r << 24) | (g << 16) | (b << 8) | a;
+                                }
+                            } else {
+                                // 16-bit mode: 2 bytes per pixel, 512 bytes per scanline
+                                uint16_t fbOffset = (pixelY * 512) + (pixelX * 2);
+                                uint16_t fbAddr = 0xE000 + fbOffset;
+
+                                // Read 2 bytes (16-bit BGR) from framebuffer
+                                if (fbAddr + 1 <= 0xEFFF) {  // 16-bit mode only uses 0xE000-0xEFFF
+                                    uint8_t low = handleMemoryRead(fbAddr);
+                                    uint8_t high = handleMemoryRead(fbAddr + 1);
+                                    uint16_t rgb16 = (high << 8) | low;
+
+                                    // Convert 16-bit to 32-bit for blending
+                                    uint8_t r5 = (rgb16 >> 1) & 0x1F;
+                                    uint8_t g5 = (rgb16 >> 6) & 0x1F;
+                                    uint8_t b5 = (rgb16 >> 11) & 0x1F;
+                                    uint8_t a1 = rgb16 & 0x01;
+
+                                    uint8_t r8 = (r5 << 3) | (r5 >> 2);
+                                    uint8_t g8 = (g5 << 3) | (g5 >> 2);
+                                    uint8_t b8 = (b5 << 3) | (b5 >> 2);
+                                    uint8_t a8 = a1 ? 0xFF : 0x00;
+
+                                    dstColor = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
+                                }
+                            }
+
+                            // Apply blending with the translucency value
+                            uint8_t tileSlot = currentTileId & 0x03;
+                            uint8_t alpha = tileTranslucency[tileSlot];
+
+                            if (alpha > 0 && dstColor != 0) {
+                                color = blendColors(color, dstColor, tileBlendMode, alpha);
+                            }
                         }
 
                         display->setPixel32(x + tx, y + ty, color);

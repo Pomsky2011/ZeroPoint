@@ -235,7 +235,6 @@ Creates:
 2. No immediate values - constants built step-by-step
 3. MOVDP/MOV are 16-bit word-aligned
 4. HLT is 6-instruction infinite loop, not true halt
-5. Tile blending (multiply/average/subtract/add) requires framebuffer read-modify-write
 
 ## Status
 
@@ -260,7 +259,6 @@ Creates:
 - 🔲 DMA-based tile copying
 - 🔲 Hardware scrolling
 - 🔲 Window scaling options
-- 🔲 Tile blending with framebuffer read-modify-write
 
 ## File Structure
 

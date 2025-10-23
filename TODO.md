@@ -37,6 +37,36 @@ loop:
 
 ## Recent Updates (2025-10-23)
 
+### ✅ Tile Blending with Framebuffer Read-Modify-Write
+**Added**: Full tile blending via framebuffer access
+**Status**: ✅ **IMPLEMENTED** - All 4 blending modes operational
+
+**Implementation**:
+- Framebuffer read: Direct access via $E000-$FFFF memory-mapped region
+- Per-pixel blending: Read existing pixel, apply blend mode, write result
+- Mode support: Both 16-bit and 32-bit framebuffer modes
+- Address calculation: Automatic offset calculation based on (x, y) coordinates
+  - RGBA32: offset = y * 1024 + x * 4
+  - RGBA16: offset = y * 512 + x * 2
+- Color conversion: 16-bit to 32-bit expansion for blending uniformity
+
+**Blending Modes**:
+- Mode 0 (Multiply): `(src * dst) >> 8` - Darkening effect
+- Mode 1 (Average): `(src + dst) >> 1` - 50/50 blend
+- Mode 2 (Subtract): `dst - src` (clamped to 0) - Color subtraction
+- Mode 3 (Add): `src + dst` (clamped to 255) - Additive/lighten
+
+**Technical Details** (src/ppu.cpp:578-633):
+- Reads 4 bytes (RGBA32) or 2 bytes (RGBA16) from framebuffer
+- Converts to 32-bit RGBA for uniform blending
+- Applies blendColors() with translucency alpha
+- Works within rolling buffer window (8/16 scanlines)
+
+**Rolling Buffer Compatibility**:
+- TILEDRAW should only draw tiles within visible buffer window
+- Framebuffer access respects rolling bank architecture
+- No issues with 8-scanline (32-bit) or 16-scanline (16-bit) limitations
+
 ### ✅ Tile System with Palette and Translucency
 **Added**: Complete tile rendering system with 4bpp/8bpp modes, palette lookups, and translucency
 **Status**: ✅ **IMPLEMENTED** - Full tile system operational
@@ -73,9 +103,7 @@ loop:
 - `src/ppu.cpp`: Implemented tile decoding, palette loading, translucency blending
 - Default palettes: Grayscale ramps on reset
 
-**Limitations**:
-- Tile blending requires framebuffer read-modify-write (not yet implemented)
-- Translucency only applies alpha, full blending needs destination pixel read
+**Note**: Full blending now implemented via framebuffer read-modify-write (see above)
 
 ### ✅ Video Output Coprocessor (VOC) Implementation
 **Added**: Complete VOC register emulation at $00F0-$00FF
@@ -319,7 +347,6 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 
 1. **No Immediate Values**: Constants must be built step-by-step using INC, ADD, MUL
 2. **HLT is not HALT**: HLT is a macro that creates an infinite loop, not a real CPU halt state
-3. **Tile Blending Incomplete**: Translucency alpha works, but full blending (multiply/average/subtract/add) requires framebuffer read-modify-write
 
 ## Future Enhancements
 
@@ -357,7 +384,7 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 ### Medium Priority - PPU
 - [x] Implement palette system ✅ **DONE!**
 - [x] Add indexed color tile format ✅ **DONE!**
-- [ ] Implement full tile blending with framebuffer read-modify-write
+- [x] Implement full tile blending with framebuffer read-modify-write ✅ **DONE!**
 - [ ] DMA-based tile copying
 - [ ] Hardware scrolling
 - [ ] Window scaling options (2×, 4×, 8×)
