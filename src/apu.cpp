@@ -992,9 +992,12 @@ void APU::processChannel(int channel, bool rightEar) {
             uint8_t header2 = readByte(blockAddr + 2);
             uint8_t header3 = readByte(blockAddr + 3);
 
-            // Parse loop configuration from lower nybble (L)
-            uint8_t L = header1 & 0x0F;  // Lower nybble contains config bits
-            finalBlock = (L & 0x04) != 0;  // W bit (bit 2) marks final block
+            // Parse loop configuration from upper nybble (L)
+            // SST format: Byte 1 = [Y (nybble 2) | L (nybble 3)]
+            // Y is lower nybble (bits 0-3), L is upper nybble (bits 4-7)
+            uint8_t Y = header1 & 0x0F;  // Lower nybble (loop start sample)
+            uint8_t L = (header1 >> 4) & 0x0F;  // Upper nybble contains config bits
+            finalBlock = (L & 0x04) != 0;  // W bit (bit 2 of L) marks final block
 
             // Read 12 sample bytes (bytes 4-15)
             for (int i = 0; i < 12; i++) {
