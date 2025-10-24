@@ -166,8 +166,13 @@ void APU::writeByte(uint16_t address, uint8_t value) {
             if (channel < 32 && (channelOffset % 2) == 1) {
                 // Complete STL address write (both bytes written)
                 uint16_t stlAddr = readWord(address & ~1);
+
+                // Only clear cache if STL address changed
+                if (mmpChannels[channel].stlAddress != stlAddr) {
+                    mmpChannels[channel].sampleCache.clear();
+                }
+
                 mmpChannels[channel].stlAddress = stlAddr;
-                mmpChannels[channel].sampleCache.clear();  // Clear old cache
 
                 if (stlAddr == 0) {
                     mmpChannels[channel].active = false;
@@ -864,15 +869,16 @@ void APU::updateMMP() {
         if (mmpChannels[i].active && mmpChannels[i].stlAddress != 0) {
             // Advance sample position based on pitch
             // Pitch is fixed-point: 0x1000 = 1.0× speed
+            // samplePosition is in fixed-point: upper bits = sample index, lower 12 bits = fraction
             uint32_t pitchStep = mmpChannels[i].pitch;
             mmpChannels[i].samplePosition += pitchStep;
 
-            // Check if we've moved to next sample (4096 = 1.0 in fixed point)
-            while (mmpChannels[i].samplePosition >= 0x1000) {
-                mmpChannels[i].samplePosition -= 0x1000;
-
-                // Advance to next sample in SST
-                // TODO: Handle looping and block traversal
+            // Wrap around if we exceed the sample buffer size
+            if (!mmpChannels[i].sampleCache.empty()) {
+                uint32_t maxPosition = mmpChannels[i].sampleCache.size() << 12;  // samples * 4096
+                if (mmpChannels[i].samplePosition >= maxPosition) {
+                    mmpChannels[i].samplePosition %= maxPosition;  // Loop back to start
+                }
             }
         }
     }
@@ -890,9 +896,12 @@ int16_t APU::getMixedSampleLeft() {
                 size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % mmpChannels[i].sampleCache.size();
                 int8_t sample = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
 
+                // Scale 8-bit sample to 16-bit range
+                int32_t sample16 = sample * 256;  // -32768 to +32512
+
                 // Apply volume (1.0× to 2.0× gain)
                 int16_t volumeMultiplier = 256 + mmpChannels[i].volume;
-                int32_t amplified = (sample * volumeMultiplier) / 256;
+                int32_t amplified = (sample16 * volumeMultiplier) / 256;
 
                 mixed += amplified;
             }
@@ -918,9 +927,12 @@ int16_t APU::getMixedSampleRight() {
                 size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % mmpChannels[i].sampleCache.size();
                 int8_t sample = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
 
+                // Scale 8-bit sample to 16-bit range
+                int32_t sample16 = sample * 256;  // -32768 to +32512
+
                 // Apply volume (1.0× to 2.0× gain)
                 int16_t volumeMultiplier = 256 + mmpChannels[i].volume;
-                int32_t amplified = (sample * volumeMultiplier) / 256;
+                int32_t amplified = (sample16 * volumeMultiplier) / 256;
 
                 mixed += amplified;
             }
