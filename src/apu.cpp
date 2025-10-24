@@ -126,6 +126,33 @@ void APU::writeByte(uint16_t address, uint8_t value) {
     if (address >= MMP_BASE && address < MMP_BASE + MMP_SIZE) {
         memory[address] = value;
 
+        // Channel Pitch (LEFT: $0000-$001F, RIGHT: $0080-$009F)
+        if ((address >= 0x0000 && address < 0x0020) ||
+            (address >= 0x0080 && address < 0x00A0)) {
+
+            int baseChannel = (address >= 0x0080) ? 16 : 0;
+            int channelOffset = (address >= 0x0080) ? (address - 0x0080) : address;
+            int channel = baseChannel + (channelOffset / 2);
+
+            if (channel < 32 && (channelOffset % 2) == 1) {
+                // Complete pitch write (both bytes written)
+                mmpChannels[channel].pitch = readWord(address & ~1);
+            }
+        }
+
+        // Channel Volume (LEFT: $0020-$002F, RIGHT: $00A0-$00AF)
+        if ((address >= 0x0020 && address < 0x0030) ||
+            (address >= 0x00A0 && address < 0x00B0)) {
+
+            int baseChannel = (address >= 0x00A0) ? 16 : 0;
+            int channelOffset = (address >= 0x00A0) ? (address - 0x00A0) : (address - 0x0020);
+            int channel = baseChannel + channelOffset;
+
+            if (channel < 32) {
+                mmpChannels[channel].volume = value;
+            }
+        }
+
         // Update MMP channel state when STL address is written
         // Channels 0-15 left ear: STL at $0054-$0073
         // Channels 16-31 right ear: STL at $00D4-$00F3
@@ -136,10 +163,11 @@ void APU::writeByte(uint16_t address, uint8_t value) {
             int channelOffset = (address >= 0x00D4) ? (address - 0x00D4) : (address - 0x0054);
             int channel = baseChannel + (channelOffset / 2);
 
-            if (channel < 32) {
-                // STL address was written, load sample data
+            if (channel < 32 && (channelOffset % 2) == 1) {
+                // Complete STL address write (both bytes written)
                 uint16_t stlAddr = readWord(address & ~1);
                 mmpChannels[channel].stlAddress = stlAddr;
+                mmpChannels[channel].sampleCache.clear();  // Clear old cache
 
                 if (stlAddr == 0) {
                     mmpChannels[channel].active = false;
@@ -829,8 +857,25 @@ uint16_t APU::popWord() {
 // MMP implementation (simplified for now)
 
 void APU::updateMMP() {
-    // This would be called at audio sample rate (e.g., 48kHz)
-    // For now, just a placeholder
+    // Called at audio sample rate (e.g., 48kHz)
+    // Advances all active channels by one sample
+
+    for (int i = 0; i < 32; i++) {
+        if (mmpChannels[i].active && mmpChannels[i].stlAddress != 0) {
+            // Advance sample position based on pitch
+            // Pitch is fixed-point: 0x1000 = 1.0× speed
+            uint32_t pitchStep = mmpChannels[i].pitch;
+            mmpChannels[i].samplePosition += pitchStep;
+
+            // Check if we've moved to next sample (4096 = 1.0 in fixed point)
+            while (mmpChannels[i].samplePosition >= 0x1000) {
+                mmpChannels[i].samplePosition -= 0x1000;
+
+                // Advance to next sample in SST
+                // TODO: Handle looping and block traversal
+            }
+        }
+    }
 }
 
 int16_t APU::getMixedSampleLeft() {
@@ -838,8 +883,19 @@ int16_t APU::getMixedSampleLeft() {
 
     for (int i = 0; i < 16; i++) {
         if (mmpChannels[i].active && mmpChannels[i].stlAddress != 0) {
-            // Simple mixing (real implementation would do resampling, volume, etc.)
-            mixed += 0;  // Placeholder
+            processChannel(i, false);
+
+            // Get current sample from channel's cache
+            if (!mmpChannels[i].sampleCache.empty()) {
+                size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % mmpChannels[i].sampleCache.size();
+                int8_t sample = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
+
+                // Apply volume (1.0× to 2.0× gain)
+                int16_t volumeMultiplier = 256 + mmpChannels[i].volume;
+                int32_t amplified = (sample * volumeMultiplier) / 256;
+
+                mixed += amplified;
+            }
         }
     }
 
@@ -855,8 +911,19 @@ int16_t APU::getMixedSampleRight() {
 
     for (int i = 16; i < 32; i++) {
         if (mmpChannels[i].active && mmpChannels[i].stlAddress != 0) {
-            // Simple mixing
-            mixed += 0;  // Placeholder
+            processChannel(i, true);
+
+            // Get current sample from channel's cache
+            if (!mmpChannels[i].sampleCache.empty()) {
+                size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % mmpChannels[i].sampleCache.size();
+                int8_t sample = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
+
+                // Apply volume (1.0× to 2.0× gain)
+                int16_t volumeMultiplier = 256 + mmpChannels[i].volume;
+                int32_t amplified = (sample * volumeMultiplier) / 256;
+
+                mixed += amplified;
+            }
         }
     }
 
@@ -868,7 +935,35 @@ int16_t APU::getMixedSampleRight() {
 }
 
 void APU::processChannel(int channel, bool rightEar) {
-    // Placeholder for per-channel processing
+    // Load sample data from SST if cache is empty
+    if (mmpChannels[channel].sampleCache.empty() &&
+        mmpChannels[channel].sampleDataAddress >= SST_BASE &&
+        mmpChannels[channel].sampleDataAddress < SST_BASE + SST_SIZE) {
+
+        // Read SST blocks and extract sample data
+        uint16_t blockAddr = mmpChannels[channel].sampleDataAddress;
+
+        // Read first block to determine if there are more
+        bool finalBlock = false;
+        while (!finalBlock && blockAddr < SST_BASE + SST_SIZE) {
+            // Read header (4 bytes)
+            uint8_t header0 = readByte(blockAddr);
+            uint8_t header1 = readByte(blockAddr + 1);
+            uint8_t header2 = readByte(blockAddr + 2);
+            uint8_t header3 = readByte(blockAddr + 3);
+
+            // Parse loop configuration (nybble 3)
+            uint8_t loopConfig = (header1 >> 4) & 0x0F;
+            finalBlock = (loopConfig & 0x04) != 0;  // W bit (bit 2)
+
+            // Read 12 sample bytes (bytes 4-15)
+            for (int i = 0; i < 12; i++) {
+                mmpChannels[channel].sampleCache.push_back(readByte(blockAddr + 4 + i));
+            }
+
+            blockAddr += 16;  // Next block
+        }
+    }
 }
 
 int16_t APU::resampleSample(uint8_t sample, uint16_t pitch) {

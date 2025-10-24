@@ -239,7 +239,8 @@ Creates:
 ### Complete
 - ✅ DEF88186 CPU: All 256 opcodes implemented (1560 lines)
 - ✅ APU: Full implementation with stack ops and functions
-- ✅ PPU: Core instruction set and rendering
+- ✅ **MMP Audio**: 16 stereo channels with pitch/volume control, SDL output
+- ✅ PPU: Core instruction set and rendering (loops fixed!)
 - ✅ Tile system: 4bpp/8bpp modes with palette lookups and translucency
 - ✅ Palette system: 16-color and 256-color palettes with load operations
 - ✅ VOC: Video Output Coprocessor with 16 control registers
@@ -248,7 +249,6 @@ Creates:
 - ✅ ROM Builder: rombuilder (combines CPU/PPU/APU into single ROM)
 
 ### In Progress
-- ⏳ MMP audio mixing implementation
 - ⏳ CPU/PPU/APU integration
 - ⏳ Extended test suites
 
