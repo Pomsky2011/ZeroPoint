@@ -420,7 +420,7 @@ void APU::execJMP(uint16_t operand) {
 }
 
 void APU::execJNZ(uint16_t operand) {
-    uint8_t reg = (operand >> 9) & 0x01;  // Register X (simplified)
+    uint8_t reg = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     bool mode = (operand >> 8) & 1;
     uint8_t offset = operand & 0xFF;
 
@@ -445,7 +445,7 @@ void APU::execSDP(uint16_t operand) {
 }
 
 void APU::execNOR(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool toMem = !(operand & 0x100);
 
@@ -470,7 +470,7 @@ void APU::execNOR(uint16_t operand) {
 }
 
 void APU::execAND(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool toMem = !(operand & 0x100);
 
@@ -493,7 +493,7 @@ void APU::execAND(uint16_t operand) {
 }
 
 void APU::execADD(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool toMem = !(operand & 0x100);
 
@@ -516,7 +516,7 @@ void APU::execADD(uint16_t operand) {
 }
 
 void APU::execSUB(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool toMem = !(operand & 0x100);
 
@@ -539,7 +539,7 @@ void APU::execSUB(uint16_t operand) {
 }
 
 void APU::execSTA(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t offset = operand & 0xFF;
     uint16_t address = (dp << 8) | offset;
 
@@ -555,7 +555,7 @@ void APU::execSTA(uint16_t operand) {
 }
 
 void APU::execSTR(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t offset = operand & 0xFF;
     uint16_t address = (dp << 8) | offset;
 
@@ -573,7 +573,7 @@ void APU::execSBF(uint16_t operand) {
 }
 
 void APU::execSCR(uint16_t operand) {
-    uint8_t reg = (operand >> 8) & 0x01;
+    uint8_t reg = (operand >> 10) & 0x01;  // FIX: Register is in bit 10, not 8
     uint8_t value = operand & 0xFF;
     registers[reg] = value;
 }
@@ -657,7 +657,7 @@ void APU::execRBC(uint16_t operand) {
 }
 
 void APU::execBEQ(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     uint8_t offset = operand & 0xFF;
 
@@ -667,7 +667,7 @@ void APU::execBEQ(uint16_t operand) {
 }
 
 void APU::execBNE(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     uint8_t offset = operand & 0xFF;
 
@@ -677,7 +677,7 @@ void APU::execBNE(uint16_t operand) {
 }
 
 void APU::execBLT(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     uint8_t offset = operand & 0xFF;
 
@@ -687,7 +687,7 @@ void APU::execBLT(uint16_t operand) {
 }
 
 void APU::execBGT(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     uint8_t offset = operand & 0xFF;
 
@@ -770,7 +770,7 @@ void APU::execCCF(uint16_t operand) {
 }
 
 void APU::execCME(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
@@ -785,7 +785,7 @@ void APU::execCME(uint16_t operand) {
 }
 
 void APU::execCMN(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
@@ -800,7 +800,7 @@ void APU::execCMN(uint16_t operand) {
 }
 
 void APU::execCMG(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
@@ -815,7 +815,7 @@ void APU::execCMG(uint16_t operand) {
 }
 
 void APU::execCML(uint16_t operand) {
-    uint8_t regX = (operand >> 9) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
     uint8_t regY = (operand >> 8) & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
