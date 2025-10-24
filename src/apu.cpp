@@ -166,24 +166,24 @@ void APU::writeByte(uint16_t address, uint8_t value) {
             if (channel < 32 && (channelOffset % 2) == 1) {
                 // Complete STL address write (both bytes written)
                 uint16_t stlAddr = readWord(address & ~1);
+                bool addressChanged = (mmpChannels[channel].stlAddress != stlAddr);
 
-                // Only clear cache if STL address changed
-                if (mmpChannels[channel].stlAddress != stlAddr) {
+                // Only clear cache and reset position if STL address changed
+                if (addressChanged) {
                     mmpChannels[channel].sampleCache.clear();
-                }
+                    mmpChannels[channel].stlAddress = stlAddr;
 
-                mmpChannels[channel].stlAddress = stlAddr;
+                    if (stlAddr == 0) {
+                        mmpChannels[channel].active = false;
+                    } else {
+                        mmpChannels[channel].active = true;
+                        mmpChannels[channel].samplePosition = 0;  // Reset position ONLY when address changes
 
-                if (stlAddr == 0) {
-                    mmpChannels[channel].active = false;
-                } else {
-                    mmpChannels[channel].active = true;
-                    mmpChannels[channel].samplePosition = 0;
-
-                    // Load sample info from STL
-                    if (stlAddr >= STL_BASE && stlAddr < STL_BASE + STL_SIZE) {
-                        mmpChannels[channel].sampleDataAddress = readWord(stlAddr);
-                        mmpChannels[channel].loopAddress = readWord(stlAddr + 2);
+                        // Load sample info from STL
+                        if (stlAddr >= STL_BASE && stlAddr < STL_BASE + STL_SIZE) {
+                            mmpChannels[channel].sampleDataAddress = readWord(stlAddr);
+                            mmpChannels[channel].loopAddress = readWord(stlAddr + 2);
+                        }
                     }
                 }
             }
