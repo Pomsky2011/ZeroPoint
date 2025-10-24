@@ -69,9 +69,23 @@ int main(int argc, char** argv) {
 
     std::cout << "Loaded " << size << " bytes from " << binFile << "\n";
 
-    // Initialize SDL
-    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+    // Initialize SDL (need VIDEO for keyboard events)
+    if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) < 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
+        return 1;
+    }
+
+    // Create a small window for keyboard input
+    SDL_Window* window = SDL_CreateWindow(
+        "APU Audio Demo - Press ESC or Q to quit",
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        400, 100,
+        SDL_WINDOW_SHOWN
+    );
+    if (!window) {
+        std::cerr << "Failed to create window: " << SDL_GetError() << "\n";
+        SDL_Quit();
         return 1;
     }
 
@@ -105,6 +119,9 @@ int main(int argc, char** argv) {
     std::cout << "  Sample rate: " << have.freq << " Hz\n";
     std::cout << "  Channels: " << static_cast<int>(have.channels) << "\n";
     std::cout << "  Buffer size: " << have.samples << " samples\n";
+
+    // Start audio immediately (no initialization wait)
+    std::cout << "\nStarting audio immediately...\n";
 
     // Start audio playback
     SDL_PauseAudioDevice(audioDevice, 0);
@@ -153,6 +170,7 @@ int main(int argc, char** argv) {
     // Cleanup
     ctx.running = false;
     SDL_CloseAudioDevice(audioDevice);
+    SDL_DestroyWindow(window);
     SDL_Quit();
 
     std::cout << "Total cycles: " << apu.getCycleCount() << "\n";

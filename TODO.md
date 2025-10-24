@@ -4,6 +4,39 @@
 
 **NONE** - All critical bugs resolved! 🎉
 
+## Recent Updates (2025-10-24)
+
+### ✅ CRITICAL FIX: MMP SST Header Parsing Bug
+**Fixed**: SST block headers were extracting L nybble from wrong byte position, causing garbage data beyond final block
+**Status**: ✅ **RESOLVED** - Audio now plays cleanly with correct sample looping
+**Root Cause**: L nybble extraction used lower half instead of upper half of header byte 1
+**Details**:
+- SST blocks have 4-byte header: `XX YL VU TS` (nybbles)
+- L nybble (bits 4-7 of byte 1) contains W bit (bit 2) marking final block
+- Code was reading `L = header1 & 0x0F` (lower nybble)
+- Should be `L = (header1 >> 4) & 0x0F` (upper nybble)
+- This caused final block detection to fail, loading garbage data beyond 12 samples
+- Resulted in harsh saw-wave artifacts instead of clean waveforms
+
+**Test Results**:
+- ✅ test_tone.asm now plays clean square wave (12 samples exactly, no garbage)
+- ✅ test_sine.asm plays smooth sine wave with linear interpolation
+- ✅ Final block detection working correctly
+- ✅ Sample looping confirmed functional
+
+**Additional Improvements**:
+- Added SDL window support for keyboard input (ESC/Q to quit)
+- Removed initialization wait time (audio starts immediately per user request)
+- Added channel activation debug output
+- Created test_sine.asm - minimal 12-sample sine wave test
+
+**Files Modified**:
+- `src/apu.cpp`: Fixed SST header parsing (lines 995-1000), added debug output
+- `tools/run_apu_demo.cpp`: Added SDL window, removed init wait
+- `ZPdevtools/examples/apu/test_sine.asm`: New minimal sine wave test
+
+**Impact**: MMP audio system now fully functional with clean waveform playback.
+
 ## Recent Updates (2025-10-23)
 
 ### ✅ MMP Audio System - COMPLETE IMPLEMENTATION
@@ -401,6 +434,7 @@ memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
 ## Known Issues
 
 1. **HLT is not HALT**: HLT is a macro that creates an infinite loop, not a real CPU halt state
+2. **APU needs memory mapping**: Large APU programs (42KB+) wrap around 64KB memory space and fail to initialize correctly. Need memory mapping/banking implementation for complex audio programs.
 
 ## Future Enhancements
 

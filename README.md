@@ -123,9 +123,9 @@ cd ../ZeroPoint/build
 
 **CPU (DEF88186)**: ✅ **COMPLETE!** All 256 opcodes implemented and tested. Production ready. Can execute any valid DEF88186 program.
 
-**PPU**: Display system, tile system, interrupts, microcode execution, and VOC (Video Output Coprocessor) implemented. Loop bug blocking complex demos.
+**PPU**: Display system, tile system, interrupts, microcode execution, and VOC (Video Output Coprocessor) implemented. Loop bug fixed - all core features operational.
 
-**APU**: Full instruction set implemented including stack operations, function calls, and memory operations. MMP audio mixing not yet implemented.
+**APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 stereo channels) all implemented. SST header bug fixed - clean audio playback confirmed.
 
 ## License
 

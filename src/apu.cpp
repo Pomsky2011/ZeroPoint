@@ -176,6 +176,7 @@ void APU::writeByte(uint16_t address, uint8_t value) {
 
                     if (stlAddr == 0) {
                         mmpChannels[channel].active = false;
+                        std::cout << "Channel " << channel << " deactivated" << std::endl;
                     } else {
                         mmpChannels[channel].active = true;
                         mmpChannels[channel].samplePosition = 0;  // Reset position ONLY when address changes
@@ -184,6 +185,9 @@ void APU::writeByte(uint16_t address, uint8_t value) {
                         if (stlAddr >= STL_BASE && stlAddr < STL_BASE + STL_SIZE) {
                             mmpChannels[channel].sampleDataAddress = readWord(stlAddr);
                             mmpChannels[channel].loopAddress = readWord(stlAddr + 2);
+                            std::cout << "Channel " << channel << " activated: STL=$" << std::hex << stlAddr
+                                      << " SampleData=$" << mmpChannels[channel].sampleDataAddress
+                                      << " Loop=$" << mmpChannels[channel].loopAddress << std::dec << std::endl;
                         }
                     }
                 }
