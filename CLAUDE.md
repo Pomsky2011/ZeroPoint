@@ -231,8 +231,9 @@ Creates:
 
 ## Known Issues
 
-1. MOVDP/MOV are 16-bit word-aligned
-2. HLT is 6-instruction infinite loop, not true halt
+1. **⚠️ CRITICAL - MMP Audio Quality**: Sine waves play as saw waves despite correct sample data and linear interpolation. SST sample loading works correctly (72 samples, proper sine values 0→127→0→-127→0), interpolation produces smooth transitions, but final audio output has harsh harmonics characteristic of saw waves. Likely issue in MMP mixing algorithm (src/apu.cpp:896-966).
+2. MOVDP/MOV are 16-bit word-aligned
+3. HLT is 6-instruction infinite loop, not true halt
 
 ## Status
 
@@ -249,6 +250,7 @@ Creates:
 - ✅ ROM Builder: rombuilder (combines CPU/PPU/APU into single ROM)
 
 ### In Progress
+- ⏳ **MMP Audio Quality**: Debugging saw wave artifacts in sine playback (samples/interpolation correct, mixing issue)
 - ⏳ CPU/PPU/APU integration
 - ⏳ Extended test suites
 

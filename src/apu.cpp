@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 APU::APU()
     : pc(0), sp(0), rp(0), dp(0), db(0), bf(false),
@@ -886,6 +887,7 @@ void APU::updateMMP() {
 
 int16_t APU::getMixedSampleLeft() {
     int32_t mixed = 0;
+    static int debugCounter = 0;
 
     for (int i = 0; i < 16; i++) {
         if (mmpChannels[i].active && mmpChannels[i].stlAddress != 0) {
@@ -893,11 +895,28 @@ int16_t APU::getMixedSampleLeft() {
 
             // Get current sample from channel's cache
             if (!mmpChannels[i].sampleCache.empty()) {
-                size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % mmpChannels[i].sampleCache.size();
-                int8_t sample = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
+                size_t cacheSize = mmpChannels[i].sampleCache.size();
+                size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % cacheSize;
+                size_t nextIndex = (sampleIndex + 1) % cacheSize;
+
+                // Get current and next samples
+                int8_t sample1 = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
+                int8_t sample2 = static_cast<int8_t>(mmpChannels[i].sampleCache[nextIndex]);
+
+                // Linear interpolation using fractional part (lower 12 bits)
+                uint32_t frac = mmpChannels[i].samplePosition & 0xFFF;  // 0-4095
+                int32_t interpolated = sample1 + ((sample2 - sample1) * (int32_t)frac) / 4096;
+
+                // Debug: Print first 100 samples
+                if (debugCounter < 100 && i == 0) {
+                    std::cout << "Sample " << debugCounter << ": idx=" << sampleIndex
+                              << " frac=" << frac
+                              << " val=" << interpolated << std::endl;
+                    debugCounter++;
+                }
 
                 // Scale 8-bit sample to 16-bit range
-                int32_t sample16 = sample * 256;  // -32768 to +32512
+                int32_t sample16 = interpolated * 256;
 
                 // Apply volume (1.0× to 2.0× gain)
                 int16_t volumeMultiplier = 256 + mmpChannels[i].volume;
@@ -924,11 +943,20 @@ int16_t APU::getMixedSampleRight() {
 
             // Get current sample from channel's cache
             if (!mmpChannels[i].sampleCache.empty()) {
-                size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % mmpChannels[i].sampleCache.size();
-                int8_t sample = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
+                size_t cacheSize = mmpChannels[i].sampleCache.size();
+                size_t sampleIndex = (mmpChannels[i].samplePosition >> 12) % cacheSize;
+                size_t nextIndex = (sampleIndex + 1) % cacheSize;
+
+                // Get current and next samples
+                int8_t sample1 = static_cast<int8_t>(mmpChannels[i].sampleCache[sampleIndex]);
+                int8_t sample2 = static_cast<int8_t>(mmpChannels[i].sampleCache[nextIndex]);
+
+                // Linear interpolation using fractional part (lower 12 bits)
+                uint32_t frac = mmpChannels[i].samplePosition & 0xFFF;  // 0-4095
+                int32_t interpolated = sample1 + ((sample2 - sample1) * (int32_t)frac) / 4096;
 
                 // Scale 8-bit sample to 16-bit range
-                int32_t sample16 = sample * 256;  // -32768 to +32512
+                int32_t sample16 = interpolated * 256;
 
                 // Apply volume (1.0× to 2.0× gain)
                 int16_t volumeMultiplier = 256 + mmpChannels[i].volume;
@@ -964,9 +992,9 @@ void APU::processChannel(int channel, bool rightEar) {
             uint8_t header2 = readByte(blockAddr + 2);
             uint8_t header3 = readByte(blockAddr + 3);
 
-            // Parse loop configuration (nybble 3)
-            uint8_t loopConfig = (header1 >> 4) & 0x0F;
-            finalBlock = (loopConfig & 0x04) != 0;  // W bit (bit 2)
+            // Parse loop configuration from lower nybble (L)
+            uint8_t L = header1 & 0x0F;  // Lower nybble contains config bits
+            finalBlock = (L & 0x04) != 0;  // W bit (bit 2) marks final block
 
             // Read 12 sample bytes (bytes 4-15)
             for (int i = 0; i < 12; i++) {
@@ -974,6 +1002,17 @@ void APU::processChannel(int channel, bool rightEar) {
             }
 
             blockAddr += 16;  // Next block
+        }
+
+        // Debug: Print loaded samples
+        if (!mmpChannels[channel].sampleCache.empty()) {
+            std::cout << "Channel " << channel << " loaded " << mmpChannels[channel].sampleCache.size() << " samples:" << std::endl;
+            for (size_t i = 0; i < mmpChannels[channel].sampleCache.size(); i++) {
+                int8_t signed_val = static_cast<int8_t>(mmpChannels[channel].sampleCache[i]);
+                std::cout << " " << (int)mmpChannels[channel].sampleCache[i] << " (" << (int)signed_val << ")";
+                if ((i + 1) % 12 == 0) std::cout << std::endl;
+            }
+            std::cout << std::endl;
         }
     }
 }
