@@ -217,6 +217,75 @@ Creates:
 - **APU**: `ZPdevtools/examples/apu/*.asm`
 - **CPU**: `ZPdevtools/examples/cpu/*.asm`
 
+### Development Tools
+Complete debugging and analysis suite:
+```bash
+cd ZPdevtools && make  # Build all tools
+```
+
+**Disassemblers:**
+- `cpudisasm` - Disassemble DEF88186 binaries
+- `ppudisasm` - Disassemble PPU microcode
+- `apudisasm` - Disassemble APU programs
+
+**Analyzers:**
+- `rominspect` - Analyze ZPB ROM files (verify, extract components)
+- `hexview` - Smart hex viewer with statistics
+
+See `ZPdevtools/DEV-TOOLS.md` for complete guide.
+
+## System Integration
+
+### Memory Map (24-bit addressing)
+- **$00-$7F**: ROM (8 MB)
+- **$80-$9F**: Work RAM (2 MB)
+- **$A0**: APU Window (64 KB direct APU memory access)
+- **$B0**: PPU Window (64 KB direct PPU memory access)
+- **$BE-$BF**: Shadow RAM (128 KB)
+- **$D8**: I/O Registers (72 bytes)
+- **$FF**: Boot ROM (64 KB)
+
+### I/O Registers (Bank $D8)
+- **$D80000-$D8000F**: PPU Control (start, status, PC, SP, DP, interrupts)
+- **$D80010-$D8001F**: APU Control (status, PC, SP, RP, DP, DB)
+- **$D80020-$D8002F**: DMA Control (placeholder)
+- **$D80040-$D80047**: Display Status (V-Blank, H-Blank, scanline, pixel)
+
+### Interrupt System
+**Vectors** (Bank $00):
+- `$FFFA-FFFB`: NMI vector
+- `$FFFC-FFFD`: RESET vector
+- `$FFFE-FFFF`: IRQ vector
+
+**Usage:**
+```asm
+; Set up IRQ vector
+.org $00FFFE
+    .word irq_handler
+
+irq_handler:
+    REP #$30
+    PHA
+    PHX
+    PHY
+    ; Handle V-Blank
+    JSR update_graphics
+    PLY
+    PLX
+    PLA
+    RTI
+```
+
+**C++ System Class:**
+```cpp
+#include "system.h"
+
+ZeroPoint::System system;
+system.loadROM("game.zpb");
+system.setVBlankIRQEnabled(true);
+system.run(1000000);  // Run 1M cycles
+```
+
 ## Documentation References
 
 ### PPU
@@ -247,10 +316,15 @@ Creates:
 - ✅ C compiler: Full toolchain (Flex/Bison/AST/Codegen)
 - ✅ Assemblers: ppuasm, apuasm, cpuasm (with `.include` support)
 - ✅ ROM Builder: rombuilder (combines CPU/PPU/APU into single ROM)
+- ✅ **Memory Mapping System**: 24-bit address space with ROM/RAM/PPU/APU/I/O regions
+- ✅ **I/O Registers**: Bank $D8 with PPU, APU, DMA, and Display status blocks
+- ✅ **System Integration**: Unified System class with synchronized execution
+- ✅ **Interrupt Routing**: V-Blank/H-Blank IRQ/NMI support with proper 65816 sequences
+- ✅ **Development Tools**: 5 disassemblers/analyzers (cpudisasm, ppudisasm, apudisasm, rominspect, hexview)
 
 ### In Progress
-- ⏳ CPU/PPU/APU integration
 - ⏳ Extended test suites
+- ⏳ Boot ROM development
 
 ### Planned
 - 🔲 Debugger with register inspection
