@@ -77,10 +77,68 @@ system.getDisplay().isVBlank();
 - APU: 4.2 MHz (~1:15 ratio)
 - Display: Pixel clock
 
-### 5. Compilation ✅
+### 5. Interrupt Routing ✅
+
+**Files**: `include/cpu.h:71-73`, `src/cpu.cpp:2082-2184`, `src/system.cpp:150-168`
+
+Complete interrupt routing from Display → CPU:
+- **`triggerIRQ()`**: Maskable interrupt
+  - Checks I flag (returns if I=1)
+  - Pushes PB, PC, P to stack
+  - Sets I flag, clears D flag
+  - Reads vector from $00:FFFE-FFFF
+  - Jumps to handler
+- **`triggerNMI()`**: Non-maskable interrupt
+  - Cannot be masked (ignores I flag)
+  - Pushes PB, PC, P to stack
+  - Does NOT modify I flag
+  - Clears D flag
+  - Reads vector from $00:FFFA-FFFB
+  - Jumps to handler
+
+**System integration**:
+```cpp
+void System::checkInterrupts() {
+    // Detect V-Blank rising edge → trigger IRQ
+    if (vblankIRQEnabled && currentVBlank && !lastVBlank) {
+        cpu.triggerIRQ();
+    }
+
+    // Detect H-Blank rising edge → trigger IRQ
+    if (hblankIRQEnabled && currentHBlank && !lastHBlank) {
+        cpu.triggerIRQ();
+    }
+}
+```
+
+**Usage in assembly**:
+```asm
+; Set up IRQ vector
+.org $00FFFE
+    .word irq_handler
+
+irq_handler:
+    ; Save registers
+    REP #$30
+    PHA
+    PHX
+    PHY
+
+    ; Handle V-Blank
+    JSR update_graphics
+
+    ; Restore and return
+    PLY
+    PLX
+    PLA
+    RTI
+```
+
+### 6. Compilation ✅
 
 All code compiles successfully:
 - Added `src/system.cpp` to build
+- Interrupt routing methods compile without errors
 - No errors, only minor warnings in APU/PPU (tautological comparisons)
 - CMakeLists automatically detected new files
 
@@ -91,12 +149,6 @@ All code compiles successfully:
 These are documented in **`MISSING-IMPLEMENTATIONS.md`** for your decision.
 
 ### High Priority
-
-**Interrupt Routing** (MEDIUM priority)
-- CPU needs `triggerIRQ()` and `triggerNMI()` methods
-- Interrupt vectors at $00:FFFE (IRQ) and $00:FFFC (NMI)
-- System class has detection code, needs routing (system.cpp:152-167)
-- **Impact**: V-Blank/H-Blank interrupts don't reach CPU yet
 
 **Interrupt Vectors** (HIGH priority)
 - Need confirmation of vector locations

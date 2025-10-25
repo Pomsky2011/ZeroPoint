@@ -153,14 +153,14 @@ void System::checkInterrupts() {
 
     // Detect V-Blank rising edge
     if (vblankIRQEnabled && currentVBlank && !lastVBlank) {
-        // TODO: Trigger CPU IRQ when interrupt routing is implemented
-        // cpu.triggerIRQ();
+        // Trigger CPU IRQ for V-Blank
+        cpu.triggerIRQ();
     }
 
     // Detect H-Blank rising edge
     if (hblankIRQEnabled && currentHBlank && !lastHBlank) {
-        // TODO: Trigger CPU IRQ when interrupt routing is implemented
-        // cpu.triggerIRQ();
+        // Trigger CPU IRQ for H-Blank
+        cpu.triggerIRQ();
     }
 
     lastVBlank = currentVBlank;

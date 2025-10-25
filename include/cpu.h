@@ -68,6 +68,10 @@ public:
     void step();                        // Execute one instruction
     void run(uint64_t cycles);          // Run for N cycles
 
+    // Interrupt handling
+    void triggerIRQ();                  // Trigger maskable interrupt
+    void triggerNMI();                  // Trigger non-maskable interrupt
+
     // Memory interface
     void setMemory(uint8_t* mem, size_t size);  // Legacy interface
     uint8_t readByte(uint32_t address);

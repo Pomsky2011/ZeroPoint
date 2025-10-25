@@ -74,8 +74,11 @@ LOW PRIORITY:
   [ ] Controller format - If needed ($C200)
   [ ] Timer specs - If needed ($C300)
 
+COMPLETED:
+  [X] Interrupt routing - Added triggerIRQ()/triggerNMI() to CPU
+      V-Blank and H-Blank interrupts now fully functional
+
 OPTIONAL:
-  [ ] Interrupt routing - Add triggerIRQ()/triggerNMI() to CPU
   [ ] DMA integration - Wire DMA to I/O registers
 
 ================================================================================

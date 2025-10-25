@@ -66,19 +66,22 @@ These are development/emulation features that will be added to the C++ codebase.
   - Handle interrupt routing (V-Blank, H-Blank → CPU IRQ)
   - Audio callback integration
 
-### Interrupt Routing
+### Interrupt Routing ✅ COMPLETE
 
 **CPU interrupt system**
 - **Needed for**: Route PPU V-Blank/H-Blank to CPU IRQ/NMI
-- **Current status**: CPU has BRK/COP/RTI but no IRQ/NMI triggering
-- **Impact**: PPU interrupts don't reach CPU
-- **Priority**: MEDIUM - Required for V-Blank synchronization
-- **File**: `include/cpu.h`, `src/cpu.cpp`
-- **Requires**:
-  - Add `triggerIRQ()` and `triggerNMI()` methods to CPU
-  - Interrupt vector reading from $00:FFFE (IRQ) and $00:FFFC (NMI)
-  - Automatic push of PC/PB/P and jump to vector
-  - Check I flag for IRQ masking
+- **Status**: ✅ IMPLEMENTED
+- **Files**: `include/cpu.h:71-73`, `src/cpu.cpp:2082-2184`, `src/system.cpp:150-168`
+- **Implementation**:
+  - Added `triggerIRQ()` method - Maskable interrupt (respects I flag)
+  - Added `triggerNMI()` method - Non-maskable interrupt (ignores I flag)
+  - Reads IRQ vector from $00:FFFE-FFFF
+  - Reads NMI vector from $00:FFFA-FFFB
+  - Proper stack sequence: Push PB, PC (high, low), P to stack
+  - IRQ sets I flag and clears D flag
+  - NMI only clears D flag (I flag untouched)
+  - System class detects V-Blank/H-Blank edges and triggers CPU IRQ
+- **Result**: V-Blank and H-Blank interrupts now fully functional!
 
 ---
 

@@ -2079,4 +2079,108 @@ void CPU::setupIORegisters() {
     );
 }
 
+// === INTERRUPT HANDLING ===
+
+void CPU::triggerIRQ() {
+    // IRQ (Interrupt Request) - Maskable interrupt
+    // Vector: $00:FFFE-FFFF (16-bit address, PB set to 0)
+
+    // Check if interrupts are disabled
+    if (P.I) {
+        // IRQ is masked, ignore
+        return;
+    }
+
+    // 1. Push PB to stack
+    writeByte(SP, PB);
+    SP--;
+
+    // 2. Push PC high byte to stack
+    writeByte(SP, (PC >> 8) & 0xFF);
+    SP--;
+
+    // 3. Push PC low byte to stack
+    writeByte(SP, PC & 0xFF);
+    SP--;
+
+    // 4. Push P (processor status) to stack
+    uint8_t statusByte = 0;
+    if (P.N) statusByte |= 0x80;
+    if (P.V) statusByte |= 0x40;
+    if (P.M) statusByte |= 0x20;
+    if (P.X) statusByte |= 0x10;
+    if (P.D) statusByte |= 0x08;
+    if (P.I) statusByte |= 0x04;
+    if (P.Z) statusByte |= 0x02;
+    if (P.C) statusByte |= 0x01;
+    writeByte(SP, statusByte);
+    SP--;
+
+    // 5. Set I flag (disable further IRQs)
+    P.I = true;
+
+    // 6. Clear D flag (binary mode)
+    P.D = false;
+
+    // 7. Read IRQ vector from $00:FFFE-FFFF
+    uint32_t vectorAddr = 0x00FFFE;
+    uint16_t handlerAddr = readWord(vectorAddr);
+
+    // 8. Set PC to handler address, PB to 0
+    PC = handlerAddr;
+    PB = 0x00;
+
+    // Add interrupt overhead cycles
+    cycleCount += 7;  // Interrupt acknowledge + stack ops + vector fetch
+}
+
+void CPU::triggerNMI() {
+    // NMI (Non-Maskable Interrupt) - Cannot be masked
+    // Vector: $00:FFFA-FFFB (16-bit address, PB set to 0)
+
+    // NMI cannot be masked - always executes
+
+    // 1. Push PB to stack
+    writeByte(SP, PB);
+    SP--;
+
+    // 2. Push PC high byte to stack
+    writeByte(SP, (PC >> 8) & 0xFF);
+    SP--;
+
+    // 3. Push PC low byte to stack
+    writeByte(SP, PC & 0xFF);
+    SP--;
+
+    // 4. Push P (processor status) to stack
+    uint8_t statusByte = 0;
+    if (P.N) statusByte |= 0x80;
+    if (P.V) statusByte |= 0x40;
+    if (P.M) statusByte |= 0x20;
+    if (P.X) statusByte |= 0x10;
+    if (P.D) statusByte |= 0x08;
+    if (P.I) statusByte |= 0x04;
+    if (P.Z) statusByte |= 0x02;
+    if (P.C) statusByte |= 0x01;
+    writeByte(SP, statusByte);
+    SP--;
+
+    // 5. I flag NOT modified (NMI ignores I flag)
+    // (No change to P.I)
+
+    // 6. Clear D flag (binary mode)
+    P.D = false;
+
+    // 7. Read NMI vector from $00:FFFA-FFFB
+    uint32_t vectorAddr = 0x00FFFA;
+    uint16_t handlerAddr = readWord(vectorAddr);
+
+    // 8. Set PC to handler address, PB to 0
+    PC = handlerAddr;
+    PB = 0x00;
+
+    // Add interrupt overhead cycles
+    cycleCount += 7;  // Interrupt acknowledge + stack ops + vector fetch
+}
+
 } // namespace ZeroPoint
