@@ -1,4 +1,7 @@
 #include "cpu.h"
+#include "ppu.h"
+#include "apu.h"
+#include "display.h"
 #include <cstring>
 #include <stdexcept>
 
@@ -8,6 +11,7 @@ CPU::CPU()
     : A(0), X(0), Y(0), SP(0x01FF), D(0), PC(0), PB(0), DB(0),
       loopCounter(0), loopStart(0),
       memory(nullptr), memorySize(0),
+      ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr),
       state(CPUState::Running),
       cycleCount(0), instructionCount(0)
 {
@@ -47,6 +51,12 @@ void CPU::setMemory(uint8_t* mem, size_t size) {
 
 // Memory access with 24-bit addressing
 uint8_t CPU::readByte(uint32_t address) {
+    // If memory mapping is enabled, use it
+    if (!memoryMap.empty()) {
+        return readMapped(address);
+    }
+
+    // Otherwise fall back to legacy flat memory
     if (!memory || address >= memorySize) {
         return 0xFF;
     }
@@ -54,6 +64,13 @@ uint8_t CPU::readByte(uint32_t address) {
 }
 
 void CPU::writeByte(uint32_t address, uint8_t value) {
+    // If memory mapping is enabled, use it
+    if (!memoryMap.empty()) {
+        writeMapped(address, value);
+        return;
+    }
+
+    // Otherwise fall back to legacy flat memory
     if (!memory || address >= memorySize) {
         return;
     }
@@ -677,15 +694,14 @@ void CPU::executeInstruction() {
 
         // 0x1C-0x23: WAI, XBA, XCHG variants
         case 0x1C: opWAI(); break;
-        case 0x1D: opXBA(); break;
-        case 0x1E: { uint32_t longAddr = fetch24(); uint8_t dp = fetch(); uint16_t dpAddr = (D + dp) & 0xFFFF; uint16_t val1 = readWord(longAddr); uint16_t val2 = readWord(dpAddr); writeWord(longAddr, val2); writeWord(dpAddr, val1); cycleCount += 8; } break;  // XCHG long,dp
-        case 0x1F: { uint8_t dp = fetch(); uint16_t dpAddr = (D + dp) & 0xFFFF; uint16_t temp = X; X = readWord(dpAddr); writeWord(dpAddr, temp); cycleCount += 8; } break;  // XCHG X,dp
-        case 0x20: { uint32_t addr = fetch24(); uint16_t temp = X; X = readWord(addr); writeWord(addr, temp); cycleCount += 8; } break;  // XCHG X,long
-        case 0x21: { uint16_t temp = X; X = Y; Y = temp; cycleCount += 8; } break;  // XCHG X,Y
-        case 0x22: { uint8_t dp = fetch(); uint16_t dpAddr = (D + dp) & 0xFFFF; uint16_t temp = Y; Y = readWord(dpAddr); writeWord(dpAddr, temp); cycleCount += 8; } break;  // XCHG Y,dp
-        case 0x23: { uint32_t addr = fetch24(); uint16_t temp = Y; Y = readWord(addr); writeWord(addr, temp); cycleCount += 8; } break;  // XCHG Y,long
-
-        // 0x24-0x26: Register transfers
+        // 0x1D-0x26: Register transfers
+        case 0x1D: opTDC(); break;
+        case 0x1E: opTSC(); break;
+        case 0x1F: opTCS(); break;
+        case 0x20: opTAX(); break;
+        case 0x21: opTXA(); break;
+        case 0x22: opTAY(); break;
+        case 0x23: opTCD(); break;
         case 0x24: opTXY(); break;
         case 0x25: opTYA(); break;
         case 0x26: opTYX(); break;
@@ -1374,6 +1390,98 @@ void CPU::opCPY(uint32_t addr) {
 
 // === REGISTER TRANSFER OPERATIONS ===
 
+void CPU::opTDC() {
+    // Transfer Direct Page to Accumulator
+    A = D;
+    setNZ16(A);  // D is always 16-bit
+    cycleCount += 2;
+}
+
+void CPU::opTSC() {
+    // Transfer Stack Pointer to Accumulator
+    A = SP;
+    setNZ16(A);  // SP is always 16-bit
+    cycleCount += 2;
+}
+
+void CPU::opTCS() {
+    // Transfer Accumulator to Stack Pointer
+    SP = A & 0xFFFF;  // SP is always 16-bit
+    cycleCount += 2;
+}
+
+void CPU::opTAX() {
+    // Transfer Accumulator to Index X
+    if (P.M && P.X) {
+        // Both 8-bit
+        X = A & 0xFF;
+        setNZ8(X & 0xFF);
+    } else if (!P.M && !P.X) {
+        // Both 16-bit
+        X = A;
+        setNZ16(X);
+    } else if (P.M && !P.X) {
+        // A is 8-bit, X is 16-bit
+        X = A & 0xFF;
+        setNZ16(X);
+    } else {
+        // A is 16-bit, X is 8-bit
+        X = A & 0xFF;
+        setNZ8(X & 0xFF);
+    }
+    cycleCount += 2;
+}
+
+void CPU::opTXA() {
+    // Transfer Index X to Accumulator
+    if (P.M && P.X) {
+        // Both 8-bit
+        A = (A & 0xFF00) | (X & 0xFF);
+        setNZ8(A & 0xFF);
+    } else if (!P.M && !P.X) {
+        // Both 16-bit
+        A = X;
+        setNZ16(A);
+    } else if (P.M && !P.X) {
+        // A is 8-bit, X is 16-bit
+        A = (A & 0xFF00) | (X & 0xFF);
+        setNZ8(A & 0xFF);
+    } else {
+        // A is 16-bit, X is 8-bit
+        A = X & 0xFF;
+        setNZ16(A);
+    }
+    cycleCount += 2;
+}
+
+void CPU::opTAY() {
+    // Transfer Accumulator to Index Y
+    if (P.M && P.X) {
+        // Both 8-bit
+        Y = A & 0xFF;
+        setNZ8(Y & 0xFF);
+    } else if (!P.M && !P.X) {
+        // Both 16-bit
+        Y = A;
+        setNZ16(Y);
+    } else if (P.M && !P.X) {
+        // A is 8-bit, Y is 16-bit
+        Y = A & 0xFF;
+        setNZ16(Y);
+    } else {
+        // A is 16-bit, Y is 8-bit
+        Y = A & 0xFF;
+        setNZ8(Y & 0xFF);
+    }
+    cycleCount += 2;
+}
+
+void CPU::opTCD() {
+    // Transfer Accumulator to Direct Page
+    D = A & 0xFFFF;  // D is always 16-bit
+    cycleCount += 2;
+}
+
 void CPU::opTXY() {
     Y = X;
     if (P.X) {
@@ -1413,19 +1521,6 @@ void CPU::opTYX() {
         setNZ16(X);
     }
     cycleCount += 2;
-}
-
-void CPU::opXBA() {
-    // Exchange A and B (swap high and low bytes)
-    uint8_t al = A & 0xFF;
-    uint8_t ah = (A >> 8) & 0xFF;
-    A = (al << 8) | ah;
-    cycleCount += 2;
-}
-
-void CPU::opXCHG() {
-    // XCHG is handled inline in the dispatch table
-    // This function shouldn't be called
 }
 
 // === PROCESSOR STATUS FLAG OPERATIONS ===
@@ -1554,6 +1649,434 @@ void CPU::opMVP() {
     }
 
     DB = destBank;
+}
+
+// === MEMORY MAPPING IMPLEMENTATION ===
+
+CPU::MemoryRegion* CPU::findRegion(uint32_t address) {
+    uint8_t bank = (address >> 16) & 0xFF;
+    uint16_t offset = address & 0xFFFF;
+
+    for (auto& region : memoryMap) {
+        // Check if address falls within this region's bank range
+        if (bank >= region.startBank && bank <= region.endBank) {
+            // Check if offset falls within this region's offset range
+            if (offset >= region.startOffset && offset <= region.endOffset) {
+                return &region;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+uint8_t CPU::readMapped(uint32_t address) {
+    MemoryRegion* region = findRegion(address);
+    if (!region) {
+        // Unmapped memory returns open bus (0xFF)
+        return 0xFF;
+    }
+
+    uint8_t bank = (address >> 16) & 0xFF;
+    uint16_t offset = address & 0xFFFF;
+
+    switch (region->type) {
+        case MemoryRegion::ROM:
+        case MemoryRegion::RAM: {
+            if (!region->data) return 0xFF;
+
+            // Calculate offset within the region's data
+            size_t bankOffset = (bank - region->startBank) * 65536;
+            size_t dataOffset = bankOffset + (offset - region->startOffset);
+
+            if (dataOffset < region->dataSize) {
+                return region->data[dataOffset];
+            }
+            return 0xFF;
+        }
+
+        case MemoryRegion::PPU_WINDOW: {
+            if (!ppuPtr) return 0xFF;
+            // PPU has 64 KiB memory, map directly
+            return ppuPtr->readMemory(offset);
+        }
+
+        case MemoryRegion::APU_WINDOW: {
+            if (!apuPtr) return 0xFF;
+            // APU has 64 KiB memory (+ banked ROM)
+            return apuPtr->readByte(offset);
+        }
+
+        case MemoryRegion::IO_REGISTERS: {
+            if (!region->ioRead) return 0xFF;
+            uint16_t ioOffset = offset - region->startOffset;
+            return region->ioRead(ioOffset);
+        }
+
+        default:
+            return 0xFF;
+    }
+}
+
+void CPU::writeMapped(uint32_t address, uint8_t value) {
+    MemoryRegion* region = findRegion(address);
+    if (!region) {
+        // Writes to unmapped memory are ignored
+        return;
+    }
+
+    uint8_t bank = (address >> 16) & 0xFF;
+    uint16_t offset = address & 0xFFFF;
+
+    switch (region->type) {
+        case MemoryRegion::ROM: {
+            // ROM writes are ignored
+            break;
+        }
+
+        case MemoryRegion::RAM: {
+            if (!region->data) break;
+
+            // Calculate offset within the region's data
+            size_t bankOffset = (bank - region->startBank) * 65536;
+            size_t dataOffset = bankOffset + (offset - region->startOffset);
+
+            if (dataOffset < region->dataSize) {
+                region->data[dataOffset] = value;
+            }
+            break;
+        }
+
+        case MemoryRegion::PPU_WINDOW: {
+            if (!ppuPtr) break;
+            ppuPtr->writeMemory(offset, value);
+            break;
+        }
+
+        case MemoryRegion::APU_WINDOW: {
+            if (!apuPtr) break;
+            apuPtr->writeByte(offset, value);
+            break;
+        }
+
+        case MemoryRegion::IO_REGISTERS: {
+            if (!region->ioWrite) break;
+            uint16_t ioOffset = offset - region->startOffset;
+            region->ioWrite(ioOffset, value);
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
+void CPU::loadROM(const uint8_t* data, size_t size, uint8_t startBank) {
+    MemoryRegion region;
+    region.type = MemoryRegion::ROM;
+    region.startBank = startBank;
+    region.startOffset = 0x0000;
+    region.endOffset = 0xFFFF;
+
+    // Calculate how many banks this ROM spans
+    uint8_t numBanks = (size + 65535) / 65536;
+    region.endBank = startBank + numBanks - 1;
+
+    // Allocate ROM data
+    region.data = new uint8_t[size];
+    std::memcpy(region.data, data, size);
+    region.dataSize = size;
+
+    memoryMap.push_back(region);
+}
+
+void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
+    MemoryRegion region;
+    region.type = MemoryRegion::RAM;
+    region.startBank = startBank;
+    region.endBank = startBank + numBanks - 1;
+    region.startOffset = 0x0000;
+    region.endOffset = 0xFFFF;
+
+    // Allocate RAM
+    size_t ramSize = numBanks * 65536;
+    region.data = new uint8_t[ramSize];
+    std::memset(region.data, 0, ramSize);
+    region.dataSize = ramSize;
+
+    memoryMap.push_back(region);
+}
+
+void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
+                           IOReadCallback readFn, IOWriteCallback writeFn) {
+    MemoryRegion region;
+    region.type = MemoryRegion::IO_REGISTERS;
+    region.startBank = bank;
+    region.endBank = bank;
+    region.startOffset = baseOffset;
+    region.endOffset = baseOffset + size - 1;
+    region.ioRead = readFn;
+    region.ioWrite = writeFn;
+
+    memoryMap.push_back(region);
+}
+
+void CPU::mapPPUWindow(uint8_t bank) {
+    MemoryRegion region;
+    region.type = MemoryRegion::PPU_WINDOW;
+    region.startBank = bank;
+    region.endBank = bank;
+    region.startOffset = 0x0000;
+    region.endOffset = 0xFFFF;  // Full 64 KB
+
+    memoryMap.push_back(region);
+}
+
+void CPU::mapAPUWindow(uint8_t bank) {
+    MemoryRegion region;
+    region.type = MemoryRegion::APU_WINDOW;
+    region.startBank = bank;
+    region.endBank = bank;
+    region.startOffset = 0x0000;
+    region.endOffset = 0xFFFF;  // Full 64 KB
+
+    memoryMap.push_back(region);
+}
+
+// Setup all I/O registers at Bank $D8
+void CPU::setupIORegisters() {
+    // I/O Register addresses (Bank $D8)
+    constexpr uint8_t IO_BANK = 0xD8;
+
+    // ========================================================================
+    // 1. PPU CONTROL BLOCK ($D80000-$D8000F, 16 bytes)
+    // ========================================================================
+    registerIORegion(IO_BANK, 0x0000, 16,
+        // Read handler
+        [this](uint16_t offset) -> uint8_t {
+            if (!ppuPtr) return 0xFF;
+
+            switch (offset) {
+                case 0x00: // PPUCTRL (write-only, returns 0)
+                    return 0x00;
+
+                case 0x01: { // PPUSTATUS
+                    PPUState state = ppuPtr->getState();
+                    return static_cast<uint8_t>(state);
+                }
+
+                case 0x02: // PPUPC low byte
+                    return ppuPtr->getExecutionPointer() & 0xFF;
+
+                case 0x03: // PPUPC high byte
+                    return (ppuPtr->getExecutionPointer() >> 8) & 0xFF;
+
+                case 0x04: // PPUSP low byte
+                    return ppuPtr->getRegister(61) & 0xFF;
+
+                case 0x05: // PPUSP high byte
+                    return (ppuPtr->getRegister(61) >> 8) & 0xFF;
+
+                case 0x06: // PPUDP low byte
+                    return ppuPtr->getRegister(63) & 0xFF;
+
+                case 0x07: // PPUDP high byte
+                    return (ppuPtr->getRegister(63) >> 8) & 0xFF;
+
+                case 0x08: // PPUREG_ADDR (write-only, returns 0)
+                    return 0x00;
+
+                case 0x09: { // PPUREG_DATA low byte
+                    // Would need to track which register was selected
+                    // For now, return 0
+                    return 0x00;
+                }
+
+                case 0x0A: { // PPUREG_DATA high byte
+                    return 0x00;
+                }
+
+                case 0x0B: // PPU_VBLANK_INT low byte (R59)
+                    return ppuPtr->getRegister(59) & 0xFF;
+
+                case 0x0C: // PPU_VBLANK_INT high byte (R59)
+                    return (ppuPtr->getRegister(59) >> 8) & 0xFF;
+
+                case 0x0D: // PPU_HBLANK_INT low byte (R60)
+                    return ppuPtr->getRegister(60) & 0xFF;
+
+                case 0x0E: // PPU_HBLANK_INT high byte (R60)
+                    return (ppuPtr->getRegister(60) >> 8) & 0xFF;
+
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler
+        [this](uint16_t offset, uint8_t value) {
+            if (!ppuPtr) return;
+
+            switch (offset) {
+                case 0x00: // PPUCTRL
+                    if (value & 0x01) ppuPtr->start();
+                    if (value & 0x02) ppuPtr->reset();
+                    break;
+
+                // Note: Writing to PC, SP, DP, registers requires additional PPU methods
+                // For now, these are read-only until we add write support to PPU
+
+                default:
+                    break;
+            }
+        }
+    );
+
+    // ========================================================================
+    // 2. APU CONTROL BLOCK ($D80010-$D8001F, 16 bytes)
+    // ========================================================================
+    registerIORegion(IO_BANK, 0x0010, 16,
+        // Read handler
+        [this](uint16_t offset) -> uint8_t {
+            if (!apuPtr) return 0xFF;
+
+            switch (offset) {
+                case 0x00: // APUCTRL (write-only)
+                    return 0x00;
+
+                case 0x01: // APUSTATUS
+                    return apuPtr->isHalted() ? 0x01 : 0x00;
+
+                case 0x02: // APUPC low byte
+                    return apuPtr->getPC() & 0xFF;
+
+                case 0x03: // APUPC high byte
+                    return (apuPtr->getPC() >> 8) & 0xFF;
+
+                case 0x04: // APUSP low byte
+                    return apuPtr->getSP() & 0xFF;
+
+                case 0x05: // APUSP high byte
+                    return (apuPtr->getSP() >> 8) & 0xFF;
+
+                case 0x06: // APU_ROMBANK (write-only)
+                    return 0x00;
+
+                case 0x07: // APU_IOBANK (write-only)
+                    return 0x00;
+
+                case 0x08: // APUREG_ADDR (write-only)
+                    return 0x00;
+
+                case 0x09: { // APUREG_DATA
+                    // Would need to track selected register
+                    return 0x00;
+                }
+
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler
+        [this](uint16_t offset, uint8_t value) {
+            if (!apuPtr) return;
+
+            switch (offset) {
+                case 0x00: // APUCTRL
+                    if (value & 0x01) apuPtr->reset();
+                    if (value & 0x02) apuPtr->setHalted(true);
+                    if (value & 0x04) apuPtr->setHalted(false); // Resume
+                    break;
+
+                case 0x02: { // APUPC low byte
+                    uint16_t pc = apuPtr->getPC();
+                    pc = (pc & 0xFF00) | value;
+                    apuPtr->setPC(pc);
+                    break;
+                }
+
+                case 0x03: { // APUPC high byte
+                    uint16_t pc = apuPtr->getPC();
+                    pc = (pc & 0x00FF) | (value << 8);
+                    apuPtr->setPC(pc);
+                    break;
+                }
+
+                case 0x04: { // APUSP low byte
+                    uint16_t sp = apuPtr->getSP();
+                    sp = (sp & 0xFF00) | value;
+                    apuPtr->setSP(sp);
+                    break;
+                }
+
+                case 0x05: { // APUSP high byte
+                    uint16_t sp = apuPtr->getSP();
+                    sp = (sp & 0x00FF) | (value << 8);
+                    apuPtr->setSP(sp);
+                    break;
+                }
+
+                case 0x06: // APU_ROMBANK
+                    apuPtr->setROMBank(value);
+                    break;
+
+                case 0x07: // APU_IOBANK
+                    apuPtr->setIOBank(value);
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    );
+
+    // ========================================================================
+    // 3. DMA CONTROL BLOCK ($D80020-$D8002F, 16 bytes)
+    // ========================================================================
+    // Note: DMA controller not yet integrated - placeholder for now
+    registerIORegion(IO_BANK, 0x0020, 16,
+        [](uint16_t offset) -> uint8_t { return 0x00; },
+        [](uint16_t offset, uint8_t value) { /* TODO: DMA */ }
+    );
+
+    // ========================================================================
+    // 4. DISPLAY STATUS BLOCK ($D80040-$D80047, 8 bytes, read-only)
+    // ========================================================================
+    registerIORegion(IO_BANK, 0x0040, 8,
+        // Read handler
+        [this](uint16_t offset) -> uint8_t {
+            if (!displayPtr) return 0xFF;
+
+            switch (offset) {
+                case 0x00: // DISP_SCANLINE low byte
+                    return displayPtr->getCurrentScanline() & 0xFF;
+
+                case 0x01: // DISP_SCANLINE high byte
+                    return (displayPtr->getCurrentScanline() >> 8) & 0xFF;
+
+                case 0x02: // DISP_PIXEL low byte
+                    return displayPtr->getCurrentPixel() & 0xFF;
+
+                case 0x03: // DISP_PIXEL high byte
+                    return (displayPtr->getCurrentPixel() >> 8) & 0xFF;
+
+                case 0x04: { // DISP_STATUS
+                    uint8_t status = 0;
+                    if (displayPtr->isVBlank()) status |= 0x01;
+                    if (displayPtr->isHBlank()) status |= 0x02;
+                    if (displayPtr->isVisibleArea()) status |= 0x04;
+                    return status;
+                }
+
+                case 0x05: // DISP_MODE
+                    return (displayPtr->getRenderMode() == RenderMode::RGBA16) ? 0x00 : 0x01;
+
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler (read-only, writes ignored)
+        [](uint16_t offset, uint8_t value) { /* Read-only block */ }
+    );
 }
 
 } // namespace ZeroPoint

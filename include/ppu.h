@@ -119,9 +119,18 @@ public:
         return executionPointer;
     }
 
-    // Direct memory access (for debugging)
+    // Direct memory access (for debugging and CPU window)
     uint8_t readMemory(uint16_t address) const {
         return memory[address];
+    }
+
+    void writeMemory(uint16_t address, uint8_t value) {
+        memory[address] = value;
+    }
+
+    // Register access for CPU I/O
+    void setRegister(uint8_t reg, uint16_t value) {
+        if (reg < 64) registers[reg] = value;
     }
 
 private:

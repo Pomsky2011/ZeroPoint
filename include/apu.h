@@ -30,6 +30,8 @@ public:
     void setRegister(uint8_t reg, uint8_t value);
     uint16_t getPC() const { return pc; }
     void setPC(uint16_t value) { pc = value; }
+    uint16_t getSP() const { return sp; }
+    void setSP(uint16_t value) { sp = value; }
 
     // Banking
     void setROMBank(uint16_t bank);

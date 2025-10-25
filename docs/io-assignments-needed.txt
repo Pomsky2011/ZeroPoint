@@ -1,0 +1,103 @@
+================================================================================
+I/O REGISTERS FOUND - NEED ADDRESS ASSIGNMENT
+================================================================================
+
+Here are the I/O register blocks that exist in the codebase and need
+memory-mapped addresses assigned by YOU.
+
+--------------------------------------------------------------------------------
+1. PPU CONTROL BLOCK (16 bytes minimum)
+--------------------------------------------------------------------------------
+PPUCTRL         1 byte   - Write: bit0=start, bit1=reset
+PPUSTATUS       1 byte   - Read: state (0=waiting, 1=running, 2=halted)
+PPUPC           2 bytes  - Read/Write: Program counter
+PPUSP           2 bytes  - Read/Write: Stack pointer
+PPUDP           2 bytes  - Read/Write: Data pointer
+PPUREG_ADDR     1 byte   - Write: Register select (0-63)
+PPUREG_DATA     2 bytes  - Read/Write: Register value
+PPU_VBLANK_INT  2 bytes  - Read/Write: R59 (V-Blank interrupt address)
+PPU_HBLANK_INT  2 bytes  - Read/Write: R60 (H-Blank interrupt address)
+
+Total: 15 bytes, round up to 16
+
+--------------------------------------------------------------------------------
+2. APU CONTROL BLOCK (16 bytes minimum)
+--------------------------------------------------------------------------------
+APUCTRL         1 byte   - Write: bit0=reset, bit1=halt
+APUSTATUS       1 byte   - Read: halted flag
+APUPC           2 bytes  - Read/Write: Program counter
+APUSP           2 bytes  - Read/Write: Stack pointer
+APU_ROMBANK     1 byte   - Write: ROM bank (0-17)
+APU_IOBANK      1 byte   - Write: I/O bank
+APUREG_ADDR     1 byte   - Write: Register select (0-255)
+APUREG_DATA     1 byte   - Read/Write: Register value
+
+Total: 10 bytes, round up to 16
+
+--------------------------------------------------------------------------------
+3. DMA CONTROL BLOCK (16 bytes minimum)
+--------------------------------------------------------------------------------
+DMA_CONFIG      9 bytes  - Write: 9-byte config to queue transfer
+                           Byte 0: mode (SS XX YYYY)
+                           Bytes 1-3: source address (24-bit)
+                           Bytes 4-6: target address (24-bit)
+                           Byte 7: size multiplier
+                           Byte 8: interrupt/trigger
+DMA_STATUS      1 byte   - Read: queue count (low 4 bits), active channels (high 4 bits)
+DMA_INTERRUPT   1 byte   - Write: 1=trigger, 0=clear
+DMA_CHAN_SELECT 1 byte   - Write: select channel (0-15)
+DMA_CHAN_STATE  1 byte   - Read: selected channel state
+
+Total: 13 bytes, round up to 16
+
+--------------------------------------------------------------------------------
+4. DISPLAY STATUS BLOCK (8 bytes, read-only)
+--------------------------------------------------------------------------------
+DISP_SCANLINE   2 bytes  - Read: Current scanline (0-260)
+DISP_PIXEL      2 bytes  - Read: Current pixel (0-339)
+DISP_STATUS     1 byte   - Read: bit0=vblank, bit1=hblank, bit2=visible
+DISP_MODE       1 byte   - Read: 0=16-bit, 1=32-bit
+(2 bytes unused)
+
+Total: 8 bytes
+
+--------------------------------------------------------------------------------
+MEMORY WINDOWS (ALREADY WORKING)
+--------------------------------------------------------------------------------
+Bank $70        64 KB    - PPU memory window (use cpu.mapPPUWindow(0x70))
+Bank $60        64 KB    - APU memory window (use cpu.mapAPUWindow(0x60))
+
+These are already implemented! Just need to be set up at runtime.
+
+--------------------------------------------------------------------------------
+RECOMMENDED ADDRESSES (Bank $00, I/O region $C000-$DFFF)
+--------------------------------------------------------------------------------
+$C000-$C00F (16 bytes) - PPU Control Block
+$C010-$C01F (16 bytes) - APU Control Block
+$C020-$C02F (16 bytes) - DMA Control Block
+$C030-$C037 (8 bytes)  - Display Status Block
+
+Total used: 56 bytes out of 8 KB available
+
+You can change these addresses to whatever you want.
+
+--------------------------------------------------------------------------------
+HOW TO ASSIGN ADDRESSES
+--------------------------------------------------------------------------------
+Once you decide on addresses, I will implement the read/write handlers using:
+
+cpu.registerIORegion(baseAddress, size, readCallback, writeCallback);
+
+Example:
+cpu.registerIORegion(0xC000, 16,
+    [&ppu](uint16_t offset) -> uint8_t {
+        // Read PPU register at offset 0-15
+        // ...
+    },
+    [&ppu](uint16_t offset, uint8_t value) {
+        // Write PPU register at offset 0-15
+        // ...
+    }
+);
+
+================================================================================

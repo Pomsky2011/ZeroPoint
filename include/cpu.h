@@ -4,8 +4,17 @@
 #include <cstdint>
 #include <array>
 #include <functional>
+#include <memory>
+#include <vector>
+
+// Forward declaration (APU is in global namespace)
+class APU;
 
 namespace ZeroPoint {
+
+// Forward declarations
+class PPU;
+class Display;
 
 // DEF88186 Main CPU - Hybrid 65816/8086 16-bit processor
 // 256 opcodes, 24-bit addressing, little-endian
@@ -60,13 +69,31 @@ public:
     void run(uint64_t cycles);          // Run for N cycles
 
     // Memory interface
-    void setMemory(uint8_t* mem, size_t size);
+    void setMemory(uint8_t* mem, size_t size);  // Legacy interface
     uint8_t readByte(uint32_t address);
     void writeByte(uint32_t address, uint8_t value);
     uint16_t readWord(uint32_t address);
     void writeWord(uint32_t address, uint16_t value);
     uint32_t readLong(uint32_t address);
     void writeLong(uint32_t address, uint32_t value);
+
+    // Memory mapping
+    void setPPU(PPU* ppu) { ppuPtr = ppu; }
+    void setAPU(APU* apu) { apuPtr = apu; }
+    void setDisplay(Display* disp) { displayPtr = disp; }
+    void loadROM(const uint8_t* data, size_t size, uint8_t startBank);
+    void allocateRAM(uint8_t startBank, uint8_t numBanks);
+    void mapPPUWindow(uint8_t bank);
+    void mapAPUWindow(uint8_t bank);
+
+    // Setup all I/O registers (requires PPU, APU, Display to be set first)
+    void setupIORegisters();
+
+    // I/O register callbacks
+    using IOReadCallback = std::function<uint8_t(uint16_t offset)>;
+    using IOWriteCallback = std::function<void(uint16_t offset, uint8_t value)>;
+    void registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
+                          IOReadCallback readFn, IOWriteCallback writeFn);
 
     // Register access
     uint16_t getA() const { return A; }
@@ -113,9 +140,47 @@ private:
     uint16_t loopCounter;
     uint16_t loopStart;
 
-    // Memory
+    // Memory regions
+    struct MemoryRegion {
+        enum Type {
+            UNMAPPED,
+            ROM,
+            RAM,
+            PPU_WINDOW,
+            APU_WINDOW,
+            IO_REGISTERS
+        };
+
+        Type type;
+        uint8_t startBank;
+        uint8_t endBank;
+        uint16_t startOffset;  // Offset within bank
+        uint16_t endOffset;
+        uint8_t* data;         // For ROM/RAM
+        size_t dataSize;
+        IOReadCallback ioRead;
+        IOWriteCallback ioWrite;
+
+        MemoryRegion() : type(UNMAPPED), startBank(0), endBank(0),
+                        startOffset(0), endOffset(0xFFFF),
+                        data(nullptr), dataSize(0) {}
+    };
+
+    std::vector<MemoryRegion> memoryMap;
+
+    // Legacy memory interface
     uint8_t* memory;
     size_t memorySize;
+
+    // Hardware pointers
+    PPU* ppuPtr;
+    APU* apuPtr;
+    Display* displayPtr;
+
+    // Memory mapping helpers
+    uint8_t readMapped(uint32_t address);
+    void writeMapped(uint32_t address, uint8_t value);
+    MemoryRegion* findRegion(uint32_t address);
 
     // State
     CPUState state;
@@ -236,11 +301,16 @@ private:
     void opCPY(uint32_t addr);
 
     // Register Transfer
+    void opTDC();
+    void opTSC();
+    void opTCS();
+    void opTAX();
+    void opTXA();
+    void opTAY();
+    void opTCD();
     void opTXY();
     void opTYA();
     void opTYX();
-    void opXBA();
-    void opXCHG();
 
     // Flags
     void opSEP();
