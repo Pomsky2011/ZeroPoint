@@ -15,6 +15,7 @@ namespace ZeroPoint {
 // Forward declarations
 class PPU;
 class Display;
+class DMAController;
 
 // DEF88186 Main CPU - Hybrid 65816/8086 16-bit processor
 // 256 opcodes, 24-bit addressing, little-endian
@@ -85,6 +86,7 @@ public:
     void setPPU(PPU* ppu) { ppuPtr = ppu; }
     void setAPU(APU* apu) { apuPtr = apu; }
     void setDisplay(Display* disp) { displayPtr = disp; }
+    void setDMA(DMAController* dma) { dmaPtr = dma; }
     void loadROM(const uint8_t* data, size_t size, uint8_t startBank);
     void allocateRAM(uint8_t startBank, uint8_t numBanks);
     void mapPPUWindow(uint8_t bank);
@@ -180,6 +182,7 @@ private:
     PPU* ppuPtr;
     APU* apuPtr;
     Display* displayPtr;
+    DMAController* dmaPtr;
 
     // Memory mapping helpers
     uint8_t readMapped(uint32_t address);

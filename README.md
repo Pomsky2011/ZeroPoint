@@ -8,8 +8,17 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 
 ## Features
 
-### DEF88186 Main CPU ✨ NEW!
-- **Hybrid 65C816/8086 16-bit processor** - System master controller
+### System Clock Synchronization
+- **Master Clock**: 64 MHz (PPU pixel clock)
+- **Integer-based**: Deterministic 16-cycle execution pattern
+- **PPU**: 64 MHz (every cycle) - Graphics microcode
+- **DMA**: 32 MHz (every 2 cycles) - Memory transfers
+- **CPU**: 16 MHz (every 4 cycles) - System master
+- **APU**: 4 MHz (every 16 cycles) - Audio synthesis
+- **Display**: 64 MHz (every cycle) - Video output
+
+### DEF88186 Main CPU ✨
+- **Hybrid 65C816/8086 16-bit processor** @ 16 MHz
 - **ALL 256 opcodes implemented** - Production ready!
 - **24-bit addressing** - 16 MB addressable (256 banks × 64 KB)
 - **8/16-bit modes** - Configurable via M and X flags
@@ -23,24 +32,34 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - Test suite: 5/5 tests passing ✅
 
 ### PPU (Picture Processing Unit)
-- **Microcode-based graphics processor** - Program your own rendering pipeline
-- **64 MHz execution**, 1 instruction per cycle
+- **Microcode-based graphics processor** @ 64 MHz
+- **1 instruction per cycle** - 64 million instructions/second
 - **47 instructions** (4-bit opcode + extended instruction sets)
 - **256×256 display** with dual color modes (16-bit/32-bit RGBA)
 - **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation
-- **Video Output Coprocessor (VOC)** - 16 hardware registers for display control ✨ NEW!
+- **Video Output Coprocessor (VOC)** - 16 hardware registers for display control ✨
 - **Tile system** - 8×8 pixel tiles, 256 tiles max, DIY placement with translucency
 - **Interrupts** - V-Blank and H-Blank with automatic stack management
 - **64 × 16-bit registers** with special registers (PC, DP, SP)
 
 ### APU (Audio Processing Unit)
-- **8-bit RISC processor** @ 4.2 MHz, 4 cycles per instruction
+- **8-bit RISC processor** @ 4 MHz (1.0 MIPS)
+- **4 cycles per instruction** - 1 million instructions/second
 - **47 instructions** (5-bit opcode + 11-bit operands)
 - **16-bit stack** with push/pop operations and function calls
 - **Up to 256 × 8-bit registers** + special registers (PC, SP, RP, DP, DB, BF)
 - **MMP** - Music Mixing Processor for 16 stereo channels
 - **SST** - Sample Storage System with looping and effects
 - **64 KiB addressable memory** + 448 KiB banked ROM
+
+### DMA Controller ✅ COMPLETE!
+- **16 independent channels** @ 32 MHz
+- **4 transfer modes** - DataCopy (3 cyc/byte), ConstCopy (1 cyc/byte), RepeatTransfer (3 cyc/byte), ConstRepeat (2 cyc/byte)
+- **Max 2 channels active** - Simultaneous transfers with automatic queueing
+- **Interrupt-aware** - Pauses during CPU interrupts, resumes automatically
+- **I/O registers** - Full status monitoring at $D80020-$D8002F
+- **Integrated** - Connected to CPU memory system with callbacks
+- Test suite: 7/7 tests passing ✅
 
 ### Development Tools
 - **cpuasm** - DEF88186 CPU assembler ✨ NEW!
@@ -64,10 +83,12 @@ make -j4
 ### Executables
 - `bin/zeropoint_sdl` - SDL frontend
 - `bin/zeropoint_qt` - Qt frontend
-- `bin/test_cpu` - **DEF88186 CPU interpreter test** ✨ NEW!
+- `bin/test_cpu` - DEF88186 CPU interpreter test
+- `bin/test_ppu` - PPU microcode test suite
+- `bin/test_apu <program.bin>` - APU program tester
+- `bin/test_dma` - **DMA controller test suite** ✨ NEW!
 - `bin/run_demo <demo.bin>` - Run PPU demo with SDL window
 - `bin/test_demo <demo.bin>` - Run PPU demo headless (testing)
-- `bin/test_apu <program.bin>` - Run APU program headless
 - `bin/run_apu_demo <program.bin>` - Run APU program with audio output
 
 ## Creating Demos
@@ -126,6 +147,8 @@ cd ../ZeroPoint/build
 **PPU**: Display system, tile system, interrupts, microcode execution, and VOC (Video Output Coprocessor) implemented. Loop bug fixed - all core features operational.
 
 **APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 stereo channels) all implemented. SST header bug fixed - clean audio playback confirmed.
+
+**DMA**: ✅ **COMPLETE!** All 4 transfer modes implemented with 16-channel support. Fully integrated with CPU memory system and interrupt handling. Comprehensive test suite (7/7 passing).
 
 ## License
 

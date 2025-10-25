@@ -4,6 +4,7 @@
 #include "cpu.h"
 #include "ppu.h"
 #include "apu.h"
+#include "dma.h"
 #include "display.h"
 #include "rom.h"
 #include <cstdint>
@@ -32,11 +33,13 @@ public:
     CPU& getCPU() { return cpu; }
     PPU& getPPU() { return ppu; }
     APU& getAPU() { return apu; }
+    DMAController& getDMA() { return dma; }
     Display& getDisplay() { return display; }
 
     const CPU& getCPU() const { return cpu; }
     const PPU& getPPU() const { return ppu; }
     const APU& getAPU() const { return apu; }
+    const DMAController& getDMA() const { return dma; }
     const Display& getDisplay() const { return display; }
 
     // ROM information
@@ -57,7 +60,13 @@ private:
     CPU cpu;
     PPU ppu;
     APU apu;
+    DMAController dma;
     Display display;
+
+    // Static wrappers for DMA callbacks (need to access CPU instance)
+    static uint8_t dmaReadCallback(uint32_t address);
+    static void dmaWriteCallback(uint32_t address, uint8_t value);
+    static System* currentSystem;  // Pointer to current system for callbacks
 
     // ROM information
     bool romLoaded;
@@ -67,17 +76,14 @@ private:
 
     // Cycle synchronization
     uint64_t masterCycleCount;
-    uint64_t cpuCycleAccum;
-    uint64_t ppuCycleAccum;
-    uint64_t apuCycleAccum;
-    uint64_t displayCycleAccum;
 
-    // Clock ratios (cycles per master clock)
-    // Master clock = 64 MHz (PPU speed)
-    static constexpr double CPU_RATIO = 1.0;     // CPU @ 64 MHz (placeholder - adjust as needed)
-    static constexpr double PPU_RATIO = 1.0;     // PPU @ 64 MHz
-    static constexpr double APU_RATIO = 0.065625; // APU @ 4.2 MHz (64/15.238)
-    static constexpr double DISPLAY_RATIO = 1.0; // Display ticked every pixel clock
+    // Clock cycle pattern (repeats every 16 master cycles)
+    // Cycle 0: PPU, Display
+    // Cycle 1: PPU, DMA, Display
+    // Cycle 2: PPU, Display
+    // Cycle 3: PPU, CPU, DMA, Display
+    // ... pattern repeats ...
+    // Cycle 15: PPU, CPU, DMA, APU, Display
 
     // Interrupt state
     bool vblankIRQEnabled;

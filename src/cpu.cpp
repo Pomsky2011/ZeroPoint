@@ -1,6 +1,7 @@
 #include "cpu.h"
 #include "ppu.h"
 #include "apu.h"
+#include "dma.h"
 #include "display.h"
 #include <cstring>
 #include <stdexcept>
@@ -11,7 +12,7 @@ CPU::CPU()
     : A(0), X(0), Y(0), SP(0x01FF), D(0), PC(0), PB(0), DB(0),
       loopCounter(0), loopStart(0),
       memory(nullptr), memorySize(0),
-      ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr),
+      ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr),
       state(CPUState::Running),
       cycleCount(0), instructionCount(0)
 {
@@ -2032,10 +2033,72 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // 3. DMA CONTROL BLOCK ($D80020-$D8002F, 16 bytes)
     // ========================================================================
-    // Note: DMA controller not yet integrated - placeholder for now
+    // Write-only: Write 9 bytes to $D80020-$D80028 to configure DMA
+    // Read-only: Status and channel information
+    static uint8_t dmaConfigBuffer[9] = {0};
+    static uint8_t dmaConfigIndex = 0;
+
     registerIORegion(IO_BANK, 0x0020, 16,
-        [](uint16_t offset) -> uint8_t { return 0x00; },
-        [](uint16_t offset, uint8_t value) { /* TODO: DMA */ }
+        // Read handler
+        [this](uint16_t offset) -> uint8_t {
+            if (!dmaPtr) return 0xFF;
+
+            switch (offset) {
+                case 0x00: // DMA config buffer index (returns current write position)
+                    return dmaConfigIndex;
+
+                case 0x01: { // DMA status byte (QQQQ AAAA)
+                    uint8_t queued = (dmaPtr->getQueuedCount() & 0x0F);
+                    uint8_t active = (dmaPtr->getActiveChannelCount() & 0x0F);
+                    return (queued << 4) | active;
+                }
+
+                case 0x02: // DMA interrupt status (1 if paused, 0 if running)
+                    return dmaPtr->isInterruptActive() ? 0x01 : 0x00;
+
+                // Channels 0-15 status (0x03-0x12, but we have 16 bytes total)
+                case 0x03: case 0x04: case 0x05: case 0x06:
+                case 0x07: case 0x08: case 0x09: case 0x0A:
+                case 0x0B: case 0x0C: case 0x0D: case 0x0E: {
+                    uint8_t channel = offset - 0x03;
+                    DMAState state = dmaPtr->getChannelState(channel);
+                    return static_cast<uint8_t>(state);
+                }
+
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler
+        [this](uint16_t offset, uint8_t value) {
+            if (!dmaPtr) return;
+
+            switch (offset) {
+                case 0x00: // Reset config buffer
+                    dmaConfigIndex = 0;
+                    memset(dmaConfigBuffer, 0, sizeof(dmaConfigBuffer));
+                    break;
+
+                // $D80020-$D80028: 9-byte DMA configuration
+                case 0x01: case 0x02: case 0x03: case 0x04:
+                case 0x05: case 0x06: case 0x07: case 0x08: {
+                    // Write to config buffer
+                    if (dmaConfigIndex < 9) {
+                        dmaConfigBuffer[dmaConfigIndex++] = value;
+
+                        // If we've written all 9 bytes, queue the DMA transfer
+                        if (dmaConfigIndex == 9) {
+                            dmaPtr->queueDMA(dmaConfigBuffer);
+                            dmaConfigIndex = 0;  // Auto-reset for next transfer
+                        }
+                    }
+                    break;
+                }
+
+                default:
+                    break;
+            }
+        }
     );
 
     // ========================================================================

@@ -33,7 +33,8 @@ A fantasy console featuring custom PPU (graphics), APU (audio), and DEF88186 CPU
   - Multiply (darken), Average (50/50), Subtract, Add (lighten)
 
 ### APU (Audio Processing Unit)
-- **8-bit RISC @ 4.2 MHz**, 4 CPI (1.048 MIPS)
+- **Clock**: 4 MHz (ticks every 16 master cycles), 4 CPI (1.0 MIPS)
+- **8-bit RISC architecture**
 - **47 instructions** (5-bit opcode + 11-bit operands)
 - **Memory**: 64 KiB + 448 KiB banked AROM
 - **Registers**: Up to 256 8-bit + special (PC, RP, DP, DB, BF, SP)
@@ -43,6 +44,7 @@ A fantasy console featuring custom PPU (graphics), APU (audio), and DEF88186 CPU
 - **SST**: Sample storage with looping
 
 ### DEF88186 Main CPU
+- **Clock**: 16 MHz (ticks every 4 master cycles)
 - **Hybrid 65C816/8086 16-bit** (system master)
 - **256 opcodes**: 65816 base + 8086-inspired extensions
 - **Address Bus**: 24-bit (16 MB via banking)
@@ -50,7 +52,43 @@ A fantasy console featuring custom PPU (graphics), APU (audio), and DEF88186 CPU
 - **Registers**: A (16/8-bit), X, Y, SP, D, PC, PB, DB, P (NV-MXDIZC)
 - **65816 Features**: Full addressing modes, 24-bit long addressing, stack-relative, block moves, BCD
 - **8086 Extensions**: LOOP/LPEND, MUL, DIV, XCHG, SHL/SHR, SDB, CALL/RET
-- **Role**: Controls all system resources (PPU, APU, memory, I/O)
+- **Role**: Controls all system resources (PPU, APU, DMA, memory, I/O)
+
+### DMA Controller
+- **Clock**: 32 MHz (ticks every 2 master cycles)
+- **16 independent channels**, max 2 active simultaneously
+- **4 transfer modes**: DataCopy (3 cyc/byte), ConstCopy (1 cyc/byte), RepeatTransfer (3 cyc/byte), ConstRepeat (2 cyc/byte)
+- **Configurable**: 9-byte configuration per transfer
+- **Interrupt handling**: Pauses all DMA during interrupts
+
+### System Clock Synchronization
+- **Master Clock**: 64 MHz (PPU pixel clock)
+- **Integer-based**: Deterministic 16-cycle pattern (no fractional accumulators)
+
+**Execution Pattern** (repeats every 16 master cycles):
+- **Cycle 0**: PPU, Display
+- **Cycle 1**: PPU, DMA, Display
+- **Cycle 2**: PPU, Display
+- **Cycle 3**: PPU, CPU, DMA, Display
+- **Cycle 4**: PPU, Display
+- **Cycle 5**: PPU, DMA, Display
+- **Cycle 6**: PPU, Display
+- **Cycle 7**: PPU, CPU, DMA, Display
+- **Cycle 8**: PPU, Display
+- **Cycle 9**: PPU, DMA, Display
+- **Cycle 10**: PPU, Display
+- **Cycle 11**: PPU, CPU, DMA, Display
+- **Cycle 12**: PPU, Display
+- **Cycle 13**: PPU, DMA, Display
+- **Cycle 14**: PPU, Display
+- **Cycle 15**: PPU, CPU, DMA, APU, Display
+
+**Effective Frequencies**:
+- **PPU**: 64 MHz (every cycle)
+- **Display**: 64 MHz (every cycle)
+- **DMA**: 32 MHz (every 2 cycles: 1, 3, 5, 7, 9, 11, 13, 15)
+- **CPU**: 16 MHz (every 4 cycles: 3, 7, 11, 15)
+- **APU**: 4 MHz (every 16 cycles: 15)
 
 ## Memory Map (PPU)
 
@@ -321,14 +359,18 @@ system.run(1000000);  // Run 1M cycles
 - ✅ **System Integration**: Unified System class with synchronized execution
 - ✅ **Interrupt Routing**: V-Blank/H-Blank IRQ/NMI support with proper 65816 sequences
 - ✅ **Development Tools**: 5 disassemblers/analyzers (cpudisasm, ppudisasm, apudisasm, rominspect, hexview)
+- ✅ **DMA Controller**: Full implementation with 4 transfer modes, 16 channels, interrupt handling
+  - DataCopy (3 cyc/byte), ConstCopy (1 cyc/byte), RepeatTransfer (3 cyc/byte), ConstRepeat (2 cyc/byte)
+  - Max 2 concurrent channels, automatic queueing
+  - I/O registers at $D80020-$D8002F with status monitoring
+  - Integrated with CPU memory system and interrupt handling
+  - Comprehensive test suite (7 tests, all passing)
 
 ### In Progress
-- ⏳ Extended test suites
 - ⏳ Boot ROM development
 
 ### Planned
 - 🔲 Debugger with register inspection
-- 🔲 DMA-based tile copying
 - 🔲 Hardware scrolling
 - 🔲 Window scaling options
 

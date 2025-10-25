@@ -4,18 +4,24 @@
 
 namespace ZeroPoint {
 
+// Static member initialization
+System* System::currentSystem = nullptr;
+
 System::System()
-    : cpu(), ppu(), apu(), display(),
+    : cpu(), ppu(), apu(), dma(), display(),
       romLoaded(false), entryPoint(0),
       masterCycleCount(0),
-      cpuCycleAccum(0), ppuCycleAccum(0), apuCycleAccum(0), displayCycleAccum(0),
       vblankIRQEnabled(false), hblankIRQEnabled(false),
       lastVBlank(false), lastHBlank(false)
 {
+    // Set current system for DMA callbacks
+    currentSystem = this;
+
     // Connect components
     cpu.setPPU(&ppu);
     cpu.setAPU(&apu);
     cpu.setDisplay(&display);
+    cpu.setDMA(&dma);
     ppu.setDisplay(&display);
 
     // Setup memory map
@@ -32,12 +38,16 @@ System::System()
     // Setup I/O registers at bank $D8
     cpu.setupIORegisters();
 
+    // Connect DMA to memory system
+    dma.setMemoryCallbacks(dmaReadCallback, dmaWriteCallback);
+
     std::cout << "ZeroPoint System initialized\n";
     std::cout << "  Work RAM:   Banks $80-$9F (2 MB)\n";
     std::cout << "  Shadow RAM: Banks $BE-$BF (128 KB)\n";
     std::cout << "  PPU Window: Bank $B0\n";
     std::cout << "  APU Window: Bank $A0\n";
     std::cout << "  I/O Regs:   Bank $D8\n";
+    std::cout << "  DMA:        16 channels, 32 MHz\n";
 }
 
 System::~System() {
@@ -47,12 +57,9 @@ void System::reset() {
     cpu.reset();
     ppu.reset();
     apu.reset();
+    dma.reset();
 
     masterCycleCount = 0;
-    cpuCycleAccum = 0;
-    ppuCycleAccum = 0;
-    apuCycleAccum = 0;
-    displayCycleAccum = 0;
 
     lastVBlank = false;
     lastHBlank = false;
@@ -113,34 +120,35 @@ void System::run(uint64_t cycles) {
 }
 
 void System::tickComponents() {
-    // Accumulate fractional cycles for each component
-    cpuCycleAccum += CPU_RATIO * 1000;     // *1000 for fixed-point
-    ppuCycleAccum += PPU_RATIO * 1000;
-    apuCycleAccum += APU_RATIO * 1000;
-    displayCycleAccum += DISPLAY_RATIO * 1000;
+    // Integer-based cycle pattern (repeats every 16 master cycles)
+    // Each component runs on specific cycles:
+    // - PPU:     every cycle (0-15)
+    // - Display: every cycle (0-15)
+    // - DMA:     every 2 cycles (1, 3, 5, 7, 9, 11, 13, 15)
+    // - CPU:     every 4 cycles (3, 7, 11, 15)
+    // - APU:     every 16 cycles (15)
 
-    // Tick CPU when accumulated >= 1000
-    if (cpuCycleAccum >= 1000) {
+    int cyclePhase = masterCycleCount % 16;
+
+    // PPU runs every cycle
+    ppu.tick();
+
+    // Display ticks every cycle
+    display.tick();
+
+    // DMA runs every 2 cycles (on odd cycles)
+    if (cyclePhase % 2 == 1) {
+        dma.tick();
+    }
+
+    // CPU runs every 4 cycles (on cycles 3, 7, 11, 15)
+    if (cyclePhase % 4 == 3) {
         cpu.step();
-        cpuCycleAccum -= 1000;
     }
 
-    // Tick PPU when accumulated >= 1000
-    if (ppuCycleAccum >= 1000) {
-        ppu.tick();
-        ppuCycleAccum -= 1000;
-    }
-
-    // Tick APU when accumulated >= 1000
-    if (apuCycleAccum >= 1000) {
+    // APU runs every 16 cycles (on cycle 15)
+    if (cyclePhase == 15) {
         apu.step();
-        apuCycleAccum -= 1000;
-    }
-
-    // Tick Display when accumulated >= 1000
-    if (displayCycleAccum >= 1000) {
-        display.tick();
-        displayCycleAccum -= 1000;
     }
 
     // Update PPU blank status from display
@@ -155,16 +163,39 @@ void System::checkInterrupts() {
     if (vblankIRQEnabled && currentVBlank && !lastVBlank) {
         // Trigger CPU IRQ for V-Blank
         cpu.triggerIRQ();
+        // Pause DMA during interrupt
+        dma.triggerInterrupt();
     }
 
     // Detect H-Blank rising edge
     if (hblankIRQEnabled && currentHBlank && !lastHBlank) {
         // Trigger CPU IRQ for H-Blank
         cpu.triggerIRQ();
+        // Pause DMA during interrupt
+        dma.triggerInterrupt();
+    }
+
+    // Clear DMA interrupt flag when blanking periods end
+    if (!currentVBlank && !currentHBlank && (lastVBlank || lastHBlank)) {
+        dma.clearInterrupt();
     }
 
     lastVBlank = currentVBlank;
     lastHBlank = currentHBlank;
+}
+
+// Static DMA callback wrappers
+uint8_t System::dmaReadCallback(uint32_t address) {
+    if (currentSystem) {
+        return currentSystem->cpu.readByte(address);
+    }
+    return 0xFF;
+}
+
+void System::dmaWriteCallback(uint32_t address, uint8_t value) {
+    if (currentSystem) {
+        currentSystem->cpu.writeByte(address, value);
+    }
 }
 
 } // namespace ZeroPoint
