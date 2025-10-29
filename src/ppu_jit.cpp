@@ -1,8 +1,26 @@
 #include "ppu_jit.h"
 #include "ppu.h"
-#include <sys/mman.h>
 #include <cstring>
 #include <iostream>
+
+// Platform-specific includes
+#if defined(_WIN32)
+    #include <windows.h>
+#else
+    #include <sys/mman.h>
+    #include <unistd.h>
+#endif
+
+// Handle MAP_ANONYMOUS vs MAP_ANON differences across platforms
+#if !defined(_WIN32)
+    #if defined(MAP_ANONYMOUS)
+        #define ZEROPOINT_MAP_ANON MAP_ANONYMOUS
+    #elif defined(MAP_ANON)
+        #define ZEROPOINT_MAP_ANON MAP_ANON
+    #else
+        #error "Neither MAP_ANONYMOUS nor MAP_ANON is defined"
+    #endif
+#endif
 
 namespace ZeroPoint {
 
@@ -37,17 +55,28 @@ const char* PPUJIT::getArchitecture() {
 }
 
 void* PPUJIT::allocateExecutable(size_t size) {
+#if defined(_WIN32)
+    // Windows: use VirtualAlloc
+    void* ptr = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    return ptr;
+#else
+    // POSIX: use mmap
     void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                     MAP_PRIVATE | ZEROPOINT_MAP_ANON, -1, 0);
     if (ptr == MAP_FAILED) {
         return nullptr;
     }
     return ptr;
+#endif
 }
 
 void PPUJIT::freeExecutable(void* ptr, size_t size) {
     if (ptr) {
+#if defined(_WIN32)
+        VirtualFree(ptr, 0, MEM_RELEASE);
+#else
         munmap(ptr, size);
+#endif
     }
 }
 
@@ -233,11 +262,20 @@ JITBlock* PPUJIT::compileBlock(PPU* ppu, uint16_t startAddr, size_t maxInstructi
     memcpy(execMem, code.data(), code.size());
 
     // Make it executable
+#if defined(_WIN32)
+    DWORD oldProtect;
+    if (!VirtualProtect(execMem, code.size(), PAGE_EXECUTE_READ, &oldProtect)) {
+        std::cerr << "JIT: Failed to set memory protection\n";
+        freeExecutable(execMem, code.size());
+        return nullptr;
+    }
+#else
     if (mprotect(execMem, code.size(), PROT_READ | PROT_EXEC) != 0) {
         std::cerr << "JIT: Failed to set memory protection\n";
         freeExecutable(execMem, code.size());
         return nullptr;
     }
+#endif
 
     std::cerr << "JIT: Memory protection set to RX\n";
 

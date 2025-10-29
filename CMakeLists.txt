@@ -4,8 +4,35 @@ project(ZeroPoint VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Platform detection
+if(WIN32)
+    set(PLATFORM_WINDOWS TRUE)
+elseif(APPLE)
+    set(PLATFORM_MACOS TRUE)
+elseif(UNIX)
+    set(PLATFORM_LINUX TRUE)
+endif()
+
 # Find required packages
-find_package(SDL2 REQUIRED)
+# SDL2 - handle different platforms
+if(PLATFORM_WINDOWS)
+    # Windows: SDL2 might be manually installed or via vcpkg
+    find_package(SDL2 CONFIG QUIET)
+    if(NOT SDL2_FOUND)
+        find_package(SDL2 REQUIRED)
+    endif()
+elseif(PLATFORM_MACOS)
+    # macOS: SDL2 from Homebrew or framework
+    find_package(SDL2 QUIET)
+    if(NOT SDL2_FOUND)
+        find_library(SDL2_LIBRARIES SDL2)
+        find_path(SDL2_INCLUDE_DIRS SDL.h PATH_SUFFIXES SDL2)
+    endif()
+elseif(PLATFORM_LINUX)
+    # Linux: use pkg-config
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL2 REQUIRED sdl2)
+endif()
 
 # Try Qt6 first, fall back to Qt5
 find_package(Qt6 COMPONENTS Core Widgets QUIET)
@@ -24,6 +51,16 @@ set(CMAKE_AUTORCC ON)
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${SDL2_INCLUDE_DIRS})
+
+# Platform-specific compile options
+if(PLATFORM_WINDOWS)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_options(/W3)
+    # Enable Windows 10 SDK features
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+elseif(PLATFORM_LINUX OR PLATFORM_MACOS)
+    add_compile_options(-Wall -Wextra)
+endif()
 
 # Core emulator library
 set(CORE_SOURCES
@@ -49,7 +86,21 @@ set(CORE_HEADERS
 )
 
 add_library(zeropoint_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
-target_link_libraries(zeropoint_core ${SDL2_LIBRARIES})
+
+# Link SDL2 based on platform
+if(PLATFORM_WINDOWS)
+    if(TARGET SDL2::SDL2)
+        target_link_libraries(zeropoint_core SDL2::SDL2)
+    else()
+        target_link_libraries(zeropoint_core ${SDL2_LIBRARIES})
+    endif()
+elseif(PLATFORM_MACOS OR PLATFORM_LINUX)
+    target_link_libraries(zeropoint_core ${SDL2_LIBRARIES})
+    if(PLATFORM_LINUX)
+        # Linux might need additional libraries
+        target_link_libraries(zeropoint_core pthread dl)
+    endif()
+endif()
 
 # SDL frontend (old standalone version)
 add_executable(zeropoint_sdl

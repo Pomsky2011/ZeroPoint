@@ -1,0 +1,149 @@
+name: Multi-Platform Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Windows Build (x64)
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+
+    - name: Install dependencies
+      run: |
+        vcpkg install sdl2:x64-windows qt6-base:x64-windows
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+    - name: Build
+      run: |
+        cmake --build build --config Release -j
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: zeropoint-windows-x64
+        path: |
+          build/bin/Release/*.exe
+          build/bin/Release/*.dll
+        retention-days: 30
+
+  build-linux:
+    name: Linux Build (x86_64)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libsdl2-dev \
+          qt6-base-dev \
+          qt6-base-dev-tools
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: |
+        cmake --build build -j$(nproc)
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: zeropoint-linux-x86_64
+        path: build/bin/*
+        retention-days: 30
+
+  build-macos-intel:
+    name: macOS Build (Intel x86_64)
+    runs-on: macos-13  # Intel-based runner
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        brew install sdl2 qt cmake
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: |
+        cmake --build build -j$(sysctl -n hw.ncpu)
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: zeropoint-macos-intel
+        path: build/bin/*
+        retention-days: 30
+
+  build-macos-arm64:
+    name: macOS Build (Apple Silicon ARM64)
+    runs-on: macos-14  # Apple Silicon runner
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        brew install sdl2 qt cmake
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: |
+        cmake --build build -j$(sysctl -n hw.ncpu)
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: zeropoint-macos-arm64
+        path: build/bin/*
+        retention-days: 30
+
+    - name: Test JIT (ARM64)
+      run: |
+        ./build/bin/test_cpu || true
+
+  build-summary:
+    name: Build Summary
+    needs: [build-windows, build-linux, build-macos-intel, build-macos-arm64]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Check build status
+      run: |
+        echo "Build Summary:"
+        echo "Windows: ${{ needs.build-windows.result }}"
+        echo "Linux: ${{ needs.build-linux.result }}"
+        echo "macOS Intel: ${{ needs.build-macos-intel.result }}"
+        echo "macOS ARM64: ${{ needs.build-macos-arm64.result }}"

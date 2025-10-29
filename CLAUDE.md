@@ -89,11 +89,47 @@ HLT             ; Infinite loop
 
 ## Building
 
+### Quick Start
+
+**macOS** (Intel & Apple Silicon):
 ```bash
-cd ZeroPoint/build_qt && cmake .. && make
+./build-macos.sh
 ```
 
+**Linux** (x86_64 & ARM64):
+```bash
+./build-linux.sh
+```
+
+**Windows** (x64 & ARM64):
+```cmd
+build-windows.bat
+```
+
+### Manual Build
+
+**All Platforms**:
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build . -j
+```
+
+**Dependencies**:
+- **macOS**: `brew install sdl2 qt cmake`
+- **Linux** (Debian/Ubuntu): `sudo apt install libsdl2-dev qt6-base-dev cmake build-essential`
+- **Linux** (Fedora): `sudo dnf install SDL2-devel qt6-qtbase-devel cmake gcc-c++`
+- **Linux** (Arch): `sudo pacman -S sdl2 qt6-base cmake base-devel`
+- **Windows**: Install [vcpkg](https://vcpkg.io), then `vcpkg install sdl2:x64-windows qt6:x64-windows`
+
 **Executables**: `bin/run_demo`, `bin/test_*`, `bin/zeropoint_sdl`, `bin/zeropoint_qt`
+
+### Platform Support
+
+- **Windows**: x64, ARM64 (MSVC, MinGW-w64)
+- **Linux**: x86_64, ARM64/aarch64
+- **macOS**: Intel (x86_64), Apple Silicon (ARM64)
+- **JIT**: x86-64, ARM64 (experimental, use `--jit` flag)
 
 ## ZPdevtools
 
