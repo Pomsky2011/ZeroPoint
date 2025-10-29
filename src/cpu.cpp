@@ -11,6 +11,7 @@ namespace ZeroPoint {
 CPU::CPU()
     : A(0), X(0), Y(0), SP(0x01FF), D(0), PC(0), PB(0), DB(0),
       loopCounter(0), loopStart(0),
+      useMemoryMap(false),
       memory(nullptr), memorySize(0),
       ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr),
       state(CPUState::Running),
@@ -52,8 +53,8 @@ void CPU::setMemory(uint8_t* mem, size_t size) {
 
 // Memory access with 24-bit addressing
 uint8_t CPU::readByte(uint32_t address) {
-    // If memory mapping is enabled, use it
-    if (!memoryMap.empty()) {
+    // If memory mapping is enabled, use it (optimized flag check)
+    if (useMemoryMap) [[likely]] {
         return readMapped(address);
     }
 
@@ -65,8 +66,8 @@ uint8_t CPU::readByte(uint32_t address) {
 }
 
 void CPU::writeByte(uint32_t address, uint8_t value) {
-    // If memory mapping is enabled, use it
-    if (!memoryMap.empty()) {
+    // If memory mapping is enabled, use it (optimized flag check)
+    if (useMemoryMap) [[likely]] {
         writeMapped(address, value);
         return;
     }
@@ -162,28 +163,9 @@ uint32_t CPU::pull24() {
     return (hi << 16) | (mid << 8) | lo;
 }
 
-// Flag operations
-void CPU::setNZ8(uint8_t value) {
-    P.Z = (value == 0);
-    P.N = (value & 0x80) != 0;
-}
-
-void CPU::setNZ16(uint16_t value) {
-    P.Z = (value == 0);
-    P.N = (value & 0x8000) != 0;
-}
-
-void CPU::setNZC8(uint8_t value) {
-    setNZ8(value);
-}
-
-void CPU::setNZC16(uint16_t value) {
-    setNZ16(value);
-}
-
 // Main execution
 void CPU::step() {
-    if (state != CPUState::Running) {
+    if (state != CPUState::Running) [[unlikely]] {
         return;
     }
 
@@ -1789,6 +1771,7 @@ void CPU::loadROM(const uint8_t* data, size_t size, uint8_t startBank) {
     region.dataSize = size;
 
     memoryMap.push_back(region);
+    useMemoryMap = true;  // Enable memory mapping
 }
 
 void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
@@ -1806,6 +1789,7 @@ void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
     region.dataSize = ramSize;
 
     memoryMap.push_back(region);
+    useMemoryMap = true;  // Enable memory mapping
 }
 
 void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
@@ -1820,6 +1804,7 @@ void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
     region.ioWrite = writeFn;
 
     memoryMap.push_back(region);
+    useMemoryMap = true;  // Enable memory mapping
 }
 
 void CPU::mapPPUWindow(uint8_t bank) {
@@ -1831,6 +1816,7 @@ void CPU::mapPPUWindow(uint8_t bank) {
     region.endOffset = 0xFFFF;  // Full 64 KB
 
     memoryMap.push_back(region);
+    useMemoryMap = true;  // Enable memory mapping
 }
 
 void CPU::mapAPUWindow(uint8_t bank) {
@@ -1842,6 +1828,7 @@ void CPU::mapAPUWindow(uint8_t bank) {
     region.endOffset = 0xFFFF;  // Full 64 KB
 
     memoryMap.push_back(region);
+    useMemoryMap = true;  // Enable memory mapping
 }
 
 // Setup all I/O registers at Bank $D8
@@ -2102,7 +2089,83 @@ void CPU::setupIORegisters() {
     );
 
     // ========================================================================
-    // 4. DISPLAY STATUS BLOCK ($D80040-$D80047, 8 bytes, read-only)
+    // 4. PLAYER PORTS & DEBUG INTERFACE ($D80030-$D8003F, 16 bytes)
+    // ========================================================================
+    // Port 1: $D80030-$D80037 (Player 1 controller)
+    // Port 2: $D80038-$D8003F (Player 2 / Debug serial interface)
+    static uint8_t p2_tx_buffer[256];
+    static uint8_t p2_rx_buffer[256];
+    static uint8_t p2_tx_head = 0;
+    static uint8_t p2_tx_tail = 0;
+    static uint8_t p2_rx_head = 0;
+    static uint8_t p2_rx_tail = 0;
+
+    registerIORegion(IO_BANK, 0x0030, 16,
+        // Read handler
+        [this](uint16_t offset) -> uint8_t {
+            switch (offset) {
+                // Port 1 (Controller)
+                case 0x00: // P1_BUTTONS_LO (A, B, Select, Start, etc.)
+                    return 0x00;  // Placeholder - no input yet
+                case 0x01: // P1_BUTTONS_HI
+                    return 0x00;
+
+                // Port 2 (Debug Interface)
+                case 0x08: { // P2_STATUS
+                    uint8_t status = 0x00;
+                    // Bit 0: RX_READY (data available to read)
+                    if (p2_rx_head != p2_rx_tail) {
+                        status |= 0x01;
+                    }
+                    // Bit 1: TX_EMPTY (can write)
+                    uint8_t next_head = (p2_tx_head + 1) & 0xFF;
+                    if (next_head != p2_tx_tail) {
+                        status |= 0x02;
+                    }
+                    return status;
+                }
+
+                case 0x09: { // P2_DATA (read)
+                    if (p2_rx_head != p2_rx_tail) {
+                        uint8_t data = p2_rx_buffer[p2_rx_tail];
+                        p2_rx_tail = (p2_rx_tail + 1) & 0xFF;
+                        return data;
+                    }
+                    return 0x00;
+                }
+
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler
+        [this](uint16_t offset, uint8_t value) {
+            switch (offset) {
+                case 0x09: { // P2_DATA (write)
+                    uint8_t next_head = (p2_tx_head + 1) & 0xFF;
+                    if (next_head != p2_tx_tail) {
+                        p2_tx_buffer[p2_tx_head] = value;
+                        p2_tx_head = next_head;
+                    }
+                    break;
+                }
+
+                case 0x0A: // P2_CTRL
+                    if (value & 0x01) {
+                        // Clear buffers
+                        p2_tx_head = p2_tx_tail = 0;
+                        p2_rx_head = p2_rx_tail = 0;
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    );
+
+    // ========================================================================
+    // 5. DISPLAY STATUS BLOCK ($D80040-$D80047, 8 bytes, read-only)
     // ========================================================================
     registerIORegion(IO_BANK, 0x0040, 8,
         // Read handler
@@ -2139,6 +2202,33 @@ void CPU::setupIORegisters() {
         },
         // Write handler (read-only, writes ignored)
         [](uint16_t offset, uint8_t value) { /* Read-only block */ }
+    );
+
+    // ========================================================================
+    // 6. SYSTEM CONTROL ($D80048-$D8004F, 8 bytes)
+    // ========================================================================
+    static bool devModeFlag = false;
+
+    registerIORegion(IO_BANK, 0x0048, 8,
+        // Read handler
+        [](uint16_t offset) -> uint8_t {
+            switch (offset) {
+                case 0x00: // DEV_MODE flag
+                    return devModeFlag ? 0x01 : 0x00;
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler
+        [](uint16_t offset, uint8_t value) {
+            switch (offset) {
+                case 0x00: // DEV_MODE flag (set by emulator, read by boot ROM)
+                    devModeFlag = (value & 0x01) != 0;
+                    break;
+                default:
+                    break;
+            }
+        }
     );
 }
 

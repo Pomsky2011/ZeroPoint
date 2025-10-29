@@ -18,15 +18,15 @@ Display::~Display() {
 }
 
 void Display::tick() {
-    // Advance pixel position
+    // Advance pixel position (hot path optimization)
     currentPixel++;
 
-    if (currentPixel >= TOTAL_PIXELS_PER_LINE) {
+    if (currentPixel >= TOTAL_PIXELS_PER_LINE) [[unlikely]] {
         // H-Blank: Move to next scanline
         currentPixel = 0;
         currentScanline++;
 
-        if (currentScanline >= TOTAL_SCANLINES) {
+        if (currentScanline >= TOTAL_SCANLINES) [[unlikely]] {
             // Wrap back to scanline 0 (start of new frame)
             currentScanline = 0;
             bufferStartBank = 0;
@@ -34,45 +34,29 @@ void Display::tick() {
             return;
         }
 
-        // H-Blank bank rolling logic
-        if (currentScanline > 0 && currentScanline < VISIBLE_SCANLINES) {
-            if (renderMode == RenderMode::RGBA32) {
+        // H-Blank bank rolling logic (only during visible scanlines)
+        if (currentScanline > 0 && currentScanline < VISIBLE_SCANLINES) [[likely]] {
+            if (renderMode == RenderMode::RGBA32) [[unlikely]] {
                 // 32-bit mode: Roll 2 banks per H-Blank
                 // Each scanline takes 1 bank, so roll 2 banks (= 2 scanlines)
                 clearBank(bufferStartBank);
-                bufferStartBank = (bufferStartBank + 1) % FB_BANKS;
+                bufferStartBank = (bufferStartBank + 1) & 0x7;  // Optimize modulo 8
                 clearBank(bufferStartBank);
-                bufferStartBank = (bufferStartBank + 1) % FB_BANKS;
+                bufferStartBank = (bufferStartBank + 1) & 0x7;  // Optimize modulo 8
                 scanlinesInCurrentBank = 0;
             } else {
                 // 16-bit mode: Roll 1 bank per H-Blank
                 // Each bank holds 2 scanlines, so increment counter
                 scanlinesInCurrentBank++;
-                if (scanlinesInCurrentBank >= 2) {
+                if (scanlinesInCurrentBank >= 2) [[unlikely]] {
                     // Bank is full, roll to next bank
                     clearBank(bufferStartBank);
-                    bufferStartBank = (bufferStartBank + 1) % FB_BANKS;
+                    bufferStartBank = (bufferStartBank + 1) & 0x7;  // Optimize modulo 8
                     scanlinesInCurrentBank = 0;
                 }
             }
         }
     }
-}
-
-bool Display::isVisibleArea() const {
-    // Scanlines 1-256 are visible, pixels 0-255 are visible
-    return (currentScanline >= 1 && currentScanline <= 256) &&
-           (currentPixel < VISIBLE_PIXELS_PER_LINE);
-}
-
-bool Display::isVBlank() const {
-    // Scanline 0 (preline) and scanlines 257-260 are VBlank
-    return (currentScanline == 0) || (currentScanline >= 257 && currentScanline <= 260);
-}
-
-bool Display::isHBlank() const {
-    // Pixels 256-339 are HBlank
-    return currentPixel >= VISIBLE_PIXELS_PER_LINE;
 }
 
 void Display::setRenderMode(RenderMode mode) {

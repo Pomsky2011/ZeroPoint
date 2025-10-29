@@ -91,38 +91,42 @@ void PPU::start() {
 }
 
 void PPU::tick() {
-    if (state != PPUState::Running) {
+    if (state != PPUState::Running) [[unlikely]] {
         return;
     }
 
-    // Check for VBlank interrupt (R59 + VOC bit 4)
-    bool vblankIntEnabled = (vocRegisters.renderModeControl & VOC_VBLANK_INT) != 0;
-    if (vblank && vblankIntEnabled && registers[REG_VBLANK_INT] != 0) {
-        // Push return address onto stack (little-endian)
-        // Stack grows downward, so decrement BEFORE writing
-        uint16_t returnAddr = executionPointer;
-        registers[REG_SP] -= 2;
-        memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
-        memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
+    // Check for VBlank interrupt (R59 + VOC bit 4) - optimized with branch hints
+    if (vblank) [[unlikely]] {
+        bool vblankIntEnabled = (vocRegisters.renderModeControl & VOC_VBLANK_INT) != 0;
+        if (vblankIntEnabled && registers[REG_VBLANK_INT] != 0) [[likely]] {
+            // Push return address onto stack (little-endian)
+            // Stack grows downward, so decrement BEFORE writing
+            uint16_t returnAddr = executionPointer;
+            registers[REG_SP] -= 2;
+            memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
+            memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
 
-        // Jump to interrupt handler
-        executionPointer = registers[REG_VBLANK_INT];
-        return;
+            // Jump to interrupt handler
+            executionPointer = registers[REG_VBLANK_INT];
+            return;
+        }
     }
 
-    // Check for HBlank interrupt (R60 + VOC bit 5)
-    bool hblankIntEnabled = (vocRegisters.renderModeControl & VOC_HBLANK_INT) != 0;
-    if (hblank && hblankIntEnabled && registers[REG_HBLANK_INT] != 0) {
-        // Push return address onto stack (little-endian)
-        // Stack grows downward, so decrement BEFORE writing
-        uint16_t returnAddr = executionPointer;
-        registers[REG_SP] -= 2;
-        memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
-        memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
+    // Check for HBlank interrupt (R60 + VOC bit 5) - optimized with branch hints
+    if (hblank) [[unlikely]] {
+        bool hblankIntEnabled = (vocRegisters.renderModeControl & VOC_HBLANK_INT) != 0;
+        if (hblankIntEnabled && registers[REG_HBLANK_INT] != 0) [[likely]] {
+            // Push return address onto stack (little-endian)
+            // Stack grows downward, so decrement BEFORE writing
+            uint16_t returnAddr = executionPointer;
+            registers[REG_SP] -= 2;
+            memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
+            memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
 
-        // Jump to interrupt handler
-        executionPointer = registers[REG_HBLANK_INT];
-        return;
+            // Jump to interrupt handler
+            executionPointer = registers[REG_HBLANK_INT];
+            return;
+        }
     }
 
     // Execute 1 instruction per cycle

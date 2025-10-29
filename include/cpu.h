@@ -173,6 +173,7 @@ private:
     };
 
     std::vector<MemoryRegion> memoryMap;
+    bool useMemoryMap;  // Optimization: avoid checking vector size every access
 
     // Legacy memory interface
     uint8_t* memory;
@@ -226,11 +227,24 @@ private:
     uint16_t pull16();
     uint32_t pull24();
 
-    // Flag operations
-    void setNZ8(uint8_t value);
-    void setNZ16(uint16_t value);
-    void setNZC8(uint8_t value);
-    void setNZC16(uint16_t value);
+    // Flag operations (inlined for performance)
+    inline void setNZ8(uint8_t value) {
+        P.Z = (value == 0);
+        P.N = (value & 0x80) != 0;
+    }
+
+    inline void setNZ16(uint16_t value) {
+        P.Z = (value == 0);
+        P.N = (value & 0x8000) != 0;
+    }
+
+    inline void setNZC8(uint8_t value) {
+        setNZ8(value);
+    }
+
+    inline void setNZC16(uint16_t value) {
+        setNZ16(value);
+    }
 
     // Instruction implementations (organized by category)
 
