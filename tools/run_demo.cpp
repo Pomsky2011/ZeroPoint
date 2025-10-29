@@ -9,6 +9,7 @@
 #include <fstream>
 #include <vector>
 #include <cstring>
+#include <chrono>
 
 using namespace ZeroPoint;
 
@@ -89,6 +90,12 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "Running demo... Press ESC to quit\n";
+    std::cout << "JIT mode: " << (useJIT && jitBlock ? "ENABLED" : "DISABLED") << "\n\n";
+
+    // Performance tracking
+    auto startTime = std::chrono::high_resolution_clock::now();
+    int lastReportCycles = 0;
+    auto lastReportTime = startTime;
 
     // Main loop
     int cycles = 0;
@@ -100,33 +107,40 @@ int main(int argc, char* argv[]) {
     // At 64 MHz: 88,740 cycles = ~1.387 ms per frame
 
     int displayCycleCounter = 0;
-    const int CYCLES_PER_DISPLAY_TICK = 13;  // Update display every 13 PPU cycles (NTSC timing: 67.1MHz PPU / 5.3MHz pixel clock)
+    const int CYCLES_PER_DISPLAY_TICK = 13;  // Display ticks at 5.3 MHz (64 MHz / 13)
 
     int renderCycleCounter = 0;
     const int CYCLES_PER_RENDER = 88740;  // Render once per NTSC frame (60 Hz)
 
     while (!window.shouldClose() && ppu.getState() == PPUState::Running && cycles < MAX_CYCLES) {
-        // Execute PPU (JIT or interpreter)
-        if (useJIT && jitBlock) {
-            // Execute 1000 PPU cycles via JIT
-            jit.execute(jitBlock, &ppu);
-            cycles += 1000;
-            displayCycleCounter += 1000;
-            renderCycleCounter += 1000;
-        } else {
-            // Execute 1 PPU cycle via interpreter
-            ppu.tick();
-            cycles++;
-            displayCycleCounter++;
-            renderCycleCounter++;
+        // Execute PPU in large batches (JIT or interpreter)
+        int batchSize = (useJIT && jitBlock) ? 10000 : 1000;  // Larger batches for better performance
+
+        for (int i = 0; i < batchSize && ppu.getState() == PPUState::Running; i++) {
+            if (useJIT && jitBlock) {
+                // Execute 100 PPU cycles via JIT (batched within batch)
+                jit.execute(jitBlock, &ppu);
+                cycles += 100;
+                displayCycleCounter += 100;
+                renderCycleCounter += 100;
+                i += 99;  // Skip ahead since we did 100 cycles
+            } else {
+                // Execute 1 PPU cycle via interpreter
+                ppu.tick();
+                cycles++;
+                displayCycleCounter++;
+                renderCycleCounter++;
+            }
         }
 
-        // Update display at scanline rate (much slower than PPU)
-        if (displayCycleCounter >= CYCLES_PER_DISPLAY_TICK) {
+        // Update display in batches (batch the display ticks)
+        while (displayCycleCounter >= CYCLES_PER_DISPLAY_TICK) {
             display.tick();
-            ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
-            displayCycleCounter = 0;
+            displayCycleCounter -= CYCLES_PER_DISPLAY_TICK;
         }
+
+        // Update blank status after batch
+        ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
 
         // Render once per frame (60 Hz) to avoid bottleneck
         if (renderCycleCounter >= CYCLES_PER_RENDER) {
@@ -135,17 +149,34 @@ int main(int argc, char* argv[]) {
             renderCycleCounter = 0;
         }
 
-        // Print progress
-        if (cycles % 100000 == 0) {
-            std::cout << "Executed " << cycles << " cycles, scanline=" << display.getCurrentScanline()
-                      << " R10=" << ppu.getRegister(10) << " (CURRENT_LINE)\n";
+        // Print progress with performance stats
+        if (cycles - lastReportCycles >= 1000000) {  // Report every 1M cycles
+            auto now = std::chrono::high_resolution_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastReportTime).count();
+            int cyclesDone = cycles - lastReportCycles;
+            double mhz = (cyclesDone / 1000.0) / (elapsed / 1000.0);
+
+            std::cout << "Cycles: " << cycles << " | Scanline: " << display.getCurrentScanline()
+                      << " | Speed: " << mhz << " MHz (target: 64 MHz)\n";
+
+            lastReportCycles = cycles;
+            lastReportTime = now;
         }
     }
 
     // Final render
     window.render(display);
 
-    std::cout << "Demo completed after " << cycles << " cycles\n";
+    // Final performance report
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+    double avgMhz = (cycles / 1000.0) / (totalTime / 1000.0);
+
+    std::cout << "\n=== Demo Complete ===\n";
+    std::cout << "Total cycles: " << cycles << "\n";
+    std::cout << "Total time: " << totalTime << " ms\n";
+    std::cout << "Average speed: " << avgMhz << " MHz (target: 64 MHz)\n";
+    std::cout << "Efficiency: " << (avgMhz / 64.0 * 100.0) << "%\n";
     std::cout << "Final state: ";
 
     switch (ppu.getState()) {
