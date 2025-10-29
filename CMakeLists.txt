@@ -31,6 +31,7 @@ set(CORE_SOURCES
     src/rom.cpp
     src/dma.cpp
     src/ppu.cpp
+    src/ppu_jit.cpp
     src/apu.cpp
     src/cpu.cpp
     src/window.cpp
@@ -41,6 +42,7 @@ set(CORE_HEADERS
     include/rom.h
     include/dma.h
     include/ppu.h
+    include/ppu_jit.h
     include/apu.h
     include/cpu.h
     include/window.h
@@ -122,6 +124,18 @@ target_link_libraries(run_apu_demo zeropoint_core ${SDL2_LIBRARIES})
 add_executable(test_cpu tools/test_cpu.cpp)
 target_link_libraries(test_cpu zeropoint_core)
 
+# White fill test (color format verification)
+add_executable(test_white_fill tools/test_white_fill.cpp)
+target_link_libraries(test_white_fill zeropoint_core)
+
+# White fill demo test (PPU framebuffer verification)
+add_executable(test_demo_white tools/test_demo_white.cpp)
+target_link_libraries(test_demo_white zeropoint_core)
+
+# White fill demo debug test
+add_executable(test_demo_white_debug tools/test_demo_white_debug.cpp)
+target_link_libraries(test_demo_white_debug zeropoint_core)
+
 # Set output directories
 set_target_properties(zeropoint_sdl PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -160,5 +174,17 @@ set_target_properties(run_apu_demo PROPERTIES
 )
 
 set_target_properties(test_cpu PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_white_fill PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_demo_white PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_demo_white_debug PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

@@ -34,13 +34,15 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 ### PPU (Picture Processing Unit)
 - **Microcode-based graphics processor** @ 64 MHz
 - **1 instruction per cycle** - 64 million instructions/second
-- **47 instructions** (4-bit opcode + extended instruction sets)
+- **31 instructions** (15 basic + 16 extended Preset F)
 - **256×256 display** with dual color modes (16-bit/32-bit RGBA)
-- **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation
-- **Video Output Coprocessor (VOC)** - 16 hardware registers for display control ✨
+- **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation ✨ **FULLY FUNCTIONAL**
+- **NTSC timing** - Authentic 60 Hz display at 5.3 MHz pixel clock
+- **Video Output Coprocessor (VOC)** - 16 hardware registers for display control
 - **Tile system** - 8×8 pixel tiles, 256 tiles max, DIY placement with translucency
 - **Interrupts** - V-Blank and H-Blank with automatic stack management
 - **64 × 16-bit registers** with special registers (PC, DP, SP)
+- **JIT Compiler** - Experimental native code generation (x86-64/ARM64) ✨ **NEW!**
 
 ### APU (Audio Processing Unit)
 - **8-bit RISC processor** @ 4 MHz (1.0 MIPS)
@@ -87,7 +89,7 @@ make -j4
 - `bin/test_ppu` - PPU microcode test suite
 - `bin/test_apu <program.bin>` - APU program tester
 - `bin/test_dma` - **DMA controller test suite** ✨ NEW!
-- `bin/run_demo <demo.bin>` - Run PPU demo with SDL window
+- `bin/run_demo <demo.bin> [--jit]` - Run PPU demo with SDL window (optional JIT compilation)
 - `bin/test_demo <demo.bin>` - Run PPU demo headless (testing)
 - `bin/run_apu_demo <program.bin>` - Run APU program with audio output
 
@@ -116,7 +118,7 @@ cd ../ZeroPoint/build
 ## Documentation
 
 ### Core Documentation
-- `CLAUDE.md` - **Condensed system architecture** (225 lines, all essential info)
+- `CLAUDE.md` - **Condensed system architecture** (184 lines, all essential info)
 - `README.md` - This file (quick start and overview)
 - `TODO.md` - Development status and roadmap
 
@@ -144,7 +146,7 @@ cd ../ZeroPoint/build
 
 **CPU (DEF88186)**: ✅ **COMPLETE!** All 256 opcodes implemented and tested. Production ready. Can execute any valid DEF88186 program.
 
-**PPU**: Display system, tile system, interrupts, microcode execution, and VOC (Video Output Coprocessor) implemented. Loop bug fixed - all core features operational.
+**PPU**: ✅ **DISPLAY COMPLETE!** Rolling framebuffer with NTSC timing fully functional. Tile system, interrupts, microcode execution, and VOC all operational. Experimental JIT compiler for x86-64/ARM64 (use `--jit` flag).
 
 **APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 stereo channels) all implemented. SST header bug fixed - clean audio playback confirmed.
 

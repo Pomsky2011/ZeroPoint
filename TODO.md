@@ -4,6 +4,43 @@
 
 **NONE** - All critical bugs resolved! 🎉
 
+## Recent Updates (2025-10-28)
+
+### ✅ Display System Rolling Framebuffer + PPU JIT Compiler
+**Fixed**: Display rolling scanlines fully enabled, proper NTSC timing implemented
+**Added**: Experimental PPU JIT compiler for x86-64 and ARM64 architectures
+**Status**: ✅ **FUNCTIONAL** - Rolling buffer working, JIT experimental (use `--jit` flag)
+
+**Display System Fixes**:
+- Re-enabled rolling bank system in all display functions (getCurrentColor, setPixel, getPixel)
+- Removed all "TEMPORARY HACK" direct framebuffer access code
+- Implemented proper NTSC timing: 67.1 MHz PPU / 13 = ~5.16 MHz pixel clock
+- Fixed white_fill.asm to continuously refresh for rolling buffer (prevents overflow)
+- Display advances at authentic NTSC rate (~60 Hz)
+
+**JIT Compiler Implementation**:
+- Created PPU JIT compiler with native code generation (ppu_jit.h/cpp)
+- Supports x86-64 and ARM64 architectures
+- Compiles PPU microcode to tight native loops calling ppu->tick()
+- Uses mmap/mprotect for executable memory allocation
+- Added `--jit` command-line flag to run_demo (optional, not default)
+- **Note**: Currently experimental, needs debugging for production use
+
+**Planned JIT Targets**:
+- ARMv8/ARMv7/ARMv6 (Nintendo Switch, Apple Silicon, PS Vita, Nintendo 3DS)
+- PowerPC 32-bit (Wii, Wii U)
+- PowerPC 64-bit (Xbox 360, PlayStation 3)
+
+**Files Modified**:
+- `src/display.cpp`: Re-enabled rolling banks in all pixel access functions
+- `include/ppu_jit.h`, `src/ppu_jit.cpp`: New JIT compiler implementation
+- `tools/run_demo.cpp`: Added `--jit` flag, removed HLT detection overhead
+- `ZPdevtools/examples/ppu/white_fill.asm`: Fixed overflow bug, continuous refresh
+- `CMakeLists.txt`: Added ppu_jit to core library
+- `CLAUDE.md`: Condensed documentation, added JIT status
+
+**Impact**: Display system now fully functional with rolling framebuffer. JIT provides path to significant performance improvements once debugging is complete.
+
 ## Recent Updates (2025-10-24)
 
 ### ✅ CRITICAL FIX: MMP SST Header Parsing Bug
