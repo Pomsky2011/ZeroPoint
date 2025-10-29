@@ -97,10 +97,13 @@ int main(int argc, char* argv[]) {
     // NTSC timing: ~60 Hz, 261 scanlines per frame
     // Each scanline: 340 pixels (256 visible + 84 H-Blank)
     // Total cycles per frame: 261 * 340 = 88,740 cycles
-    // At 64 MHz: 88,740 cycles = ~1.387 ms per frame (but we run slower for visibility)
+    // At 64 MHz: 88,740 cycles = ~1.387 ms per frame
 
     int displayCycleCounter = 0;
     const int CYCLES_PER_DISPLAY_TICK = 13;  // Update display every 13 PPU cycles (NTSC timing: 67.1MHz PPU / 5.3MHz pixel clock)
+
+    int renderCycleCounter = 0;
+    const int CYCLES_PER_RENDER = 88740;  // Render once per NTSC frame (60 Hz)
 
     while (!window.shouldClose() && ppu.getState() == PPUState::Running && cycles < MAX_CYCLES) {
         // Execute PPU (JIT or interpreter)
@@ -109,11 +112,13 @@ int main(int argc, char* argv[]) {
             jit.execute(jitBlock, &ppu);
             cycles += 1000;
             displayCycleCounter += 1000;
+            renderCycleCounter += 1000;
         } else {
             // Execute 1 PPU cycle via interpreter
             ppu.tick();
             cycles++;
             displayCycleCounter++;
+            renderCycleCounter++;
         }
 
         // Update display at scanline rate (much slower than PPU)
@@ -123,35 +128,11 @@ int main(int argc, char* argv[]) {
             displayCycleCounter = 0;
         }
 
-        // HLT detection disabled
-        // pcHistory[historyIndex] = ppu.getExecutionPointer();
-        // historyIndex = (historyIndex + 1) % HISTORY_SIZE;
-        // if (cycles >= HISTORY_SIZE) {
-        //     bool isRepeating = true;
-        //     for (int i = 0; i < 5; i++) {
-        //         int recentIndex = (historyIndex - 1 - i + HISTORY_SIZE) % HISTORY_SIZE;
-        //         int olderIndex = (historyIndex - 6 - i + HISTORY_SIZE) % HISTORY_SIZE;
-        //         if (pcHistory[recentIndex] != pcHistory[olderIndex]) {
-        //             isRepeating = false;
-        //             break;
-        //         }
-        //     }
-        //     if (isRepeating) {
-        //         std::cout << "Detected HLT pattern (5-instruction repeating loop)\n";
-        //         std::cout << "PC sequence: ";
-        //         for (int i = 4; i >= 0; i--) {
-        //             int idx = (historyIndex - 1 - i + HISTORY_SIZE) % HISTORY_SIZE;
-        //             std::cout << pcHistory[idx] << " ";
-        //         }
-        //         std::cout << "\n";
-        //         break;
-        //     }
-        // }
-
-        // Render every 10000 cycles for visual feedback (less overhead with JIT)
-        if (cycles % 10000 == 0) {
+        // Render once per frame (60 Hz) to avoid bottleneck
+        if (renderCycleCounter >= CYCLES_PER_RENDER) {
             window.render(display);
             window.pollEvents();
+            renderCycleCounter = 0;
         }
 
         // Print progress
