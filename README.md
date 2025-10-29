@@ -8,7 +8,13 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 
 ## The Story
 
-<!-- Write your story here! -->
+**This story is not AI-written, unlike the emulator code and dev tools. The included Boot ROM isn't either.**
+- In 1992, PowerGame developed and released the ZeroPoint, which was the most powerful console of its
+- generation. However, because of its late start and difficult development cycle, it sold very badly and
+- was discontinued in only 1994 once it was no longer the most powerful system on the market. PowerGame
+- then went out of business, but their hardware documentation remained and some Boot ROM dumps did too,
+- so once those were ultimately leaked, people began making emulators and dev chains. Very few
+- functional systems remain though... Will you be able to program the system?
 
 ## Features
 
@@ -38,7 +44,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 ### PPU (Picture Processing Unit)
 - **Microcode-based graphics processor** @ 64 MHz
 - **1 instruction per cycle** - 64 million instructions/second
-- **31 instructions** (15 basic + 16 extended Preset F)
+- **35 instructions** (15 basic + 16 extended Preset F + 4 extended Preset E)
 - **256×256 display** with dual color modes (16-bit/32-bit RGBA)
 - **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation ✨ **FULLY FUNCTIONAL**
 - **NTSC timing** - Authentic 60 Hz display at 5.3 MHz pixel clock
