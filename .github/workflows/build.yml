@@ -42,6 +42,40 @@ jobs:
           build/bin/Release/*.dll
         retention-days: 30
 
+  build-windows-arm64:
+    name: Windows Build (ARM64)
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+
+    - name: Install dependencies
+      run: |
+        vcpkg install sdl2:arm64-windows qt6-base:arm64-windows
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -A ARM64 -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+    - name: Build
+      run: |
+        cmake --build build --config Release -j
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: zeropoint-windows-arm64
+        path: |
+          build/bin/Release/*.exe
+          build/bin/Release/*.dll
+        retention-days: 30
+
   build-linux:
     name: Linux Build (x86_64)
     runs-on: ubuntu-latest
@@ -72,6 +106,44 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: zeropoint-linux-x86_64
+        path: build/bin/*
+        retention-days: 30
+
+  build-linux-arm64:
+    name: Linux Build (ARM64)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Build in ARM64 container
+      run: |
+        docker run --rm --platform linux/arm64 \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          arm64v8/ubuntu:22.04 \
+          bash -c "
+            apt-get update && \
+            apt-get install -y \
+              build-essential \
+              cmake \
+              libsdl2-dev \
+              qt6-base-dev \
+              qt6-base-dev-tools && \
+            cmake -B build -DCMAKE_BUILD_TYPE=Release && \
+            cmake --build build -j\$(nproc)
+          "
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: zeropoint-linux-arm64
         path: build/bin/*
         retention-days: 30
 
@@ -135,15 +207,27 @@ jobs:
 
   build-summary:
     name: Build Summary
-    needs: [build-windows, build-linux, build-macos-intel, build-macos-arm64]
+    needs: [build-windows, build-windows-arm64, build-linux, build-linux-arm64, build-macos-intel, build-macos-arm64]
     runs-on: ubuntu-latest
     if: always()
 
     steps:
     - name: Check build status
       run: |
-        echo "Build Summary:"
-        echo "Windows: ${{ needs.build-windows.result }}"
-        echo "Linux: ${{ needs.build-linux.result }}"
-        echo "macOS Intel: ${{ needs.build-macos-intel.result }}"
-        echo "macOS ARM64: ${{ needs.build-macos-arm64.result }}"
+        echo "================================"
+        echo "    ZeroPoint Build Summary     "
+        echo "================================"
+        echo ""
+        echo "Windows Builds:"
+        echo "  x64:   ${{ needs.build-windows.result }}"
+        echo "  ARM64: ${{ needs.build-windows-arm64.result }}"
+        echo ""
+        echo "Linux Builds:"
+        echo "  x86_64: ${{ needs.build-linux.result }}"
+        echo "  ARM64:  ${{ needs.build-linux-arm64.result }}"
+        echo ""
+        echo "macOS Builds:"
+        echo "  Intel (x86_64):      ${{ needs.build-macos-intel.result }}"
+        echo "  Apple Silicon (ARM64): ${{ needs.build-macos-arm64.result }}"
+        echo ""
+        echo "================================"
