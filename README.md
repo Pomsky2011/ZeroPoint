@@ -6,6 +6,10 @@ A fantasy console emulator featuring a tile-based PPU with microcode programming
 
 ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio (APU) processors. Unlike traditional fixed-function hardware, both processors run custom instruction sets that give developers full control over rendering and sound.
 
+## The Story
+
+<!-- Write your story here! -->
+
 ## Features
 
 ### System Clock Synchronization
@@ -74,13 +78,43 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 
 ## Building
 
+### Quick Start
+
+**macOS** (Intel & Apple Silicon):
+```bash
+./build-macos.sh
+```
+
+**Linux** (x86_64 & ARM64):
+```bash
+./build-linux.sh
+```
+
+**Windows** (x64 & ARM64):
+```cmd
+build-windows.bat
+```
+
+### Manual Build
+
 Requires CMake 3.16+, C++17 compiler, SDL2, and Qt5/Qt6.
 
 ```bash
 mkdir build && cd build
 cmake ..
-make -j4
+cmake --build . -j
 ```
+
+### Platform Support
+
+| Platform | Architecture | JIT Support | CI/CD |
+|----------|-------------|-------------|-------|
+| Windows  | x64         | ✅ x86-64   | ✅    |
+| Windows  | ARM64       | ✅ ARM64    | ✅    |
+| Linux    | x86_64      | ✅ x86-64   | ✅    |
+| Linux    | ARM64       | ✅ ARM64    | ✅    |
+| macOS    | Intel       | ✅ x86-64   | ✅    |
+| macOS    | Apple Silicon | ✅ ARM64  | ✅    |
 
 ### Executables
 - `bin/zeropoint_sdl` - SDL frontend
