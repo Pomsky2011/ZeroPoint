@@ -55,6 +55,10 @@ public:
     void setVBlankIRQEnabled(bool enabled) { vblankIRQEnabled = enabled; }
     void setHBlankIRQEnabled(bool enabled) { hblankIRQEnabled = enabled; }
 
+    // Debug mode
+    void setDevMode(bool enabled);
+    bool isDevMode() const { return devMode; }
+
 private:
     // Components
     CPU cpu;
@@ -90,6 +94,9 @@ private:
     bool hblankIRQEnabled;
     bool lastVBlank;
     bool lastHBlank;
+
+    // Debug mode
+    bool devMode;
 
     // Helper methods
     void tickComponents();

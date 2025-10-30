@@ -404,6 +404,18 @@
 	"HEADERS" : 
 	[
 		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/apu.h",
+			"MU",
+			"6YEA5652QU/moc_apu.cpp",
+			null
+		],
+		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/cpu.h",
+			"MU",
+			"6YEA5652QU/moc_cpu.cpp",
+			null
+		],
+		[
 			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/display.h",
 			"MU",
 			"6YEA5652QU/moc_display.cpp",
@@ -422,9 +434,21 @@
 			null
 		],
 		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/ppu_jit.h",
+			"MU",
+			"6YEA5652QU/moc_ppu_jit.cpp",
+			null
+		],
+		[
 			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/rom.h",
 			"MU",
 			"6YEA5652QU/moc_rom.cpp",
+			null
+		],
+		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/window.h",
+			"MU",
+			"6YEA5652QU/moc_window.cpp",
 			null
 		]
 	],
@@ -484,6 +508,16 @@
 	"SOURCES" : 
 	[
 		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp",
+			"MU",
+			null
+		],
+		[
 			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/display.cpp",
 			"MU",
 			null
@@ -499,7 +533,17 @@
 			null
 		],
 		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_jit.cpp",
+			"MU",
+			null
+		],
+		[
 			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/rom.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp",
 			"MU",
 			null
 		]

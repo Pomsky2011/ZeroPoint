@@ -129,7 +129,9 @@ void PPUJIT::emitX86_64(std::vector<uint8_t>& code, PPU* ppu, uint16_t startAddr
 
     // if (i >= cycles) goto done
     emit(code, 0x44); emit(code, 0x39); emit(code, 0xF9);  // cmp ecx, r15d
-    emit(code, 0x76); emit(code, 0x10);  // jbe done (skip ahead)
+    // Placeholder for jbe - we'll fix this after we know the offset
+    size_t jbe_location = code.size();
+    emit(code, 0x76); emit(code, 0x00);  // jbe done (offset will be patched)
 
     // ppu->tick()
     emit(code, 0x48); emit(code, 0x89); emit(code, 0xDF);  // mov rdi, rbx (ppu*)
@@ -148,6 +150,12 @@ void PPUJIT::emitX86_64(std::vector<uint8_t>& code, PPU* ppu, uint16_t startAddr
     emit(code, 0xEB); emit(code, (uint8_t)(offset & 0xFF));  // jmp rel8
 
     // done:
+    size_t done_location = code.size();
+
+    // Patch the jbe offset now that we know where 'done' is
+    int8_t jbe_offset = done_location - (jbe_location + 2);  // +2 for the jbe instruction size
+    code[jbe_location + 1] = jbe_offset;
+
     // Epilogue
     emit(code, 0x48); emit(code, 0x83); emit(code, 0xC4); emit(code, 0x08);  // add rsp, 8
     emit(code, 0x5B);                    // pop rbx
@@ -164,15 +172,18 @@ void PPUJIT::emitARM64(std::vector<uint8_t>& code, PPU* ppu, uint16_t startAddr,
     // Function signature: void jit_execute(PPU* ppu, uint32_t cycles)
     // Arguments: x0 = ppu, x1 = cycles
 
-    // Prologue - save frame pointer and link register
-    // stp x29, x30, [sp, #-32]!
-    emit32(code, 0xa9be7bfd);
+    // Prologue - save frame pointer, link register, and callee-saved registers
+    // stp x29, x30, [sp, #-48]!  (save FP and LR, allocate 48 bytes)
+    emit32(code, 0xa9bd7bfd);
 
     // mov x29, sp
     emit32(code, 0x910003fd);
 
-    // str x19, [sp, #16]  (save x19)
-    emit32(code, 0xf90013f3);
+    // stp x19, x20, [sp, #16]  (save x19, x20)
+    emit32(code, 0xa90153f3);
+
+    // str x21, [sp, #32]  (save x21)
+    emit32(code, 0xf90023f5);
 
     // mov x19, x0  (save ppu* in x19)
     emit32(code, 0xaa0003f3);
@@ -190,7 +201,9 @@ void PPUJIT::emitARM64(std::vector<uint8_t>& code, PPU* ppu, uint16_t startAddr,
     emit32(code, 0x6b14029f);
 
     // b.ge done (branch if i >= cycles)
-    emit32(code, 0x54000068);  // offset will be fixed
+    // Placeholder - we'll patch this after we know where 'done' is
+    size_t bge_location = code.size();
+    emit32(code, 0x5400000a);  // b.ge with offset 0 (condition code 0xA = ge)
 
     // mov x0, x19  (load ppu*)
     emit32(code, 0xaa1303e0);
@@ -216,11 +229,26 @@ void PPUJIT::emitARM64(std::vector<uint8_t>& code, PPU* ppu, uint16_t startAddr,
     emit32(code, 0x14000000 | (offset & 0x3FFFFFF));
 
     // done:
-    // ldr x19, [sp, #16]
-    emit32(code, 0xf94013f3);
+    size_t done_location = code.size();
 
-    // ldp x29, x30, [sp], #32
-    emit32(code, 0xa8c27bfd);
+    // Patch the b.ge offset now that we know where 'done' is
+    // ARM64 conditional branch offset is signed, in units of 4 bytes, stored in bits 5-23
+    int32_t bge_offset = (done_location - bge_location) / 4;
+    uint32_t bge_instruction = 0x5400000a | ((bge_offset & 0x7FFFF) << 5);
+    code[bge_location] = bge_instruction & 0xFF;
+    code[bge_location + 1] = (bge_instruction >> 8) & 0xFF;
+    code[bge_location + 2] = (bge_instruction >> 16) & 0xFF;
+    code[bge_location + 3] = (bge_instruction >> 24) & 0xFF;
+
+    // Epilogue - restore callee-saved registers
+    // ldr x21, [sp, #32]  (restore x21)
+    emit32(code, 0xf94023f5);
+
+    // ldp x19, x20, [sp, #16]  (restore x19, x20)
+    emit32(code, 0xa94153f3);
+
+    // ldp x29, x30, [sp], #48  (restore FP and LR, deallocate 48 bytes)
+    emit32(code, 0xa8c37bfd);
 
     // ret
     emit32(code, 0xd65f03c0);
@@ -260,6 +288,13 @@ JITBlock* PPUJIT::compileBlock(PPU* ppu, uint16_t startAddr, size_t maxInstructi
 
     // Copy code to executable memory
     memcpy(execMem, code.data(), code.size());
+
+    // Flush instruction cache on ARM64 (required for self-modifying code)
+#if defined(__aarch64__) || defined(_M_ARM64)
+    // Use compiler builtin to flush instruction cache
+    __builtin___clear_cache((char*)execMem, (char*)execMem + code.size());
+    std::cerr << "JIT: Instruction cache flushed\n";
+#endif
 
     // Make it executable
 #if defined(_WIN32)
@@ -308,7 +343,7 @@ void PPUJIT::execute(JITBlock* block, PPU* ppu) {
     // Signature: void jit_execute(PPU* ppu, uint32_t cycles)
     typedef void (*JITFunc)(PPU*, uint32_t);
     JITFunc func = (JITFunc)block->code;
-    func(ppu, 1000);  // Execute 1000 PPU ticks per JIT call
+    func(ppu, 100);  // Execute 100 PPU ticks per JIT call (matches run_demo.cpp)
 }
 
 void PPUJIT::invalidateAll() {

@@ -6,5 +6,5 @@ CXX_DEFINES = -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NO_DEBUG -DQT_WIDGETS_LIB
 
 CXX_INCLUDES = -I/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/zeropoint_qt_autogen/include -I/Users/alexanderwhite/Documents/Code/ZeroPoint/include -I/usr/local/Cellar/sdl2/2.32.8/include -isystem /usr/local/Cellar/sdl2/2.32.8/include/SDL2 -isystem /usr/local/lib/QtCore.framework/Headers -iframework /usr/local/lib -isystem /usr/local/share/qt/mkspecs/macx-clang -isystem /usr/local/lib/QtWidgets.framework/Headers -isystem /usr/local/lib/QtGui.framework/Headers
 
-CXX_FLAGS = -std=gnu++17 -fPIC
+CXX_FLAGS = -std=gnu++17 -Wall -Wextra -fPIC
 

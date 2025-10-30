@@ -103,9 +103,15 @@ elseif(PLATFORM_MACOS OR PLATFORM_LINUX)
 endif()
 
 # SDL frontend (old standalone version)
-add_executable(zeropoint_sdl
-    src/main.cpp
-)
+if(PLATFORM_MACOS)
+    add_executable(zeropoint_sdl MACOSX_BUNDLE
+        src/main.cpp
+    )
+else()
+    add_executable(zeropoint_sdl
+        src/main.cpp
+    )
+endif()
 target_link_libraries(zeropoint_sdl zeropoint_core ${SDL2_LIBRARIES})
 
 # Qt frontend
@@ -127,7 +133,12 @@ set(QT_UI
     qt/configdialog.ui
 )
 
-add_executable(zeropoint_qt ${QT_SOURCES} ${QT_HEADERS} ${QT_UI})
+if(PLATFORM_MACOS)
+    add_executable(zeropoint_qt MACOSX_BUNDLE ${QT_SOURCES} ${QT_HEADERS} ${QT_UI})
+else()
+    add_executable(zeropoint_qt ${QT_SOURCES} ${QT_HEADERS} ${QT_UI})
+endif()
+
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(zeropoint_qt
         zeropoint_core
@@ -156,7 +167,11 @@ add_executable(test_ppu tools/test_ppu.cpp)
 target_link_libraries(test_ppu zeropoint_core)
 
 # Demo runner (with SDL)
-add_executable(run_demo tools/run_demo.cpp)
+if(PLATFORM_MACOS)
+    add_executable(run_demo MACOSX_BUNDLE tools/run_demo.cpp)
+else()
+    add_executable(run_demo tools/run_demo.cpp)
+endif()
 target_link_libraries(run_demo zeropoint_core ${SDL2_LIBRARIES})
 
 # Demo test (no SDL)
@@ -168,7 +183,11 @@ add_executable(test_apu tools/test_apu.cpp)
 target_link_libraries(test_apu zeropoint_core)
 
 # APU demo runner (with SDL audio)
-add_executable(run_apu_demo tools/run_apu_demo.cpp)
+if(PLATFORM_MACOS)
+    add_executable(run_apu_demo MACOSX_BUNDLE tools/run_apu_demo.cpp)
+else()
+    add_executable(run_apu_demo tools/run_apu_demo.cpp)
+endif()
 target_link_libraries(run_apu_demo zeropoint_core ${SDL2_LIBRARIES})
 
 # CPU test tool
@@ -239,3 +258,43 @@ set_target_properties(test_demo_white PROPERTIES
 set_target_properties(test_demo_white_debug PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+# macOS Bundle properties
+if(PLATFORM_MACOS)
+    # ZeroPoint Qt (main emulator)
+    set_target_properties(zeropoint_qt PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "ZeroPoint"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.zeropoint.emulator"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+        MACOSX_BUNDLE_INFO_STRING "ZeroPoint Fantasy Console Emulator"
+        MACOSX_BUNDLE_ICON_FILE "zeropoint.icns"  # Uncomment when icon is added
+    )
+
+    # ZeroPoint SDL
+    set_target_properties(zeropoint_sdl PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "ZeroPoint SDL"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.zeropoint.emulator.sdl"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+        MACOSX_BUNDLE_INFO_STRING "ZeroPoint Fantasy Console Emulator (SDL)"
+    )
+
+    # Run Demo
+    set_target_properties(run_demo PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "Run Demo"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.zeropoint.rundemo"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+        MACOSX_BUNDLE_INFO_STRING "ZeroPoint PPU Demo Runner"
+    )
+
+    # Run APU Demo
+    set_target_properties(run_apu_demo PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "Run APU Demo"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.zeropoint.runapudemo"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+        MACOSX_BUNDLE_INFO_STRING "ZeroPoint APU Demo Runner"
+    )
+endif()

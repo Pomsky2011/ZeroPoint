@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ZeroPoint PPU is a microcode-based graphics processor with its own instruction set, running independently at 64 MHz. It executes 1 instruction every 2 cycles (32 million instructions per second).
+The ZeroPoint PPU is a microcode-based graphics processor with its own instruction set, running at 64 MHz. It executes 1 instruction per cycle (64 million instructions per second).
 
 ## Architecture
 
@@ -16,9 +16,22 @@ The ZeroPoint PPU is a microcode-based graphics processor with its own instructi
 - Contains both microcode and data
 
 ### Execution
-- **Clock**: 64 MHz (64 × 1024 × 1024 Hz)
+- **Clock**: 64 MHz (master clock, executes every cycle)
 - **Instruction time**: 1 cycle per instruction
 - **Instruction format**: 16 bits (4-bit opcode + 12-bit operand)
+
+### System Clock Synchronization
+
+The PPU runs at 64 MHz, synchronized to the master clock. It executes every master cycle:
+
+- **Master clock**: 64 MHz (PPU pixel clock)
+- **PPU clock**: 64 MHz (every master cycle)
+- **Execution pattern**: Executes on cycles 0-15 (every cycle)
+
+Other system components run at submultiples of the master clock:
+- **DMA**: 32 MHz (every 2 cycles)
+- **CPU**: 16 MHz (every 4 cycles)
+- **APU**: 4 MHz (every 16 cycles)
 
 ## Initialization Sequence
 

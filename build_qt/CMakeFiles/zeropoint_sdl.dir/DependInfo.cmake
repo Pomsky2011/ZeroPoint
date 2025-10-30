@@ -10,7 +10,6 @@ set(CMAKE_DEPENDS_LANGUAGES
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "" "zeropoint_sdl_autogen/timestamp" "custom" "zeropoint_sdl_autogen/deps"
   "/Users/alexanderwhite/Documents/Code/ZeroPoint/src/main.cpp" "CMakeFiles/zeropoint_sdl.dir/src/main.cpp.o" "gcc" "CMakeFiles/zeropoint_sdl.dir/src/main.cpp.o.d"
-  "/Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp" "CMakeFiles/zeropoint_sdl.dir/src/window.cpp.o" "gcc" "CMakeFiles/zeropoint_sdl.dir/src/window.cpp.o.d"
   "/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/zeropoint_sdl_autogen/mocs_compilation.cpp" "CMakeFiles/zeropoint_sdl.dir/zeropoint_sdl_autogen/mocs_compilation.cpp.o" "gcc" "CMakeFiles/zeropoint_sdl.dir/zeropoint_sdl_autogen/mocs_compilation.cpp.o.d"
   )
 

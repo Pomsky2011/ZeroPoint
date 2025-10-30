@@ -121,11 +121,12 @@ public:
 
     // Direct memory access (for debugging and CPU window)
     uint8_t readMemory(uint16_t address) const {
-        return memory[address];
+        return handleMemoryRead(address);
     }
 
     void writeMemory(uint16_t address, uint8_t value) {
         memory[address] = value;
+        handleMemoryWrite(address, value);
     }
 
     // Register access for CPU I/O

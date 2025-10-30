@@ -71,11 +71,13 @@ system.getDisplay().isVBlank();
 ```
 
 **Clock synchronization**:
-- Master clock: 64 MHz (PPU speed)
-- CPU: 64 MHz (1:1 ratio)
-- PPU: 64 MHz (1:1 ratio)
-- APU: 4.2 MHz (~1:15 ratio)
-- Display: Pixel clock
+- Master clock: 64 MHz (PPU pixel clock)
+- Integer-based: Deterministic 16-cycle pattern (no fractional accumulators)
+- PPU: 64 MHz (every cycle)
+- DMA: 32 MHz (every 2 cycles: 1, 3, 5, 7, 9, 11, 13, 15)
+- CPU: 16 MHz (every 4 cycles: 3, 7, 11, 15)
+- APU: 4 MHz (every 16 cycles: 15)
+- Display: 64 MHz (every cycle)
 
 ### 5. Interrupt Routing ✅
 

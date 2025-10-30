@@ -5,14 +5,14 @@
 EmulatorWidget::EmulatorWidget(QWidget *parent)
     : QWidget(parent)
     , currentROM(nullptr)
-    , frameBuffer(ZeroPoint::FB_WIDTH, ZeroPoint::FB_HEIGHT, QImage::Format_RGB32)
+    , frameBuffer(ZeroPoint::FB_WIDTH, ZeroPoint::FULL_HEIGHT, QImage::Format_RGB32)
     , timerId(-1)
     , running(false)
 {
-    setFixedSize(ZeroPoint::FB_WIDTH * 2, ZeroPoint::FB_HEIGHT * 2);
+    setFixedSize(ZeroPoint::FB_WIDTH * 2, ZeroPoint::FULL_HEIGHT * 2);
 
     // Initialize framebuffer with test pattern
-    for (int y = 0; y < ZeroPoint::FB_HEIGHT; y++) {
+    for (int y = 0; y < ZeroPoint::FULL_HEIGHT; y++) {
         for (int x = 0; x < ZeroPoint::FB_WIDTH; x++) {
             uint16_t red = (x * 31 / 255) << 1;
             uint16_t blue = (y * 31 / 255) << 11;
@@ -87,31 +87,18 @@ void EmulatorWidget::timerEvent(QTimerEvent *event)
 
 void EmulatorWidget::updateFrameBuffer()
 {
-    if (display.getRenderMode() == ZeroPoint::RenderMode::RGBA16) {
-        // 16-bit mode: convert to QRgb
-        const ZeroPoint::Color16 *fb = display.getFramebuffer16();
-
-        for (int y = 0; y < ZeroPoint::FB_HEIGHT; y++) {
-            QRgb *scanline = reinterpret_cast<QRgb*>(frameBuffer.scanLine(y));
-            for (int x = 0; x < ZeroPoint::FB_WIDTH; x++) {
-                scanline[x] = convertColor(fb[y * ZeroPoint::FB_WIDTH + x]);
-            }
-        }
-    } else {
-        // 32-bit mode: convert directly from RGBA32
-        const ZeroPoint::Color32 *fb = display.getFramebuffer32();
-
-        for (int y = 0; y < ZeroPoint::FB_HEIGHT; y++) {
-            QRgb *scanline = reinterpret_cast<QRgb*>(frameBuffer.scanLine(y));
-            for (int x = 0; x < ZeroPoint::FB_WIDTH; x++) {
-                ZeroPoint::Color32 color = fb[y * ZeroPoint::FB_WIDTH + x];
-                // RGBA32 format: RRGGBBAA
-                uint8_t r = (color >> 24) & 0xFF;
-                uint8_t g = (color >> 16) & 0xFF;
-                uint8_t b = (color >> 8) & 0xFF;
-                // Ignore alpha for now
-                scanline[x] = qRgb(r, g, b);
-            }
+    // Use getPixel() to read from rolling buffer
+    // Pixels outside the 8-scanline window will be black
+    for (int y = 0; y < ZeroPoint::FULL_HEIGHT; y++) {
+        QRgb *scanline = reinterpret_cast<QRgb*>(frameBuffer.scanLine(y));
+        for (int x = 0; x < ZeroPoint::FB_WIDTH; x++) {
+            ZeroPoint::Color32 color = display.getPixel(x, y);
+            // RGBA32 format: RRGGBBAA
+            uint8_t r = (color >> 24) & 0xFF;
+            uint8_t g = (color >> 16) & 0xFF;
+            uint8_t b = (color >> 8) & 0xFF;
+            // Ignore alpha for now
+            scanline[x] = qRgb(r, g, b);
         }
     }
 }

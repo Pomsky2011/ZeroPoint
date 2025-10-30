@@ -12,7 +12,8 @@ System::System()
       romLoaded(false), entryPoint(0),
       masterCycleCount(0),
       vblankIRQEnabled(false), hblankIRQEnabled(false),
-      lastVBlank(false), lastHBlank(false)
+      lastVBlank(false), lastHBlank(false),
+      devMode(false)
 {
     // Set current system for DMA callbacks
     currentSystem = this;
@@ -182,6 +183,18 @@ void System::checkInterrupts() {
 
     lastVBlank = currentVBlank;
     lastHBlank = currentHBlank;
+}
+
+void System::setDevMode(bool enabled) {
+    devMode = enabled;
+    // Write to DEV_MODE I/O register ($D80048)
+    cpu.writeByte(0xD80048, enabled ? 0x01 : 0x00);
+
+    if (enabled) {
+        std::cout << "Dev mode ENABLED - Boot ROM will enter debug loop\n";
+    } else {
+        std::cout << "Dev mode DISABLED - Boot ROM will jump to entry point\n";
+    }
 }
 
 // Static DMA callback wrappers

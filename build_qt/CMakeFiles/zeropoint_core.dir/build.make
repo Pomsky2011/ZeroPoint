@@ -149,13 +149,73 @@ CMakeFiles/zeropoint_core.dir/src/ppu.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/zeropoint_core.dir/src/ppu.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu.cpp -o CMakeFiles/zeropoint_core.dir/src/ppu.cpp.s
 
+CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o: CMakeFiles/zeropoint_core.dir/flags.make
+CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o: /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_jit.cpp
+CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o: CMakeFiles/zeropoint_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o -MF CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o.d -o CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o -c /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_jit.cpp
+
+CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_jit.cpp > CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.i
+
+CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_jit.cpp -o CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.s
+
+CMakeFiles/zeropoint_core.dir/src/apu.cpp.o: CMakeFiles/zeropoint_core.dir/flags.make
+CMakeFiles/zeropoint_core.dir/src/apu.cpp.o: /Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu.cpp
+CMakeFiles/zeropoint_core.dir/src/apu.cpp.o: CMakeFiles/zeropoint_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/zeropoint_core.dir/src/apu.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/zeropoint_core.dir/src/apu.cpp.o -MF CMakeFiles/zeropoint_core.dir/src/apu.cpp.o.d -o CMakeFiles/zeropoint_core.dir/src/apu.cpp.o -c /Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu.cpp
+
+CMakeFiles/zeropoint_core.dir/src/apu.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/zeropoint_core.dir/src/apu.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu.cpp > CMakeFiles/zeropoint_core.dir/src/apu.cpp.i
+
+CMakeFiles/zeropoint_core.dir/src/apu.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/zeropoint_core.dir/src/apu.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu.cpp -o CMakeFiles/zeropoint_core.dir/src/apu.cpp.s
+
+CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o: CMakeFiles/zeropoint_core.dir/flags.make
+CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o: /Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp
+CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o: CMakeFiles/zeropoint_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o -MF CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o.d -o CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o -c /Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp
+
+CMakeFiles/zeropoint_core.dir/src/cpu.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/zeropoint_core.dir/src/cpu.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp > CMakeFiles/zeropoint_core.dir/src/cpu.cpp.i
+
+CMakeFiles/zeropoint_core.dir/src/cpu.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/zeropoint_core.dir/src/cpu.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp -o CMakeFiles/zeropoint_core.dir/src/cpu.cpp.s
+
+CMakeFiles/zeropoint_core.dir/src/window.cpp.o: CMakeFiles/zeropoint_core.dir/flags.make
+CMakeFiles/zeropoint_core.dir/src/window.cpp.o: /Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp
+CMakeFiles/zeropoint_core.dir/src/window.cpp.o: CMakeFiles/zeropoint_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/zeropoint_core.dir/src/window.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/zeropoint_core.dir/src/window.cpp.o -MF CMakeFiles/zeropoint_core.dir/src/window.cpp.o.d -o CMakeFiles/zeropoint_core.dir/src/window.cpp.o -c /Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp
+
+CMakeFiles/zeropoint_core.dir/src/window.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/zeropoint_core.dir/src/window.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp > CMakeFiles/zeropoint_core.dir/src/window.cpp.i
+
+CMakeFiles/zeropoint_core.dir/src/window.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/zeropoint_core.dir/src/window.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp -o CMakeFiles/zeropoint_core.dir/src/window.cpp.s
+
 # Object files for target zeropoint_core
 zeropoint_core_OBJECTS = \
 "CMakeFiles/zeropoint_core.dir/zeropoint_core_autogen/mocs_compilation.cpp.o" \
 "CMakeFiles/zeropoint_core.dir/src/display.cpp.o" \
 "CMakeFiles/zeropoint_core.dir/src/rom.cpp.o" \
 "CMakeFiles/zeropoint_core.dir/src/dma.cpp.o" \
-"CMakeFiles/zeropoint_core.dir/src/ppu.cpp.o"
+"CMakeFiles/zeropoint_core.dir/src/ppu.cpp.o" \
+"CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o" \
+"CMakeFiles/zeropoint_core.dir/src/apu.cpp.o" \
+"CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o" \
+"CMakeFiles/zeropoint_core.dir/src/window.cpp.o"
 
 # External object files for target zeropoint_core
 zeropoint_core_EXTERNAL_OBJECTS =
@@ -165,9 +225,13 @@ libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/display.cpp.o
 libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/rom.cpp.o
 libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/dma.cpp.o
 libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/ppu.cpp.o
+libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o
+libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/apu.cpp.o
+libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o
+libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/src/window.cpp.o
 libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/build.make
 libzeropoint_core.a: CMakeFiles/zeropoint_core.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking CXX static library libzeropoint_core.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Linking CXX static library libzeropoint_core.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/zeropoint_core.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/zeropoint_core.dir/link.txt --verbose=$(VERBOSE)
 

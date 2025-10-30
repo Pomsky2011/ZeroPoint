@@ -97,56 +97,86 @@ int main(int argc, char* argv[]) {
     int lastReportCycles = 0;
     auto lastReportTime = startTime;
 
+    // Detailed profiling
+    int64_t ppuExecutionTimeNs = 0;
+    int64_t displayTickTimeNs = 0;
+    int64_t renderTimeNs = 0;
+
     // Main loop
     int cycles = 0;
     const int MAX_CYCLES = 50000000;  // 50M cycles max (enough for slow pixel I/O)
 
-    // NTSC timing: ~60 Hz, 261 scanlines per frame
-    // Each scanline: 340 pixels (256 visible + 84 H-Blank)
-    // Total cycles per frame: 261 * 340 = 88,740 cycles
-    // At 64 MHz: 88,740 cycles = ~1.387 ms per frame
+    // Frame timing: 1,119,600 + 2/3 PPU cycles per frame
+    // PPU clock: 67,108,864 Hz (2^26 Hz)
+    // At 67,108,864 Hz: 1,119,600.666... cycles = ~16.68 ms per frame (59.94 Hz NTSC)
+    //
+    // Scanline timing: 4289.65772669 cycles/scanline (261 scanlines = 1,119,600.666... cycles)
+    // Pixel timing: 4289.65772669 / 340 = 12.616640372617647... cycles/pixel
+    //
+    // Integer-based fractional timing to avoid floating point errors:
+    // 12.616640372617647 PPU cycles per display tick (pixel)
+    // 1 PPU cycle = 1/12.616640372617647 = 0.0792452830188679... display ticks
+    // Scale by 1,000,000,000: add 79,245,283 per PPU cycle
+    // When accumulator >= 1,000,000,000, tick display once and subtract 1,000,000,000
 
-    int displayCycleCounter = 0;
-    const int CYCLES_PER_DISPLAY_TICK = 13;  // Display ticks at 5.3 MHz (64 MHz / 13)
+    int64_t displayCycleAccumulator = 0;
+    const int64_t DISPLAY_TICK_THRESHOLD = 1000000000;  // 1 billion (scale factor)
+    const int64_t DISPLAY_TICK_INCREMENT = 79245283;    // Per PPU cycle
 
     int renderCycleCounter = 0;
-    const int CYCLES_PER_RENDER = 88740;  // Render once per NTSC frame (60 Hz)
+    int frameCount = 0;
+    // Frame 1 & 2: 1,119,601 cycles, Frame 3: 1,119,600 cycles
+    int CYCLES_PER_RENDER = 1119601;
 
     while (!window.shouldClose() && ppu.getState() == PPUState::Running && cycles < MAX_CYCLES) {
         // Execute PPU in large batches (JIT or interpreter)
         int batchSize = (useJIT && jitBlock) ? 10000 : 1000;  // Larger batches for better performance
 
+        auto ppuStart = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < batchSize && ppu.getState() == PPUState::Running; i++) {
             if (useJIT && jitBlock) {
                 // Execute 100 PPU cycles via JIT (batched within batch)
                 jit.execute(jitBlock, &ppu);
                 cycles += 100;
-                displayCycleCounter += 100;
+                displayCycleAccumulator += DISPLAY_TICK_INCREMENT * 100;
                 renderCycleCounter += 100;
                 i += 99;  // Skip ahead since we did 100 cycles
             } else {
                 // Execute 1 PPU cycle via interpreter
                 ppu.tick();
                 cycles++;
-                displayCycleCounter++;
+                displayCycleAccumulator += DISPLAY_TICK_INCREMENT;
                 renderCycleCounter++;
             }
         }
+        auto ppuEnd = std::chrono::high_resolution_clock::now();
+        ppuExecutionTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(ppuEnd - ppuStart).count();
 
-        // Update display in batches (batch the display ticks)
-        while (displayCycleCounter >= CYCLES_PER_DISPLAY_TICK) {
+        // Update display in batches (integer-based fractional timing, no floating point drift)
+        auto displayStart = std::chrono::high_resolution_clock::now();
+        while (displayCycleAccumulator >= DISPLAY_TICK_THRESHOLD) {
             display.tick();
-            displayCycleCounter -= CYCLES_PER_DISPLAY_TICK;
+            displayCycleAccumulator -= DISPLAY_TICK_THRESHOLD;
         }
+        auto displayEnd = std::chrono::high_resolution_clock::now();
+        displayTickTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(displayEnd - displayStart).count();
 
         // Update blank status after batch
         ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
 
-        // Render once per frame (60 Hz) to avoid bottleneck
+        // Render once per frame (~57.16 Hz) to avoid bottleneck
         if (renderCycleCounter >= CYCLES_PER_RENDER) {
+            auto renderStart = std::chrono::high_resolution_clock::now();
             window.render(display);
             window.pollEvents();
+            auto renderEnd = std::chrono::high_resolution_clock::now();
+            renderTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(renderEnd - renderStart).count();
             renderCycleCounter = 0;
+            frameCount++;
+
+            // Alternate frame lengths: 1,119,601, 1,119,601, 1,119,600 (repeating)
+            // This maintains exactly 1,119,600 + 2/3 cycles per frame on average
+            CYCLES_PER_RENDER = (frameCount % 3 == 0) ? 1119600 : 1119601;
         }
 
         // Print progress with performance stats
@@ -154,10 +184,10 @@ int main(int argc, char* argv[]) {
             auto now = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastReportTime).count();
             int cyclesDone = cycles - lastReportCycles;
-            double mhz = (cyclesDone / 1000.0) / (elapsed / 1000.0);
+            double mhz = (cyclesDone / 1000000.0) / (elapsed / 1000.0);  // Mega = million
 
             std::cout << "Cycles: " << cycles << " | Scanline: " << display.getCurrentScanline()
-                      << " | Speed: " << mhz << " MHz (target: 64 MHz)\n";
+                      << " | Speed: " << mhz << " MHz (target: 67.108864 MHz)\n";
 
             lastReportCycles = cycles;
             lastReportTime = now;
@@ -170,13 +200,13 @@ int main(int argc, char* argv[]) {
     // Final performance report
     auto endTime = std::chrono::high_resolution_clock::now();
     auto totalTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
-    double avgMhz = (cycles / 1000.0) / (totalTime / 1000.0);
+    double avgMhz = (cycles / 1000000.0) / (totalTime / 1000.0);  // Mega = million
 
     std::cout << "\n=== Demo Complete ===\n";
     std::cout << "Total cycles: " << cycles << "\n";
     std::cout << "Total time: " << totalTime << " ms\n";
-    std::cout << "Average speed: " << avgMhz << " MHz (target: 64 MHz)\n";
-    std::cout << "Efficiency: " << (avgMhz / 64.0 * 100.0) << "%\n";
+    std::cout << "Average speed: " << avgMhz << " MHz (target: 67.108864 MHz)\n";
+    std::cout << "Efficiency: " << (avgMhz / 67.108864 * 100.0) << "%\n";
     std::cout << "Final state: ";
 
     switch (ppu.getState()) {
@@ -190,6 +220,18 @@ int main(int argc, char* argv[]) {
             std::cout << "OTHER\n";
             break;
     }
+
+    // Profiling breakdown
+    double ppuTimeMs = ppuExecutionTimeNs / 1000000.0;
+    double displayTimeMs = displayTickTimeNs / 1000000.0;
+    double renderTimeMs = renderTimeNs / 1000000.0;
+    double totalProfiledMs = ppuTimeMs + displayTimeMs + renderTimeMs;
+
+    std::cout << "\n=== Performance Breakdown ===\n";
+    std::cout << "PPU execution:   " << ppuTimeMs << " ms (" << (ppuTimeMs / totalTime * 100.0) << "%)\n";
+    std::cout << "Display ticks:   " << displayTimeMs << " ms (" << (displayTimeMs / totalTime * 100.0) << "%)\n";
+    std::cout << "Rendering:       " << renderTimeMs << " ms (" << (renderTimeMs / totalTime * 100.0) << "%)\n";
+    std::cout << "Other overhead:  " << (totalTime - totalProfiledMs) << " ms (" << ((totalTime - totalProfiledMs) / totalTime * 100.0) << "%)\n";
 
     // Keep window open until user closes it
     std::cout << "Showing result. Press ESC or close window to exit...\n";

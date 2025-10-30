@@ -11,7 +11,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Backends**: SDL2, Qt
 
 ### PPU (Picture Processing Unit)
-- **64 MHz**, 1 instruction/cycle
+- **67.108864 MHz (2^26 Hz)**, 1 instruction/cycle
 - **64 × 16-bit registers** (R0-R63): R59 (VBlank INT), R60 (HBlank INT), R61 (SP), R62 (PC), R63 (DP)
 - **64 KiB memory**, 15 basic + 16 extended opcodes
 - **Tiles**: 8×8 pixels, 256 max, 4 modes (16/32-bit, 4/8bpp)
@@ -33,8 +33,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - 4 modes: DataCopy, ConstCopy, RepeatTransfer, ConstRepeat
 
 ### System Clock
-- **Master**: 64 MHz (16-cycle pattern)
-- **Frequencies**: PPU/Display (64 MHz), DMA (32 MHz), CPU (16 MHz), APU (4 MHz)
+- **Master**: 67.108864 MHz (2^26 Hz, 16-cycle pattern)
+- **Frequencies**: PPU/Display (67.108864 MHz / 2^26 Hz), DMA (32 MHz), CPU (16 MHz), APU (4 MHz)
 
 ## Memory Maps
 

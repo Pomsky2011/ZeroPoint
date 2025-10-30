@@ -1,0 +1,1 @@
+/usr/bin/c++ -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/run_demo.dir/run_demo_autogen/mocs_compilation.cpp.o CMakeFiles/run_demo.dir/tools/run_demo.cpp.o -o bin/run_demo.app/Contents/MacOS/run_demo   -L/usr/local/Cellar/sdl2/2.32.8/lib  -Wl,-rpath,/usr/local/Cellar/sdl2/2.32.8/lib libzeropoint_core.a /usr/local/Cellar/sdl2/2.32.8/lib/libSDL2.dylib

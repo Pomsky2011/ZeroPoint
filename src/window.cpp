@@ -36,7 +36,7 @@ bool Window::init() {
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         FB_WIDTH * scale,
-        FB_HEIGHT * scale,
+        FULL_HEIGHT * scale,
         SDL_WINDOW_SHOWN
     );
 
@@ -56,7 +56,7 @@ bool Window::init() {
         SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_STREAMING,
         FB_WIDTH,
-        FB_HEIGHT
+        FULL_HEIGHT
     );
 
     if (!texture) {
@@ -68,19 +68,19 @@ bool Window::init() {
 }
 
 void Window::render(const Display& display) {
-    uint32_t pixels[FB_WIDTH * FB_HEIGHT];
+    uint32_t pixels[FB_WIDTH * FULL_HEIGHT];
 
-    if (display.getRenderMode() == RenderMode::RGBA16) {
-        // 16-bit mode: convert to 32-bit
-        const Color16* framebuffer = display.getFramebuffer16();
-        for (int i = 0; i < FB_WIDTH * FB_HEIGHT; i++) {
-            pixels[i] = convertColor(framebuffer[i]);
-        }
-    } else {
-        // 32-bit mode: direct copy (already in RGBA format)
-        const Color32* framebuffer = display.getFramebuffer32();
-        for (int i = 0; i < FB_WIDTH * FB_HEIGHT; i++) {
-            pixels[i] = framebuffer[i];
+    // Read from rolling buffer using getPixel()
+    // Pixels outside the 8-scanline window will be black
+    for (int y = 0; y < FULL_HEIGHT; y++) {
+        for (int x = 0; x < FB_WIDTH; x++) {
+            Color32 color = display.getPixel(x, y);
+            // Convert from RRGGBBAA to ARGB for SDL
+            uint8_t r = (color >> 24) & 0xFF;
+            uint8_t g = (color >> 16) & 0xFF;
+            uint8_t b = (color >> 8) & 0xFF;
+            uint8_t a = color & 0xFF;
+            pixels[y * FB_WIDTH + x] = (a << 24) | (r << 16) | (g << 8) | b;
         }
     }
 

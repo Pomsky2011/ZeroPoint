@@ -5,14 +5,22 @@
  /Users/alexanderwhite/Documents/Code/ZeroPoint/CMakeLists.txt
  /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles/4.1.2/CMakeCXXCompiler.cmake
  /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles/4.1.2/CMakeSystem.cmake
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/include/apu.h
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/include/cpu.h
  /Users/alexanderwhite/Documents/Code/ZeroPoint/include/display.h
  /Users/alexanderwhite/Documents/Code/ZeroPoint/include/dma.h
  /Users/alexanderwhite/Documents/Code/ZeroPoint/include/ppu.h
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/include/ppu_jit.h
  /Users/alexanderwhite/Documents/Code/ZeroPoint/include/rom.h
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/include/window.h
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu.cpp
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp
  /Users/alexanderwhite/Documents/Code/ZeroPoint/src/display.cpp
  /Users/alexanderwhite/Documents/Code/ZeroPoint/src/dma.cpp
  /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu.cpp
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_jit.cpp
  /Users/alexanderwhite/Documents/Code/ZeroPoint/src/rom.cpp
+ /Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp
  /usr/local/bin/cmake
  /usr/local/lib/cmake/Qt6/FindWrapAtomic.cmake
  /usr/local/lib/cmake/Qt6/FindWrapOpenGL.cmake

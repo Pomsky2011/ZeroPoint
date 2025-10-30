@@ -19,7 +19,7 @@ int main() {
 
     // Fill framebuffer with a test pattern
     // Create a simple gradient
-    for (int y = 0; y < FB_HEIGHT; y++) {
+    for (int y = 0; y < FULL_HEIGHT; y++) {
         for (int x = 0; x < FB_WIDTH; x++) {
             // Simple pattern: red increases with x, blue with y
             uint16_t red = (x * 31 / 255) << 1;

@@ -401,15 +401,7 @@
 	"CROSS_CONFIG" : false,
 	"DEP_FILE" : "/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/zeropoint_sdl_autogen/deps",
 	"DEP_FILE_RULE_NAME" : "zeropoint_sdl_autogen/timestamp",
-	"HEADERS" : 
-	[
-		[
-			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/window.h",
-			"MU",
-			"6YEA5652QU/moc_window.cpp",
-			null
-		]
-	],
+	"HEADERS" : [],
 	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
 	"INCLUDE_DIR" : "/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/zeropoint_sdl_autogen/include",
 	"MOC_COMPILATION_FILE" : "/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/zeropoint_sdl_autogen/mocs_compilation.cpp",
@@ -472,11 +464,6 @@
 	[
 		[
 			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/main.cpp",
-			"MU",
-			null
-		],
-		[
-			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp",
 			"MU",
 			null
 		]

@@ -6,5 +6,5 @@ CXX_DEFINES =
 
 CXX_INCLUDES = -I/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/make_test_rom_autogen/include -I/Users/alexanderwhite/Documents/Code/ZeroPoint/include -I/usr/local/Cellar/sdl2/2.32.8/include -I/usr/local/Cellar/sdl2/2.32.8/include/SDL2
 
-CXX_FLAGS = -std=gnu++17
+CXX_FLAGS = -std=gnu++17 -Wall -Wextra
 

@@ -6,5 +6,5 @@ CXX_DEFINES =
 
 CXX_INCLUDES = -I/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/zeropoint_core_autogen/include -I/Users/alexanderwhite/Documents/Code/ZeroPoint/include -I/usr/local/Cellar/sdl2/2.32.8/include -isystem /usr/local/Cellar/sdl2/2.32.8/include/SDL2
 
-CXX_FLAGS = -std=gnu++17
+CXX_FLAGS = -std=gnu++17 -Wall -Wextra
 

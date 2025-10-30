@@ -195,6 +195,110 @@ test_ppu/fast:
 .PHONY : test_ppu/fast
 
 #=============================================================================
+# Target rules for targets named run_demo
+
+# Build rule for target.
+run_demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_demo
+.PHONY : run_demo
+
+# fast build rule for target.
+run_demo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo.dir/build.make CMakeFiles/run_demo.dir/build
+.PHONY : run_demo/fast
+
+#=============================================================================
+# Target rules for targets named test_demo
+
+# Build rule for target.
+test_demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo
+.PHONY : test_demo
+
+# fast build rule for target.
+test_demo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo.dir/build.make CMakeFiles/test_demo.dir/build
+.PHONY : test_demo/fast
+
+#=============================================================================
+# Target rules for targets named test_apu
+
+# Build rule for target.
+test_apu: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_apu
+.PHONY : test_apu
+
+# fast build rule for target.
+test_apu/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu.dir/build.make CMakeFiles/test_apu.dir/build
+.PHONY : test_apu/fast
+
+#=============================================================================
+# Target rules for targets named run_apu_demo
+
+# Build rule for target.
+run_apu_demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_apu_demo
+.PHONY : run_apu_demo
+
+# fast build rule for target.
+run_apu_demo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo.dir/build.make CMakeFiles/run_apu_demo.dir/build
+.PHONY : run_apu_demo/fast
+
+#=============================================================================
+# Target rules for targets named test_cpu
+
+# Build rule for target.
+test_cpu: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_cpu
+.PHONY : test_cpu
+
+# fast build rule for target.
+test_cpu/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu.dir/build.make CMakeFiles/test_cpu.dir/build
+.PHONY : test_cpu/fast
+
+#=============================================================================
+# Target rules for targets named test_white_fill
+
+# Build rule for target.
+test_white_fill: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_white_fill
+.PHONY : test_white_fill
+
+# fast build rule for target.
+test_white_fill/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill.dir/build.make CMakeFiles/test_white_fill.dir/build
+.PHONY : test_white_fill/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_white
+
+# Build rule for target.
+test_demo_white: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_white
+.PHONY : test_demo_white
+
+# fast build rule for target.
+test_demo_white/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white.dir/build.make CMakeFiles/test_demo_white.dir/build
+.PHONY : test_demo_white/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_white_debug
+
+# Build rule for target.
+test_demo_white_debug: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_white_debug
+.PHONY : test_demo_white_debug
+
+# fast build rule for target.
+test_demo_white_debug/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug.dir/build.make CMakeFiles/test_demo_white_debug.dir/build
+.PHONY : test_demo_white_debug/fast
+
+#=============================================================================
 # Target rules for targets named zeropoint_core_autogen_timestamp_deps
 
 # Build rule for target.
@@ -350,6 +454,214 @@ test_ppu_autogen/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_ppu_autogen.dir/build.make CMakeFiles/test_ppu_autogen.dir/build
 .PHONY : test_ppu_autogen/fast
 
+#=============================================================================
+# Target rules for targets named run_demo_autogen_timestamp_deps
+
+# Build rule for target.
+run_demo_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_demo_autogen_timestamp_deps
+.PHONY : run_demo_autogen_timestamp_deps
+
+# fast build rule for target.
+run_demo_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo_autogen_timestamp_deps.dir/build.make CMakeFiles/run_demo_autogen_timestamp_deps.dir/build
+.PHONY : run_demo_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named run_demo_autogen
+
+# Build rule for target.
+run_demo_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_demo_autogen
+.PHONY : run_demo_autogen
+
+# fast build rule for target.
+run_demo_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo_autogen.dir/build.make CMakeFiles/run_demo_autogen.dir/build
+.PHONY : run_demo_autogen/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_autogen_timestamp_deps
+
+# Build rule for target.
+test_demo_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_autogen_timestamp_deps
+.PHONY : test_demo_autogen_timestamp_deps
+
+# fast build rule for target.
+test_demo_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_autogen_timestamp_deps.dir/build.make CMakeFiles/test_demo_autogen_timestamp_deps.dir/build
+.PHONY : test_demo_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_autogen
+
+# Build rule for target.
+test_demo_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_autogen
+.PHONY : test_demo_autogen
+
+# fast build rule for target.
+test_demo_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_autogen.dir/build.make CMakeFiles/test_demo_autogen.dir/build
+.PHONY : test_demo_autogen/fast
+
+#=============================================================================
+# Target rules for targets named test_apu_autogen_timestamp_deps
+
+# Build rule for target.
+test_apu_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_apu_autogen_timestamp_deps
+.PHONY : test_apu_autogen_timestamp_deps
+
+# fast build rule for target.
+test_apu_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu_autogen_timestamp_deps.dir/build.make CMakeFiles/test_apu_autogen_timestamp_deps.dir/build
+.PHONY : test_apu_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named test_apu_autogen
+
+# Build rule for target.
+test_apu_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_apu_autogen
+.PHONY : test_apu_autogen
+
+# fast build rule for target.
+test_apu_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu_autogen.dir/build.make CMakeFiles/test_apu_autogen.dir/build
+.PHONY : test_apu_autogen/fast
+
+#=============================================================================
+# Target rules for targets named run_apu_demo_autogen_timestamp_deps
+
+# Build rule for target.
+run_apu_demo_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_apu_demo_autogen_timestamp_deps
+.PHONY : run_apu_demo_autogen_timestamp_deps
+
+# fast build rule for target.
+run_apu_demo_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo_autogen_timestamp_deps.dir/build.make CMakeFiles/run_apu_demo_autogen_timestamp_deps.dir/build
+.PHONY : run_apu_demo_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named run_apu_demo_autogen
+
+# Build rule for target.
+run_apu_demo_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_apu_demo_autogen
+.PHONY : run_apu_demo_autogen
+
+# fast build rule for target.
+run_apu_demo_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo_autogen.dir/build.make CMakeFiles/run_apu_demo_autogen.dir/build
+.PHONY : run_apu_demo_autogen/fast
+
+#=============================================================================
+# Target rules for targets named test_cpu_autogen_timestamp_deps
+
+# Build rule for target.
+test_cpu_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_cpu_autogen_timestamp_deps
+.PHONY : test_cpu_autogen_timestamp_deps
+
+# fast build rule for target.
+test_cpu_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu_autogen_timestamp_deps.dir/build.make CMakeFiles/test_cpu_autogen_timestamp_deps.dir/build
+.PHONY : test_cpu_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named test_cpu_autogen
+
+# Build rule for target.
+test_cpu_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_cpu_autogen
+.PHONY : test_cpu_autogen
+
+# fast build rule for target.
+test_cpu_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu_autogen.dir/build.make CMakeFiles/test_cpu_autogen.dir/build
+.PHONY : test_cpu_autogen/fast
+
+#=============================================================================
+# Target rules for targets named test_white_fill_autogen_timestamp_deps
+
+# Build rule for target.
+test_white_fill_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_white_fill_autogen_timestamp_deps
+.PHONY : test_white_fill_autogen_timestamp_deps
+
+# fast build rule for target.
+test_white_fill_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill_autogen_timestamp_deps.dir/build.make CMakeFiles/test_white_fill_autogen_timestamp_deps.dir/build
+.PHONY : test_white_fill_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named test_white_fill_autogen
+
+# Build rule for target.
+test_white_fill_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_white_fill_autogen
+.PHONY : test_white_fill_autogen
+
+# fast build rule for target.
+test_white_fill_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill_autogen.dir/build.make CMakeFiles/test_white_fill_autogen.dir/build
+.PHONY : test_white_fill_autogen/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_white_autogen_timestamp_deps
+
+# Build rule for target.
+test_demo_white_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_white_autogen_timestamp_deps
+.PHONY : test_demo_white_autogen_timestamp_deps
+
+# fast build rule for target.
+test_demo_white_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_autogen_timestamp_deps.dir/build.make CMakeFiles/test_demo_white_autogen_timestamp_deps.dir/build
+.PHONY : test_demo_white_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_white_autogen
+
+# Build rule for target.
+test_demo_white_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_white_autogen
+.PHONY : test_demo_white_autogen
+
+# fast build rule for target.
+test_demo_white_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_autogen.dir/build.make CMakeFiles/test_demo_white_autogen.dir/build
+.PHONY : test_demo_white_autogen/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_white_debug_autogen_timestamp_deps
+
+# Build rule for target.
+test_demo_white_debug_autogen_timestamp_deps: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_white_debug_autogen_timestamp_deps
+.PHONY : test_demo_white_debug_autogen_timestamp_deps
+
+# fast build rule for target.
+test_demo_white_debug_autogen_timestamp_deps/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug_autogen_timestamp_deps.dir/build.make CMakeFiles/test_demo_white_debug_autogen_timestamp_deps.dir/build
+.PHONY : test_demo_white_debug_autogen_timestamp_deps/fast
+
+#=============================================================================
+# Target rules for targets named test_demo_white_debug_autogen
+
+# Build rule for target.
+test_demo_white_debug_autogen: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_demo_white_debug_autogen
+.PHONY : test_demo_white_debug_autogen
+
+# fast build rule for target.
+test_demo_white_debug_autogen/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug_autogen.dir/build.make CMakeFiles/test_demo_white_debug_autogen.dir/build
+.PHONY : test_demo_white_debug_autogen/fast
+
 make_test_rom_autogen/mocs_compilation.o: make_test_rom_autogen/mocs_compilation.cpp.o
 .PHONY : make_test_rom_autogen/mocs_compilation.o
 
@@ -470,6 +782,102 @@ qt/mainwindow.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_qt.dir/build.make CMakeFiles/zeropoint_qt.dir/qt/mainwindow.cpp.s
 .PHONY : qt/mainwindow.cpp.s
 
+run_apu_demo_autogen/mocs_compilation.o: run_apu_demo_autogen/mocs_compilation.cpp.o
+.PHONY : run_apu_demo_autogen/mocs_compilation.o
+
+# target to build an object file
+run_apu_demo_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo.dir/build.make CMakeFiles/run_apu_demo.dir/run_apu_demo_autogen/mocs_compilation.cpp.o
+.PHONY : run_apu_demo_autogen/mocs_compilation.cpp.o
+
+run_apu_demo_autogen/mocs_compilation.i: run_apu_demo_autogen/mocs_compilation.cpp.i
+.PHONY : run_apu_demo_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+run_apu_demo_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo.dir/build.make CMakeFiles/run_apu_demo.dir/run_apu_demo_autogen/mocs_compilation.cpp.i
+.PHONY : run_apu_demo_autogen/mocs_compilation.cpp.i
+
+run_apu_demo_autogen/mocs_compilation.s: run_apu_demo_autogen/mocs_compilation.cpp.s
+.PHONY : run_apu_demo_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+run_apu_demo_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo.dir/build.make CMakeFiles/run_apu_demo.dir/run_apu_demo_autogen/mocs_compilation.cpp.s
+.PHONY : run_apu_demo_autogen/mocs_compilation.cpp.s
+
+run_demo_autogen/mocs_compilation.o: run_demo_autogen/mocs_compilation.cpp.o
+.PHONY : run_demo_autogen/mocs_compilation.o
+
+# target to build an object file
+run_demo_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo.dir/build.make CMakeFiles/run_demo.dir/run_demo_autogen/mocs_compilation.cpp.o
+.PHONY : run_demo_autogen/mocs_compilation.cpp.o
+
+run_demo_autogen/mocs_compilation.i: run_demo_autogen/mocs_compilation.cpp.i
+.PHONY : run_demo_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+run_demo_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo.dir/build.make CMakeFiles/run_demo.dir/run_demo_autogen/mocs_compilation.cpp.i
+.PHONY : run_demo_autogen/mocs_compilation.cpp.i
+
+run_demo_autogen/mocs_compilation.s: run_demo_autogen/mocs_compilation.cpp.s
+.PHONY : run_demo_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+run_demo_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo.dir/build.make CMakeFiles/run_demo.dir/run_demo_autogen/mocs_compilation.cpp.s
+.PHONY : run_demo_autogen/mocs_compilation.cpp.s
+
+src/apu.o: src/apu.cpp.o
+.PHONY : src/apu.o
+
+# target to build an object file
+src/apu.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/apu.cpp.o
+.PHONY : src/apu.cpp.o
+
+src/apu.i: src/apu.cpp.i
+.PHONY : src/apu.i
+
+# target to preprocess a source file
+src/apu.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/apu.cpp.i
+.PHONY : src/apu.cpp.i
+
+src/apu.s: src/apu.cpp.s
+.PHONY : src/apu.s
+
+# target to generate assembly for a file
+src/apu.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/apu.cpp.s
+.PHONY : src/apu.cpp.s
+
+src/cpu.o: src/cpu.cpp.o
+.PHONY : src/cpu.o
+
+# target to build an object file
+src/cpu.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/cpu.cpp.o
+.PHONY : src/cpu.cpp.o
+
+src/cpu.i: src/cpu.cpp.i
+.PHONY : src/cpu.i
+
+# target to preprocess a source file
+src/cpu.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/cpu.cpp.i
+.PHONY : src/cpu.cpp.i
+
+src/cpu.s: src/cpu.cpp.s
+.PHONY : src/cpu.s
+
+# target to generate assembly for a file
+src/cpu.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/cpu.cpp.s
+.PHONY : src/cpu.cpp.s
+
 src/display.o: src/display.cpp.o
 .PHONY : src/display.o
 
@@ -566,6 +974,30 @@ src/ppu.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/ppu.cpp.s
 .PHONY : src/ppu.cpp.s
 
+src/ppu_jit.o: src/ppu_jit.cpp.o
+.PHONY : src/ppu_jit.o
+
+# target to build an object file
+src/ppu_jit.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o
+.PHONY : src/ppu_jit.cpp.o
+
+src/ppu_jit.i: src/ppu_jit.cpp.i
+.PHONY : src/ppu_jit.i
+
+# target to preprocess a source file
+src/ppu_jit.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.i
+.PHONY : src/ppu_jit.cpp.i
+
+src/ppu_jit.s: src/ppu_jit.cpp.s
+.PHONY : src/ppu_jit.s
+
+# target to generate assembly for a file
+src/ppu_jit.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.s
+.PHONY : src/ppu_jit.cpp.s
+
 src/rom.o: src/rom.cpp.o
 .PHONY : src/rom.o
 
@@ -595,7 +1027,7 @@ src/window.o: src/window.cpp.o
 
 # target to build an object file
 src/window.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl.dir/build.make CMakeFiles/zeropoint_sdl.dir/src/window.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/window.cpp.o
 .PHONY : src/window.cpp.o
 
 src/window.i: src/window.cpp.i
@@ -603,7 +1035,7 @@ src/window.i: src/window.cpp.i
 
 # target to preprocess a source file
 src/window.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl.dir/build.make CMakeFiles/zeropoint_sdl.dir/src/window.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/window.cpp.i
 .PHONY : src/window.cpp.i
 
 src/window.s: src/window.cpp.s
@@ -611,8 +1043,128 @@ src/window.s: src/window.cpp.s
 
 # target to generate assembly for a file
 src/window.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl.dir/build.make CMakeFiles/zeropoint_sdl.dir/src/window.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/window.cpp.s
 .PHONY : src/window.cpp.s
+
+test_apu_autogen/mocs_compilation.o: test_apu_autogen/mocs_compilation.cpp.o
+.PHONY : test_apu_autogen/mocs_compilation.o
+
+# target to build an object file
+test_apu_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu.dir/build.make CMakeFiles/test_apu.dir/test_apu_autogen/mocs_compilation.cpp.o
+.PHONY : test_apu_autogen/mocs_compilation.cpp.o
+
+test_apu_autogen/mocs_compilation.i: test_apu_autogen/mocs_compilation.cpp.i
+.PHONY : test_apu_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+test_apu_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu.dir/build.make CMakeFiles/test_apu.dir/test_apu_autogen/mocs_compilation.cpp.i
+.PHONY : test_apu_autogen/mocs_compilation.cpp.i
+
+test_apu_autogen/mocs_compilation.s: test_apu_autogen/mocs_compilation.cpp.s
+.PHONY : test_apu_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+test_apu_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu.dir/build.make CMakeFiles/test_apu.dir/test_apu_autogen/mocs_compilation.cpp.s
+.PHONY : test_apu_autogen/mocs_compilation.cpp.s
+
+test_cpu_autogen/mocs_compilation.o: test_cpu_autogen/mocs_compilation.cpp.o
+.PHONY : test_cpu_autogen/mocs_compilation.o
+
+# target to build an object file
+test_cpu_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu.dir/build.make CMakeFiles/test_cpu.dir/test_cpu_autogen/mocs_compilation.cpp.o
+.PHONY : test_cpu_autogen/mocs_compilation.cpp.o
+
+test_cpu_autogen/mocs_compilation.i: test_cpu_autogen/mocs_compilation.cpp.i
+.PHONY : test_cpu_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+test_cpu_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu.dir/build.make CMakeFiles/test_cpu.dir/test_cpu_autogen/mocs_compilation.cpp.i
+.PHONY : test_cpu_autogen/mocs_compilation.cpp.i
+
+test_cpu_autogen/mocs_compilation.s: test_cpu_autogen/mocs_compilation.cpp.s
+.PHONY : test_cpu_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+test_cpu_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu.dir/build.make CMakeFiles/test_cpu.dir/test_cpu_autogen/mocs_compilation.cpp.s
+.PHONY : test_cpu_autogen/mocs_compilation.cpp.s
+
+test_demo_autogen/mocs_compilation.o: test_demo_autogen/mocs_compilation.cpp.o
+.PHONY : test_demo_autogen/mocs_compilation.o
+
+# target to build an object file
+test_demo_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo.dir/build.make CMakeFiles/test_demo.dir/test_demo_autogen/mocs_compilation.cpp.o
+.PHONY : test_demo_autogen/mocs_compilation.cpp.o
+
+test_demo_autogen/mocs_compilation.i: test_demo_autogen/mocs_compilation.cpp.i
+.PHONY : test_demo_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+test_demo_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo.dir/build.make CMakeFiles/test_demo.dir/test_demo_autogen/mocs_compilation.cpp.i
+.PHONY : test_demo_autogen/mocs_compilation.cpp.i
+
+test_demo_autogen/mocs_compilation.s: test_demo_autogen/mocs_compilation.cpp.s
+.PHONY : test_demo_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+test_demo_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo.dir/build.make CMakeFiles/test_demo.dir/test_demo_autogen/mocs_compilation.cpp.s
+.PHONY : test_demo_autogen/mocs_compilation.cpp.s
+
+test_demo_white_autogen/mocs_compilation.o: test_demo_white_autogen/mocs_compilation.cpp.o
+.PHONY : test_demo_white_autogen/mocs_compilation.o
+
+# target to build an object file
+test_demo_white_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white.dir/build.make CMakeFiles/test_demo_white.dir/test_demo_white_autogen/mocs_compilation.cpp.o
+.PHONY : test_demo_white_autogen/mocs_compilation.cpp.o
+
+test_demo_white_autogen/mocs_compilation.i: test_demo_white_autogen/mocs_compilation.cpp.i
+.PHONY : test_demo_white_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+test_demo_white_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white.dir/build.make CMakeFiles/test_demo_white.dir/test_demo_white_autogen/mocs_compilation.cpp.i
+.PHONY : test_demo_white_autogen/mocs_compilation.cpp.i
+
+test_demo_white_autogen/mocs_compilation.s: test_demo_white_autogen/mocs_compilation.cpp.s
+.PHONY : test_demo_white_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+test_demo_white_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white.dir/build.make CMakeFiles/test_demo_white.dir/test_demo_white_autogen/mocs_compilation.cpp.s
+.PHONY : test_demo_white_autogen/mocs_compilation.cpp.s
+
+test_demo_white_debug_autogen/mocs_compilation.o: test_demo_white_debug_autogen/mocs_compilation.cpp.o
+.PHONY : test_demo_white_debug_autogen/mocs_compilation.o
+
+# target to build an object file
+test_demo_white_debug_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug.dir/build.make CMakeFiles/test_demo_white_debug.dir/test_demo_white_debug_autogen/mocs_compilation.cpp.o
+.PHONY : test_demo_white_debug_autogen/mocs_compilation.cpp.o
+
+test_demo_white_debug_autogen/mocs_compilation.i: test_demo_white_debug_autogen/mocs_compilation.cpp.i
+.PHONY : test_demo_white_debug_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+test_demo_white_debug_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug.dir/build.make CMakeFiles/test_demo_white_debug.dir/test_demo_white_debug_autogen/mocs_compilation.cpp.i
+.PHONY : test_demo_white_debug_autogen/mocs_compilation.cpp.i
+
+test_demo_white_debug_autogen/mocs_compilation.s: test_demo_white_debug_autogen/mocs_compilation.cpp.s
+.PHONY : test_demo_white_debug_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+test_demo_white_debug_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug.dir/build.make CMakeFiles/test_demo_white_debug.dir/test_demo_white_debug_autogen/mocs_compilation.cpp.s
+.PHONY : test_demo_white_debug_autogen/mocs_compilation.cpp.s
 
 test_dma_autogen/mocs_compilation.o: test_dma_autogen/mocs_compilation.cpp.o
 .PHONY : test_dma_autogen/mocs_compilation.o
@@ -662,6 +1214,30 @@ test_ppu_autogen/mocs_compilation.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_ppu.dir/build.make CMakeFiles/test_ppu.dir/test_ppu_autogen/mocs_compilation.cpp.s
 .PHONY : test_ppu_autogen/mocs_compilation.cpp.s
 
+test_white_fill_autogen/mocs_compilation.o: test_white_fill_autogen/mocs_compilation.cpp.o
+.PHONY : test_white_fill_autogen/mocs_compilation.o
+
+# target to build an object file
+test_white_fill_autogen/mocs_compilation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill.dir/build.make CMakeFiles/test_white_fill.dir/test_white_fill_autogen/mocs_compilation.cpp.o
+.PHONY : test_white_fill_autogen/mocs_compilation.cpp.o
+
+test_white_fill_autogen/mocs_compilation.i: test_white_fill_autogen/mocs_compilation.cpp.i
+.PHONY : test_white_fill_autogen/mocs_compilation.i
+
+# target to preprocess a source file
+test_white_fill_autogen/mocs_compilation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill.dir/build.make CMakeFiles/test_white_fill.dir/test_white_fill_autogen/mocs_compilation.cpp.i
+.PHONY : test_white_fill_autogen/mocs_compilation.cpp.i
+
+test_white_fill_autogen/mocs_compilation.s: test_white_fill_autogen/mocs_compilation.cpp.s
+.PHONY : test_white_fill_autogen/mocs_compilation.s
+
+# target to generate assembly for a file
+test_white_fill_autogen/mocs_compilation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill.dir/build.make CMakeFiles/test_white_fill.dir/test_white_fill_autogen/mocs_compilation.cpp.s
+.PHONY : test_white_fill_autogen/mocs_compilation.cpp.s
+
 tools/make_test_rom.o: tools/make_test_rom.cpp.o
 .PHONY : tools/make_test_rom.o
 
@@ -685,6 +1261,174 @@ tools/make_test_rom.s: tools/make_test_rom.cpp.s
 tools/make_test_rom.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/make_test_rom.dir/build.make CMakeFiles/make_test_rom.dir/tools/make_test_rom.cpp.s
 .PHONY : tools/make_test_rom.cpp.s
+
+tools/run_apu_demo.o: tools/run_apu_demo.cpp.o
+.PHONY : tools/run_apu_demo.o
+
+# target to build an object file
+tools/run_apu_demo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo.dir/build.make CMakeFiles/run_apu_demo.dir/tools/run_apu_demo.cpp.o
+.PHONY : tools/run_apu_demo.cpp.o
+
+tools/run_apu_demo.i: tools/run_apu_demo.cpp.i
+.PHONY : tools/run_apu_demo.i
+
+# target to preprocess a source file
+tools/run_apu_demo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo.dir/build.make CMakeFiles/run_apu_demo.dir/tools/run_apu_demo.cpp.i
+.PHONY : tools/run_apu_demo.cpp.i
+
+tools/run_apu_demo.s: tools/run_apu_demo.cpp.s
+.PHONY : tools/run_apu_demo.s
+
+# target to generate assembly for a file
+tools/run_apu_demo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_apu_demo.dir/build.make CMakeFiles/run_apu_demo.dir/tools/run_apu_demo.cpp.s
+.PHONY : tools/run_apu_demo.cpp.s
+
+tools/run_demo.o: tools/run_demo.cpp.o
+.PHONY : tools/run_demo.o
+
+# target to build an object file
+tools/run_demo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo.dir/build.make CMakeFiles/run_demo.dir/tools/run_demo.cpp.o
+.PHONY : tools/run_demo.cpp.o
+
+tools/run_demo.i: tools/run_demo.cpp.i
+.PHONY : tools/run_demo.i
+
+# target to preprocess a source file
+tools/run_demo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo.dir/build.make CMakeFiles/run_demo.dir/tools/run_demo.cpp.i
+.PHONY : tools/run_demo.cpp.i
+
+tools/run_demo.s: tools/run_demo.cpp.s
+.PHONY : tools/run_demo.s
+
+# target to generate assembly for a file
+tools/run_demo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_demo.dir/build.make CMakeFiles/run_demo.dir/tools/run_demo.cpp.s
+.PHONY : tools/run_demo.cpp.s
+
+tools/test_apu.o: tools/test_apu.cpp.o
+.PHONY : tools/test_apu.o
+
+# target to build an object file
+tools/test_apu.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu.dir/build.make CMakeFiles/test_apu.dir/tools/test_apu.cpp.o
+.PHONY : tools/test_apu.cpp.o
+
+tools/test_apu.i: tools/test_apu.cpp.i
+.PHONY : tools/test_apu.i
+
+# target to preprocess a source file
+tools/test_apu.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu.dir/build.make CMakeFiles/test_apu.dir/tools/test_apu.cpp.i
+.PHONY : tools/test_apu.cpp.i
+
+tools/test_apu.s: tools/test_apu.cpp.s
+.PHONY : tools/test_apu.s
+
+# target to generate assembly for a file
+tools/test_apu.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_apu.dir/build.make CMakeFiles/test_apu.dir/tools/test_apu.cpp.s
+.PHONY : tools/test_apu.cpp.s
+
+tools/test_cpu.o: tools/test_cpu.cpp.o
+.PHONY : tools/test_cpu.o
+
+# target to build an object file
+tools/test_cpu.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu.dir/build.make CMakeFiles/test_cpu.dir/tools/test_cpu.cpp.o
+.PHONY : tools/test_cpu.cpp.o
+
+tools/test_cpu.i: tools/test_cpu.cpp.i
+.PHONY : tools/test_cpu.i
+
+# target to preprocess a source file
+tools/test_cpu.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu.dir/build.make CMakeFiles/test_cpu.dir/tools/test_cpu.cpp.i
+.PHONY : tools/test_cpu.cpp.i
+
+tools/test_cpu.s: tools/test_cpu.cpp.s
+.PHONY : tools/test_cpu.s
+
+# target to generate assembly for a file
+tools/test_cpu.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_cpu.dir/build.make CMakeFiles/test_cpu.dir/tools/test_cpu.cpp.s
+.PHONY : tools/test_cpu.cpp.s
+
+tools/test_demo.o: tools/test_demo.cpp.o
+.PHONY : tools/test_demo.o
+
+# target to build an object file
+tools/test_demo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo.dir/build.make CMakeFiles/test_demo.dir/tools/test_demo.cpp.o
+.PHONY : tools/test_demo.cpp.o
+
+tools/test_demo.i: tools/test_demo.cpp.i
+.PHONY : tools/test_demo.i
+
+# target to preprocess a source file
+tools/test_demo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo.dir/build.make CMakeFiles/test_demo.dir/tools/test_demo.cpp.i
+.PHONY : tools/test_demo.cpp.i
+
+tools/test_demo.s: tools/test_demo.cpp.s
+.PHONY : tools/test_demo.s
+
+# target to generate assembly for a file
+tools/test_demo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo.dir/build.make CMakeFiles/test_demo.dir/tools/test_demo.cpp.s
+.PHONY : tools/test_demo.cpp.s
+
+tools/test_demo_white.o: tools/test_demo_white.cpp.o
+.PHONY : tools/test_demo_white.o
+
+# target to build an object file
+tools/test_demo_white.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white.dir/build.make CMakeFiles/test_demo_white.dir/tools/test_demo_white.cpp.o
+.PHONY : tools/test_demo_white.cpp.o
+
+tools/test_demo_white.i: tools/test_demo_white.cpp.i
+.PHONY : tools/test_demo_white.i
+
+# target to preprocess a source file
+tools/test_demo_white.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white.dir/build.make CMakeFiles/test_demo_white.dir/tools/test_demo_white.cpp.i
+.PHONY : tools/test_demo_white.cpp.i
+
+tools/test_demo_white.s: tools/test_demo_white.cpp.s
+.PHONY : tools/test_demo_white.s
+
+# target to generate assembly for a file
+tools/test_demo_white.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white.dir/build.make CMakeFiles/test_demo_white.dir/tools/test_demo_white.cpp.s
+.PHONY : tools/test_demo_white.cpp.s
+
+tools/test_demo_white_debug.o: tools/test_demo_white_debug.cpp.o
+.PHONY : tools/test_demo_white_debug.o
+
+# target to build an object file
+tools/test_demo_white_debug.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug.dir/build.make CMakeFiles/test_demo_white_debug.dir/tools/test_demo_white_debug.cpp.o
+.PHONY : tools/test_demo_white_debug.cpp.o
+
+tools/test_demo_white_debug.i: tools/test_demo_white_debug.cpp.i
+.PHONY : tools/test_demo_white_debug.i
+
+# target to preprocess a source file
+tools/test_demo_white_debug.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug.dir/build.make CMakeFiles/test_demo_white_debug.dir/tools/test_demo_white_debug.cpp.i
+.PHONY : tools/test_demo_white_debug.cpp.i
+
+tools/test_demo_white_debug.s: tools/test_demo_white_debug.cpp.s
+.PHONY : tools/test_demo_white_debug.s
+
+# target to generate assembly for a file
+tools/test_demo_white_debug.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_demo_white_debug.dir/build.make CMakeFiles/test_demo_white_debug.dir/tools/test_demo_white_debug.cpp.s
+.PHONY : tools/test_demo_white_debug.cpp.s
 
 tools/test_dma.o: tools/test_dma.cpp.o
 .PHONY : tools/test_dma.o
@@ -733,6 +1477,30 @@ tools/test_ppu.s: tools/test_ppu.cpp.s
 tools/test_ppu.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_ppu.dir/build.make CMakeFiles/test_ppu.dir/tools/test_ppu.cpp.s
 .PHONY : tools/test_ppu.cpp.s
+
+tools/test_white_fill.o: tools/test_white_fill.cpp.o
+.PHONY : tools/test_white_fill.o
+
+# target to build an object file
+tools/test_white_fill.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill.dir/build.make CMakeFiles/test_white_fill.dir/tools/test_white_fill.cpp.o
+.PHONY : tools/test_white_fill.cpp.o
+
+tools/test_white_fill.i: tools/test_white_fill.cpp.i
+.PHONY : tools/test_white_fill.i
+
+# target to preprocess a source file
+tools/test_white_fill.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill.dir/build.make CMakeFiles/test_white_fill.dir/tools/test_white_fill.cpp.i
+.PHONY : tools/test_white_fill.cpp.i
+
+tools/test_white_fill.s: tools/test_white_fill.cpp.s
+.PHONY : tools/test_white_fill.s
+
+# target to generate assembly for a file
+tools/test_white_fill.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_white_fill.dir/build.make CMakeFiles/test_white_fill.dir/tools/test_white_fill.cpp.s
+.PHONY : tools/test_white_fill.cpp.s
 
 zeropoint_core_autogen/mocs_compilation.o: zeropoint_core_autogen/mocs_compilation.cpp.o
 .PHONY : zeropoint_core_autogen/mocs_compilation.o
@@ -816,10 +1584,26 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... make_test_rom_autogen"
 	@echo "... make_test_rom_autogen_timestamp_deps"
+	@echo "... run_apu_demo_autogen"
+	@echo "... run_apu_demo_autogen_timestamp_deps"
+	@echo "... run_demo_autogen"
+	@echo "... run_demo_autogen_timestamp_deps"
+	@echo "... test_apu_autogen"
+	@echo "... test_apu_autogen_timestamp_deps"
+	@echo "... test_cpu_autogen"
+	@echo "... test_cpu_autogen_timestamp_deps"
+	@echo "... test_demo_autogen"
+	@echo "... test_demo_autogen_timestamp_deps"
+	@echo "... test_demo_white_autogen"
+	@echo "... test_demo_white_autogen_timestamp_deps"
+	@echo "... test_demo_white_debug_autogen"
+	@echo "... test_demo_white_debug_autogen_timestamp_deps"
 	@echo "... test_dma_autogen"
 	@echo "... test_dma_autogen_timestamp_deps"
 	@echo "... test_ppu_autogen"
 	@echo "... test_ppu_autogen_timestamp_deps"
+	@echo "... test_white_fill_autogen"
+	@echo "... test_white_fill_autogen_timestamp_deps"
 	@echo "... zeropoint_core_autogen"
 	@echo "... zeropoint_core_autogen_timestamp_deps"
 	@echo "... zeropoint_qt_autogen"
@@ -827,8 +1611,16 @@ help:
 	@echo "... zeropoint_sdl_autogen"
 	@echo "... zeropoint_sdl_autogen_timestamp_deps"
 	@echo "... make_test_rom"
+	@echo "... run_apu_demo"
+	@echo "... run_demo"
+	@echo "... test_apu"
+	@echo "... test_cpu"
+	@echo "... test_demo"
+	@echo "... test_demo_white"
+	@echo "... test_demo_white_debug"
 	@echo "... test_dma"
 	@echo "... test_ppu"
+	@echo "... test_white_fill"
 	@echo "... zeropoint_core"
 	@echo "... zeropoint_qt"
 	@echo "... zeropoint_sdl"
@@ -847,6 +1639,18 @@ help:
 	@echo "... qt/mainwindow.o"
 	@echo "... qt/mainwindow.i"
 	@echo "... qt/mainwindow.s"
+	@echo "... run_apu_demo_autogen/mocs_compilation.o"
+	@echo "... run_apu_demo_autogen/mocs_compilation.i"
+	@echo "... run_apu_demo_autogen/mocs_compilation.s"
+	@echo "... run_demo_autogen/mocs_compilation.o"
+	@echo "... run_demo_autogen/mocs_compilation.i"
+	@echo "... run_demo_autogen/mocs_compilation.s"
+	@echo "... src/apu.o"
+	@echo "... src/apu.i"
+	@echo "... src/apu.s"
+	@echo "... src/cpu.o"
+	@echo "... src/cpu.i"
+	@echo "... src/cpu.s"
 	@echo "... src/display.o"
 	@echo "... src/display.i"
 	@echo "... src/display.s"
@@ -859,27 +1663,72 @@ help:
 	@echo "... src/ppu.o"
 	@echo "... src/ppu.i"
 	@echo "... src/ppu.s"
+	@echo "... src/ppu_jit.o"
+	@echo "... src/ppu_jit.i"
+	@echo "... src/ppu_jit.s"
 	@echo "... src/rom.o"
 	@echo "... src/rom.i"
 	@echo "... src/rom.s"
 	@echo "... src/window.o"
 	@echo "... src/window.i"
 	@echo "... src/window.s"
+	@echo "... test_apu_autogen/mocs_compilation.o"
+	@echo "... test_apu_autogen/mocs_compilation.i"
+	@echo "... test_apu_autogen/mocs_compilation.s"
+	@echo "... test_cpu_autogen/mocs_compilation.o"
+	@echo "... test_cpu_autogen/mocs_compilation.i"
+	@echo "... test_cpu_autogen/mocs_compilation.s"
+	@echo "... test_demo_autogen/mocs_compilation.o"
+	@echo "... test_demo_autogen/mocs_compilation.i"
+	@echo "... test_demo_autogen/mocs_compilation.s"
+	@echo "... test_demo_white_autogen/mocs_compilation.o"
+	@echo "... test_demo_white_autogen/mocs_compilation.i"
+	@echo "... test_demo_white_autogen/mocs_compilation.s"
+	@echo "... test_demo_white_debug_autogen/mocs_compilation.o"
+	@echo "... test_demo_white_debug_autogen/mocs_compilation.i"
+	@echo "... test_demo_white_debug_autogen/mocs_compilation.s"
 	@echo "... test_dma_autogen/mocs_compilation.o"
 	@echo "... test_dma_autogen/mocs_compilation.i"
 	@echo "... test_dma_autogen/mocs_compilation.s"
 	@echo "... test_ppu_autogen/mocs_compilation.o"
 	@echo "... test_ppu_autogen/mocs_compilation.i"
 	@echo "... test_ppu_autogen/mocs_compilation.s"
+	@echo "... test_white_fill_autogen/mocs_compilation.o"
+	@echo "... test_white_fill_autogen/mocs_compilation.i"
+	@echo "... test_white_fill_autogen/mocs_compilation.s"
 	@echo "... tools/make_test_rom.o"
 	@echo "... tools/make_test_rom.i"
 	@echo "... tools/make_test_rom.s"
+	@echo "... tools/run_apu_demo.o"
+	@echo "... tools/run_apu_demo.i"
+	@echo "... tools/run_apu_demo.s"
+	@echo "... tools/run_demo.o"
+	@echo "... tools/run_demo.i"
+	@echo "... tools/run_demo.s"
+	@echo "... tools/test_apu.o"
+	@echo "... tools/test_apu.i"
+	@echo "... tools/test_apu.s"
+	@echo "... tools/test_cpu.o"
+	@echo "... tools/test_cpu.i"
+	@echo "... tools/test_cpu.s"
+	@echo "... tools/test_demo.o"
+	@echo "... tools/test_demo.i"
+	@echo "... tools/test_demo.s"
+	@echo "... tools/test_demo_white.o"
+	@echo "... tools/test_demo_white.i"
+	@echo "... tools/test_demo_white.s"
+	@echo "... tools/test_demo_white_debug.o"
+	@echo "... tools/test_demo_white_debug.i"
+	@echo "... tools/test_demo_white_debug.s"
 	@echo "... tools/test_dma.o"
 	@echo "... tools/test_dma.i"
 	@echo "... tools/test_dma.s"
 	@echo "... tools/test_ppu.o"
 	@echo "... tools/test_ppu.i"
 	@echo "... tools/test_ppu.s"
+	@echo "... tools/test_white_fill.o"
+	@echo "... tools/test_white_fill.i"
+	@echo "... tools/test_white_fill.s"
 	@echo "... zeropoint_core_autogen/mocs_compilation.o"
 	@echo "... zeropoint_core_autogen/mocs_compilation.i"
 	@echo "... zeropoint_core_autogen/mocs_compilation.s"

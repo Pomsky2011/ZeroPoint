@@ -4,6 +4,21 @@
 
 The ZeroPoint DMA (Direct Memory Access) controller enables efficient data transfers without CPU intervention. It supports 16 independent channels with queuing and 4 different transfer modes.
 
+## Clock Synchronization
+
+The DMA controller runs at 32 MHz, half the speed of the master clock:
+
+- **Master clock**: 64 MHz (PPU pixel clock)
+- **DMA clock**: 32 MHz (every 2 master cycles)
+- **Execution pattern**: Executes on odd master cycles (1, 3, 5, 7, 9, 11, 13, 15)
+
+This allows the DMA to run efficiently without competing with the PPU for every cycle.
+
+Other system components:
+- **PPU**: 64 MHz (every cycle)
+- **CPU**: 16 MHz (every 4 cycles)
+- **APU**: 4 MHz (every 16 cycles)
+
 ## Configuration
 
 Each DMA transfer is configured with a 9-byte structure:

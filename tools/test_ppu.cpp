@@ -55,8 +55,6 @@ void testBasicArithmetic() {
     };
 
     ppu.loadMicrocode(program, sizeof(program));
-    ppu.setVBlankInterrupt(0x0000);
-    ppu.setHBlankInterrupt(0x0000);
     ppu.start();
 
     // Run until halted
@@ -125,8 +123,6 @@ void testComparison() {
     };
 
     ppu.loadMicrocode(program, sizeof(program));
-    ppu.setVBlankInterrupt(0x0000);
-    ppu.setHBlankInterrupt(0x0000);
     ppu.start();
 
     // Run until halted
@@ -194,8 +190,6 @@ void testMemoryOperations() {
     };
 
     ppu.loadMicrocode(program, sizeof(program));
-    ppu.setVBlankInterrupt(0x0000);
-    ppu.setHBlankInterrupt(0x0000);
     ppu.start();
 
     // Run until halted
@@ -226,8 +220,6 @@ void testBlankStatus() {
     };
 
     ppu.loadMicrocode(program, sizeof(program));
-    ppu.setVBlankInterrupt(0x0000);
-    ppu.setHBlankInterrupt(0x0000);
 
     // Test VBlank
     ppu.setBlankStatus(true, false);
@@ -241,8 +233,6 @@ void testBlankStatus() {
     // Reset and test HBlank
     ppu.reset();
     ppu.loadMicrocode(program, sizeof(program));
-    ppu.setVBlankInterrupt(0x0000);
-    ppu.setHBlankInterrupt(0x0000);
     ppu.setBlankStatus(false, true);
     ppu.start();
     ppu.tick();
@@ -254,8 +244,6 @@ void testBlankStatus() {
     // Reset and test active rendering
     ppu.reset();
     ppu.loadMicrocode(program, sizeof(program));
-    ppu.setVBlankInterrupt(0x0000);
-    ppu.setHBlankInterrupt(0x0000);
     ppu.setBlankStatus(false, false);
     ppu.start();
     ppu.tick();

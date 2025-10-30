@@ -1,0 +1,1 @@
+/usr/bin/c++ -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/make_test_rom.dir/make_test_rom_autogen/mocs_compilation.cpp.o CMakeFiles/make_test_rom.dir/tools/make_test_rom.cpp.o -o bin/make_test_rom
