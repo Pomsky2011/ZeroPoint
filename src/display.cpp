@@ -3,6 +3,34 @@
 
 namespace ZeroPoint {
 
+// Static lookup table for color conversion
+uint32_t Display::color16ToSDL_LUT[65536];
+bool Display::lutInitialized = false;
+
+void Display::initializeLUT() {
+    if (lutInitialized) return;
+
+    // Pre-compute all 65536 RGBA16 to SDL ARGB conversions
+    for (uint32_t color16 = 0; color16 < 65536; color16++) {
+        // Extract 5-bit RGB and 1-bit alpha
+        uint8_t r5 = (color16 >> 1) & 0x1F;
+        uint8_t g5 = (color16 >> 6) & 0x1F;
+        uint8_t b5 = (color16 >> 11) & 0x1F;
+        uint8_t a1 = color16 & 0x01;
+
+        // Expand 5-bit to 8-bit
+        uint8_t r8 = (r5 << 3) | (r5 >> 2);
+        uint8_t g8 = (g5 << 3) | (g5 >> 2);
+        uint8_t b8 = (b5 << 3) | (b5 >> 2);
+        uint8_t a8 = a1 ? 0xFF : 0x00;
+
+        // Pack as SDL ARGB8888
+        color16ToSDL_LUT[color16] = (a8 << 24) | (r8 << 16) | (g8 << 8) | b8;
+    }
+
+    lutInitialized = true;
+}
+
 Display::Display()
     : renderMode(RenderMode::RGBA16)
     , currentScanline(0)
@@ -10,6 +38,9 @@ Display::Display()
     , bufferStartBank(0)
     , scanlinesInCurrentBank(0)
 {
+    // Initialize lookup table on first Display creation
+    initializeLUT();
+
     // Initialize 8 KiB framebuffer to black
     framebuffer.fill(0);
 }
@@ -363,6 +394,60 @@ bool Display::getScanline(int y, Color32* buffer) const {
                 } else {
                     buffer[x] = 0x00000000;
                 }
+            }
+        }
+    }
+
+    return true;
+}
+
+bool Display::getScanlineSDL(int y, uint32_t* buffer) const {
+    if (y < 0 || y >= FULL_HEIGHT || !buffer) {
+        return false;
+    }
+
+    // Get bank and offset for this scanline
+    int offsetInBank;
+    int bank = getBufferBank(y, offsetInBank);
+
+    if (bank < 0) {
+        // Outside buffer window - fill with black
+        std::memset(buffer, 0, FB_WIDTH * sizeof(uint32_t));
+        return false;
+    }
+
+    size_t offset = bank * FB_BANK_SIZE + offsetInBank;
+
+    // Single-pass conversion to SDL ARGB format
+    if (renderMode == RenderMode::RGBA16) {
+        // 16-bit mode: Use lookup table for instant conversion
+        for (int x = 0; x < FB_WIDTH; x++) {
+            size_t pixelOffset = offset + x * 2;
+            if (pixelOffset + 1 < framebuffer.size()) {
+                uint8_t low = framebuffer[pixelOffset];
+                uint8_t high = framebuffer[pixelOffset + 1];
+                Color16 color16 = (high << 8) | low;
+
+                // Lookup pre-computed SDL ARGB value (zero bit operations!)
+                buffer[x] = color16ToSDL_LUT[color16];
+            } else {
+                buffer[x] = 0x00000000;
+            }
+        }
+    } else {
+        // 32-bit mode: Just reorder bytes from RRGGBBAA to ARGB
+        for (int x = 0; x < FB_WIDTH; x++) {
+            size_t pixelOffset = offset + x * 4;
+            if (pixelOffset + 3 < framebuffer.size()) {
+                uint8_t r = framebuffer[pixelOffset];
+                uint8_t g = framebuffer[pixelOffset + 1];
+                uint8_t b = framebuffer[pixelOffset + 2];
+                uint8_t a = framebuffer[pixelOffset + 3];
+
+                // Pack as SDL ARGB8888
+                buffer[x] = (a << 24) | (r << 16) | (g << 8) | b;
+            } else {
+                buffer[x] = 0x00000000;
             }
         }
     }

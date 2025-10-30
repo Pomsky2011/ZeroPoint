@@ -73,22 +73,11 @@ void Window::render(const Display& display) {
     // Allocate pixel buffer (SDL_UpdateTexture is faster than LockTexture on some drivers)
     uint32_t pixels[FB_WIDTH * FULL_HEIGHT];
 
-    // Read scanline-by-scanline for much better performance
-    Color32 scanlineBuffer[FB_WIDTH];
-
+    // Read scanline-by-scanline with DIRECT conversion to SDL ARGB format
+    // This eliminates the double color conversion (was: RGBA16->RGBA32->ARGB)
     for (int y = 0; y < FULL_HEIGHT; y++) {
-        // Get entire scanline at once
-        display.getScanline(y, scanlineBuffer);
-
-        // Convert from RRGGBBAA to ARGB for SDL
-        for (int x = 0; x < FB_WIDTH; x++) {
-            Color32 color = scanlineBuffer[x];
-            uint8_t r = (color >> 24) & 0xFF;
-            uint8_t g = (color >> 16) & 0xFF;
-            uint8_t b = (color >> 8) & 0xFF;
-            uint8_t a = color & 0xFF;
-            pixels[y * FB_WIDTH + x] = (a << 24) | (r << 16) | (g << 8) | b;
-        }
+        // Get scanline directly in SDL format (single conversion)
+        display.getScanlineSDL(y, &pixels[y * FB_WIDTH]);
     }
 
     // Update texture (driver-optimized upload path)

@@ -120,6 +120,11 @@ public:
     // Returns false if scanline is outside rolling buffer window
     bool getScanline(int y, Color32* buffer) const;
 
+    // Get scanline in SDL ARGB format (optimized - single conversion)
+    // Fills buffer with 256 pixels in SDL ARGB8888 format
+    // Returns false if scanline is outside rolling buffer window
+    bool getScanlineSDL(int y, uint32_t* buffer) const;
+
     // Helper: Convert 16-bit color to 32-bit
     static Color32 color16To32(Color16 color);
 
@@ -127,6 +132,12 @@ public:
     static Color16 color32To16(Color32 color);
 
 private:
+    // Lookup table for RGBA16 to SDL ARGB conversion (65536 entries)
+    // Pre-computed to eliminate per-pixel bit manipulation
+    static uint32_t color16ToSDL_LUT[65536];
+    static bool lutInitialized;
+    static void initializeLUT();
+
     // TEMPORARY HACK: Full framebuffer for direct access (no rolling banks)
     // 256×256×2 = 128 KiB for 16-bit mode
     // OLD: 8 banks × 1 KiB each = 8 KiB total
