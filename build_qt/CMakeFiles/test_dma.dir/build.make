@@ -120,6 +120,7 @@ bin/test_dma: CMakeFiles/test_dma.dir/tools/test_dma.cpp.o
 bin/test_dma: CMakeFiles/test_dma.dir/build.make
 bin/test_dma: libzeropoint_core.a
 bin/test_dma: /usr/local/Cellar/sdl2/2.32.8/lib/libSDL2.dylib
+bin/test_dma: /usr/local/lib/libvulkan.dylib
 bin/test_dma: CMakeFiles/test_dma.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable bin/test_dma"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/test_dma.dir/link.txt --verbose=$(VERBOSE)

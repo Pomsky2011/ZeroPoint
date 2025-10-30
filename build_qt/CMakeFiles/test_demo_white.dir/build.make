@@ -120,6 +120,7 @@ bin/test_demo_white: CMakeFiles/test_demo_white.dir/tools/test_demo_white.cpp.o
 bin/test_demo_white: CMakeFiles/test_demo_white.dir/build.make
 bin/test_demo_white: libzeropoint_core.a
 bin/test_demo_white: /usr/local/Cellar/sdl2/2.32.8/lib/libSDL2.dylib
+bin/test_demo_white: /usr/local/lib/libvulkan.dylib
 bin/test_demo_white: CMakeFiles/test_demo_white.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable bin/test_demo_white"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/test_demo_white.dir/link.txt --verbose=$(VERBOSE)

@@ -36,6 +36,9 @@
 		"/usr/local/lib/cmake/SDL2/sdl2-config-version.cmake",
 		"/usr/local/lib/cmake/SDL2/sdl2-config.cmake",
 		"/usr/local/share/cmake/Modules/FeatureSummary.cmake",
+		"/usr/local/share/cmake/Modules/FindVulkan.cmake",
+		"/usr/local/share/cmake/Modules/FindPackageHandleStandardArgs.cmake",
+		"/usr/local/share/cmake/Modules/FindPackageMessage.cmake",
 		"/usr/local/lib/cmake/Qt6/Qt6ConfigVersion.cmake",
 		"/usr/local/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake",
 		"/usr/local/lib/cmake/Qt6/Qt6Config.cmake",
@@ -446,6 +449,12 @@
 			null
 		],
 		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/vulkan_window.h",
+			"MU",
+			"6YEA5652QU/moc_vulkan_window.cpp",
+			null
+		],
+		[
 			"/Users/alexanderwhite/Documents/Code/ZeroPoint/include/window.h",
 			"MU",
 			"6YEA5652QU/moc_window.cpp",
@@ -539,6 +548,11 @@
 		],
 		[
 			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/rom.cpp",
+			"MU",
+			null
+		],
+		[
+			"/Users/alexanderwhite/Documents/Code/ZeroPoint/src/vulkan_window.cpp",
 			"MU",
 			null
 		],

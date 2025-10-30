@@ -120,6 +120,7 @@ bin/run_demo.app/Contents/MacOS/run_demo: CMakeFiles/run_demo.dir/tools/run_demo
 bin/run_demo.app/Contents/MacOS/run_demo: CMakeFiles/run_demo.dir/build.make
 bin/run_demo.app/Contents/MacOS/run_demo: libzeropoint_core.a
 bin/run_demo.app/Contents/MacOS/run_demo: /usr/local/Cellar/sdl2/2.32.8/lib/libSDL2.dylib
+bin/run_demo.app/Contents/MacOS/run_demo: /usr/local/lib/libvulkan.dylib
 bin/run_demo.app/Contents/MacOS/run_demo: CMakeFiles/run_demo.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable bin/run_demo.app/Contents/MacOS/run_demo"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/run_demo.dir/link.txt --verbose=$(VERBOSE)

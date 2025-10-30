@@ -1022,6 +1022,30 @@ src/rom.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/rom.cpp.s
 .PHONY : src/rom.cpp.s
 
+src/vulkan_window.o: src/vulkan_window.cpp.o
+.PHONY : src/vulkan_window.o
+
+# target to build an object file
+src/vulkan_window.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/vulkan_window.cpp.o
+.PHONY : src/vulkan_window.cpp.o
+
+src/vulkan_window.i: src/vulkan_window.cpp.i
+.PHONY : src/vulkan_window.i
+
+# target to preprocess a source file
+src/vulkan_window.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/vulkan_window.cpp.i
+.PHONY : src/vulkan_window.cpp.i
+
+src/vulkan_window.s: src/vulkan_window.cpp.s
+.PHONY : src/vulkan_window.s
+
+# target to generate assembly for a file
+src/vulkan_window.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/src/vulkan_window.cpp.s
+.PHONY : src/vulkan_window.cpp.s
+
 src/window.o: src/window.cpp.o
 .PHONY : src/window.o
 
@@ -1669,6 +1693,9 @@ help:
 	@echo "... src/rom.o"
 	@echo "... src/rom.i"
 	@echo "... src/rom.s"
+	@echo "... src/vulkan_window.o"
+	@echo "... src/vulkan_window.i"
+	@echo "... src/vulkan_window.s"
 	@echo "... src/window.o"
 	@echo "... src/window.i"
 	@echo "... src/window.s"

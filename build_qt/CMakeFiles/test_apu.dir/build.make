@@ -120,6 +120,7 @@ bin/test_apu: CMakeFiles/test_apu.dir/tools/test_apu.cpp.o
 bin/test_apu: CMakeFiles/test_apu.dir/build.make
 bin/test_apu: libzeropoint_core.a
 bin/test_apu: /usr/local/Cellar/sdl2/2.32.8/lib/libSDL2.dylib
+bin/test_apu: /usr/local/lib/libvulkan.dylib
 bin/test_apu: CMakeFiles/test_apu.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable bin/test_apu"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/test_apu.dir/link.txt --verbose=$(VERBOSE)

@@ -153,12 +153,12 @@ CMakeFiles/zeropoint_core.dir/all: CMakeFiles/zeropoint_core_autogen_timestamp_d
 CMakeFiles/zeropoint_core.dir/all: CMakeFiles/zeropoint_core_autogen.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=56,57,58,59,60,61,62,63,64,65,66 "Built target zeropoint_core"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=56,57,58,59,60,61,62,63,64,65,66,67 "Built target zeropoint_core"
 .PHONY : CMakeFiles/zeropoint_core.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/zeropoint_core.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/zeropoint_core.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/zeropoint_core.dir/rule
@@ -171,7 +171,7 @@ zeropoint_core: CMakeFiles/zeropoint_core.dir/rule
 CMakeFiles/zeropoint_core.dir/codegen: CMakeFiles/zeropoint_core_autogen_timestamp_deps.dir/all
 CMakeFiles/zeropoint_core.dir/codegen: CMakeFiles/zeropoint_core_autogen.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core.dir/build.make CMakeFiles/zeropoint_core.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=56,57,58,59,60,61,62,63,64,65,66 "Finished codegen for target zeropoint_core"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=56,57,58,59,60,61,62,63,64,65,66,67 "Finished codegen for target zeropoint_core"
 .PHONY : CMakeFiles/zeropoint_core.dir/codegen
 
 # clean rule for target.
@@ -188,12 +188,12 @@ CMakeFiles/zeropoint_sdl.dir/all: CMakeFiles/zeropoint_sdl_autogen_timestamp_dep
 CMakeFiles/zeropoint_sdl.dir/all: CMakeFiles/zeropoint_sdl_autogen.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl.dir/build.make CMakeFiles/zeropoint_sdl.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl.dir/build.make CMakeFiles/zeropoint_sdl.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=76,77,78,79 "Built target zeropoint_sdl"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=77,78,79,80 "Built target zeropoint_sdl"
 .PHONY : CMakeFiles/zeropoint_sdl.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/zeropoint_sdl.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/zeropoint_sdl.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/zeropoint_sdl.dir/rule
@@ -206,7 +206,7 @@ zeropoint_sdl: CMakeFiles/zeropoint_sdl.dir/rule
 CMakeFiles/zeropoint_sdl.dir/codegen: CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/all
 CMakeFiles/zeropoint_sdl.dir/codegen: CMakeFiles/zeropoint_sdl_autogen.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl.dir/build.make CMakeFiles/zeropoint_sdl.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=76,77,78,79 "Finished codegen for target zeropoint_sdl"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=77,78,79,80 "Finished codegen for target zeropoint_sdl"
 .PHONY : CMakeFiles/zeropoint_sdl.dir/codegen
 
 # clean rule for target.
@@ -223,12 +223,12 @@ CMakeFiles/zeropoint_qt.dir/all: CMakeFiles/zeropoint_qt_autogen_timestamp_deps.
 CMakeFiles/zeropoint_qt.dir/all: CMakeFiles/zeropoint_qt_autogen.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_qt.dir/build.make CMakeFiles/zeropoint_qt.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_qt.dir/build.make CMakeFiles/zeropoint_qt.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=68,69,70,71,72,73,74 "Built target zeropoint_qt"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=69,70,71,72,73,74,75 "Built target zeropoint_qt"
 .PHONY : CMakeFiles/zeropoint_qt.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/zeropoint_qt.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 20
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 21
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/zeropoint_qt.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/zeropoint_qt.dir/rule
@@ -241,7 +241,7 @@ zeropoint_qt: CMakeFiles/zeropoint_qt.dir/rule
 CMakeFiles/zeropoint_qt.dir/codegen: CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/all
 CMakeFiles/zeropoint_qt.dir/codegen: CMakeFiles/zeropoint_qt_autogen.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_qt.dir/build.make CMakeFiles/zeropoint_qt.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=68,69,70,71,72,73,74 "Finished codegen for target zeropoint_qt"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=69,70,71,72,73,74,75 "Finished codegen for target zeropoint_qt"
 .PHONY : CMakeFiles/zeropoint_qt.dir/codegen
 
 # clean rule for target.
@@ -288,8 +288,8 @@ CMakeFiles/make_test_rom.dir/clean:
 
 # All Build rule for target.
 CMakeFiles/test_dma.dir/all: CMakeFiles/zeropoint_core.dir/all
-CMakeFiles/test_dma.dir/all: CMakeFiles/test_dma_autogen_timestamp_deps.dir/all
 CMakeFiles/test_dma.dir/all: CMakeFiles/test_dma_autogen.dir/all
+CMakeFiles/test_dma.dir/all: CMakeFiles/test_dma_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dma.dir/build.make CMakeFiles/test_dma.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dma.dir/build.make CMakeFiles/test_dma.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=41,42,43,44 "Built target test_dma"
@@ -297,7 +297,7 @@ CMakeFiles/test_dma.dir/all: CMakeFiles/test_dma_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_dma.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_dma.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_dma.dir/rule
@@ -307,8 +307,8 @@ test_dma: CMakeFiles/test_dma.dir/rule
 .PHONY : test_dma
 
 # codegen rule for target.
-CMakeFiles/test_dma.dir/codegen: CMakeFiles/test_dma_autogen_timestamp_deps.dir/all
 CMakeFiles/test_dma.dir/codegen: CMakeFiles/test_dma_autogen.dir/all
+CMakeFiles/test_dma.dir/codegen: CMakeFiles/test_dma_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_dma.dir/build.make CMakeFiles/test_dma.dir/codegen
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=41,42,43,44 "Finished codegen for target test_dma"
 .PHONY : CMakeFiles/test_dma.dir/codegen
@@ -332,7 +332,7 @@ CMakeFiles/test_ppu.dir/all: CMakeFiles/test_ppu_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_ppu.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_ppu.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_ppu.dir/rule
@@ -367,7 +367,7 @@ CMakeFiles/run_demo.dir/all: CMakeFiles/run_demo_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run_demo.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/run_demo.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/run_demo.dir/rule
@@ -402,7 +402,7 @@ CMakeFiles/test_demo.dir/all: CMakeFiles/test_demo_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo.dir/rule
@@ -437,7 +437,7 @@ CMakeFiles/test_apu.dir/all: CMakeFiles/test_apu_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_apu.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_apu.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_apu.dir/rule
@@ -472,7 +472,7 @@ CMakeFiles/run_apu_demo.dir/all: CMakeFiles/run_apu_demo_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run_apu_demo.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/run_apu_demo.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/run_apu_demo.dir/rule
@@ -507,7 +507,7 @@ CMakeFiles/test_cpu.dir/all: CMakeFiles/test_cpu_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_cpu.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_cpu.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_cpu.dir/rule
@@ -542,7 +542,7 @@ CMakeFiles/test_white_fill.dir/all: CMakeFiles/test_white_fill_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_white_fill.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_white_fill.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_white_fill.dir/rule
@@ -577,7 +577,7 @@ CMakeFiles/test_demo_white.dir/all: CMakeFiles/test_demo_white_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_white.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_white.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_white.dir/rule
@@ -612,7 +612,7 @@ CMakeFiles/test_demo_white_debug.dir/all: CMakeFiles/test_demo_white_debug_autog
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_white_debug.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 17
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 18
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_white_debug.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_white_debug.dir/rule
@@ -672,7 +672,7 @@ CMakeFiles/zeropoint_core_autogen_timestamp_deps.dir/clean:
 CMakeFiles/zeropoint_core_autogen.dir/all: CMakeFiles/zeropoint_core_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core_autogen.dir/build.make CMakeFiles/zeropoint_core_autogen.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core_autogen.dir/build.make CMakeFiles/zeropoint_core_autogen.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=67 "Built target zeropoint_core_autogen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=68 "Built target zeropoint_core_autogen"
 .PHONY : CMakeFiles/zeropoint_core_autogen.dir/all
 
 # Build rule for subdir invocation for target.
@@ -689,7 +689,7 @@ zeropoint_core_autogen: CMakeFiles/zeropoint_core_autogen.dir/rule
 # codegen rule for target.
 CMakeFiles/zeropoint_core_autogen.dir/codegen: CMakeFiles/zeropoint_core_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_core_autogen.dir/build.make CMakeFiles/zeropoint_core_autogen.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=67 "Finished codegen for target zeropoint_core_autogen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=68 "Finished codegen for target zeropoint_core_autogen"
 .PHONY : CMakeFiles/zeropoint_core_autogen.dir/codegen
 
 # clean rule for target.
@@ -709,7 +709,7 @@ CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_co
 
 # Build rule for subdir invocation for target.
 CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/rule
@@ -736,12 +736,12 @@ CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/clean:
 CMakeFiles/zeropoint_sdl_autogen.dir/all: CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl_autogen.dir/build.make CMakeFiles/zeropoint_sdl_autogen.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl_autogen.dir/build.make CMakeFiles/zeropoint_sdl_autogen.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=80 "Built target zeropoint_sdl_autogen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=81 "Built target zeropoint_sdl_autogen"
 .PHONY : CMakeFiles/zeropoint_sdl_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/zeropoint_sdl_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/zeropoint_sdl_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/zeropoint_sdl_autogen.dir/rule
@@ -753,7 +753,7 @@ zeropoint_sdl_autogen: CMakeFiles/zeropoint_sdl_autogen.dir/rule
 # codegen rule for target.
 CMakeFiles/zeropoint_sdl_autogen.dir/codegen: CMakeFiles/zeropoint_sdl_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_sdl_autogen.dir/build.make CMakeFiles/zeropoint_sdl_autogen.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=80 "Finished codegen for target zeropoint_sdl_autogen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=81 "Finished codegen for target zeropoint_sdl_autogen"
 .PHONY : CMakeFiles/zeropoint_sdl_autogen.dir/codegen
 
 # clean rule for target.
@@ -773,7 +773,7 @@ CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_cor
 
 # Build rule for subdir invocation for target.
 CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/rule
@@ -800,12 +800,12 @@ CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/clean:
 CMakeFiles/zeropoint_qt_autogen.dir/all: CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_qt_autogen.dir/build.make CMakeFiles/zeropoint_qt_autogen.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_qt_autogen.dir/build.make CMakeFiles/zeropoint_qt_autogen.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=75 "Built target zeropoint_qt_autogen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=76 "Built target zeropoint_qt_autogen"
 .PHONY : CMakeFiles/zeropoint_qt_autogen.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/zeropoint_qt_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/zeropoint_qt_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/zeropoint_qt_autogen.dir/rule
@@ -817,7 +817,7 @@ zeropoint_qt_autogen: CMakeFiles/zeropoint_qt_autogen.dir/rule
 # codegen rule for target.
 CMakeFiles/zeropoint_qt_autogen.dir/codegen: CMakeFiles/zeropoint_qt_autogen_timestamp_deps.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/zeropoint_qt_autogen.dir/build.make CMakeFiles/zeropoint_qt_autogen.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=75 "Finished codegen for target zeropoint_qt_autogen"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles --progress-num=76 "Finished codegen for target zeropoint_qt_autogen"
 .PHONY : CMakeFiles/zeropoint_qt_autogen.dir/codegen
 
 # clean rule for target.
@@ -901,7 +901,7 @@ CMakeFiles/test_dma_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_core.di
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_dma_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_dma_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_dma_autogen_timestamp_deps.dir/rule
@@ -933,7 +933,7 @@ CMakeFiles/test_dma_autogen.dir/all: CMakeFiles/test_dma_autogen_timestamp_deps.
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_dma_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_dma_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_dma_autogen.dir/rule
@@ -965,7 +965,7 @@ CMakeFiles/test_ppu_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_core.di
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_ppu_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_ppu_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_ppu_autogen_timestamp_deps.dir/rule
@@ -997,7 +997,7 @@ CMakeFiles/test_ppu_autogen.dir/all: CMakeFiles/test_ppu_autogen_timestamp_deps.
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_ppu_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_ppu_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_ppu_autogen.dir/rule
@@ -1029,7 +1029,7 @@ CMakeFiles/run_demo_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_core.di
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run_demo_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/run_demo_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/run_demo_autogen_timestamp_deps.dir/rule
@@ -1061,7 +1061,7 @@ CMakeFiles/run_demo_autogen.dir/all: CMakeFiles/run_demo_autogen_timestamp_deps.
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run_demo_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/run_demo_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/run_demo_autogen.dir/rule
@@ -1093,7 +1093,7 @@ CMakeFiles/test_demo_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_core.d
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_autogen_timestamp_deps.dir/rule
@@ -1125,7 +1125,7 @@ CMakeFiles/test_demo_autogen.dir/all: CMakeFiles/test_demo_autogen_timestamp_dep
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_autogen.dir/rule
@@ -1157,7 +1157,7 @@ CMakeFiles/test_apu_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_core.di
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_apu_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_apu_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_apu_autogen_timestamp_deps.dir/rule
@@ -1189,7 +1189,7 @@ CMakeFiles/test_apu_autogen.dir/all: CMakeFiles/test_apu_autogen_timestamp_deps.
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_apu_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_apu_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_apu_autogen.dir/rule
@@ -1221,7 +1221,7 @@ CMakeFiles/run_apu_demo_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_cor
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run_apu_demo_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/run_apu_demo_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/run_apu_demo_autogen_timestamp_deps.dir/rule
@@ -1253,7 +1253,7 @@ CMakeFiles/run_apu_demo_autogen.dir/all: CMakeFiles/run_apu_demo_autogen_timesta
 
 # Build rule for subdir invocation for target.
 CMakeFiles/run_apu_demo_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/run_apu_demo_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/run_apu_demo_autogen.dir/rule
@@ -1285,7 +1285,7 @@ CMakeFiles/test_cpu_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_core.di
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_cpu_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_cpu_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_cpu_autogen_timestamp_deps.dir/rule
@@ -1317,7 +1317,7 @@ CMakeFiles/test_cpu_autogen.dir/all: CMakeFiles/test_cpu_autogen_timestamp_deps.
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_cpu_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_cpu_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_cpu_autogen.dir/rule
@@ -1349,7 +1349,7 @@ CMakeFiles/test_white_fill_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_white_fill_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_white_fill_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_white_fill_autogen_timestamp_deps.dir/rule
@@ -1381,7 +1381,7 @@ CMakeFiles/test_white_fill_autogen.dir/all: CMakeFiles/test_white_fill_autogen_t
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_white_fill_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_white_fill_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_white_fill_autogen.dir/rule
@@ -1413,7 +1413,7 @@ CMakeFiles/test_demo_white_autogen_timestamp_deps.dir/all: CMakeFiles/zeropoint_
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_white_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_white_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_white_autogen_timestamp_deps.dir/rule
@@ -1445,7 +1445,7 @@ CMakeFiles/test_demo_white_autogen.dir/all: CMakeFiles/test_demo_white_autogen_t
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_white_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_white_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_white_autogen.dir/rule
@@ -1477,7 +1477,7 @@ CMakeFiles/test_demo_white_debug_autogen_timestamp_deps.dir/all: CMakeFiles/zero
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_white_debug_autogen_timestamp_deps.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 12
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_white_debug_autogen_timestamp_deps.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_white_debug_autogen_timestamp_deps.dir/rule
@@ -1509,7 +1509,7 @@ CMakeFiles/test_demo_white_debug_autogen.dir/all: CMakeFiles/test_demo_white_deb
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_demo_white_debug_autogen.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 13
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 14
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_demo_white_debug_autogen.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /Users/alexanderwhite/Documents/Code/ZeroPoint/build_qt/CMakeFiles 0
 .PHONY : CMakeFiles/test_demo_white_debug_autogen.dir/rule

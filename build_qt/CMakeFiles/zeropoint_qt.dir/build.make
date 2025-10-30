@@ -173,6 +173,7 @@ bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: CMakeFiles/zeropoint_qt.dir/bu
 bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: libzeropoint_core.a
 bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: /usr/local/lib/QtWidgets.framework/Versions/A/QtWidgets
 bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: /usr/local/Cellar/sdl2/2.32.8/lib/libSDL2.dylib
+bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: /usr/local/lib/libvulkan.dylib
 bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: /usr/local/lib/QtGui.framework/Versions/A/QtGui
 bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: /usr/local/lib/QtCore.framework/Versions/A/QtCore
 bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt: CMakeFiles/zeropoint_qt.dir/link.txt

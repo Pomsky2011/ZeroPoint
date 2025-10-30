@@ -16,6 +16,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/zeropoint_core.dir/src/ppu_jit.cpp.o.d"
   "CMakeFiles/zeropoint_core.dir/src/rom.cpp.o"
   "CMakeFiles/zeropoint_core.dir/src/rom.cpp.o.d"
+  "CMakeFiles/zeropoint_core.dir/src/vulkan_window.cpp.o"
+  "CMakeFiles/zeropoint_core.dir/src/vulkan_window.cpp.o.d"
   "CMakeFiles/zeropoint_core.dir/src/window.cpp.o"
   "CMakeFiles/zeropoint_core.dir/src/window.cpp.o.d"
   "CMakeFiles/zeropoint_core.dir/zeropoint_core_autogen/mocs_compilation.cpp.o"

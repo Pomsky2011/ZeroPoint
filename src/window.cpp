@@ -45,13 +45,19 @@ bool Window::init() {
         return false;
     }
 
-    // Use accelerated rendering without vsync for maximum performance
-    // The emulator controls frame timing, not the display
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    // Use accelerated rendering with Metal backend on macOS
+    // SDL_RENDERER_ACCELERATED uses Metal on macOS (via MoltenVK internally)
+    // Add SDL_RENDERER_TARGETTEXTURE for direct GPU memory access
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
     if (!renderer) {
         std::cerr << "Renderer creation failed: " << SDL_GetError() << "\n";
         return false;
     }
+
+    // Print renderer info to verify we're using Metal
+    SDL_RendererInfo info;
+    SDL_GetRendererInfo(renderer, &info);
+    std::cout << "SDL Renderer: " << info.name << "\n";
 
     texture = SDL_CreateTexture(
         renderer,

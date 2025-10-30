@@ -34,6 +34,9 @@ elseif(PLATFORM_LINUX)
     pkg_check_modules(SDL2 REQUIRED sdl2)
 endif()
 
+# Find Vulkan (MoltenVK on macOS)
+find_package(Vulkan REQUIRED)
+
 # Try Qt6 first, fall back to Qt5
 find_package(Qt6 COMPONENTS Core Widgets QUIET)
 if(NOT Qt6_FOUND)
@@ -51,6 +54,7 @@ set(CMAKE_AUTORCC ON)
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${SDL2_INCLUDE_DIRS})
+include_directories(${Vulkan_INCLUDE_DIRS})
 
 # Platform-specific compile options
 if(PLATFORM_WINDOWS)
@@ -72,6 +76,7 @@ set(CORE_SOURCES
     src/apu.cpp
     src/cpu.cpp
     src/window.cpp
+    src/vulkan_window.cpp
 )
 
 set(CORE_HEADERS
@@ -83,19 +88,20 @@ set(CORE_HEADERS
     include/apu.h
     include/cpu.h
     include/window.h
+    include/vulkan_window.h
 )
 
 add_library(zeropoint_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
 
-# Link SDL2 based on platform
+# Link SDL2 and Vulkan based on platform
 if(PLATFORM_WINDOWS)
     if(TARGET SDL2::SDL2)
-        target_link_libraries(zeropoint_core SDL2::SDL2)
+        target_link_libraries(zeropoint_core SDL2::SDL2 Vulkan::Vulkan)
     else()
-        target_link_libraries(zeropoint_core ${SDL2_LIBRARIES})
+        target_link_libraries(zeropoint_core ${SDL2_LIBRARIES} Vulkan::Vulkan)
     endif()
 elseif(PLATFORM_MACOS OR PLATFORM_LINUX)
-    target_link_libraries(zeropoint_core ${SDL2_LIBRARIES})
+    target_link_libraries(zeropoint_core ${SDL2_LIBRARIES} Vulkan::Vulkan)
     if(PLATFORM_LINUX)
         # Linux might need additional libraries
         target_link_libraries(zeropoint_core pthread dl)
