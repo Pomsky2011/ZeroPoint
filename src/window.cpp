@@ -70,10 +70,10 @@ bool Window::init() {
 }
 
 void Window::render(const Display& display) {
+    // Allocate pixel buffer (SDL_UpdateTexture is faster than LockTexture on some drivers)
     uint32_t pixels[FB_WIDTH * FULL_HEIGHT];
 
     // Read scanline-by-scanline for much better performance
-    // Reduces 66,816 function calls to 261 calls
     Color32 scanlineBuffer[FB_WIDTH];
 
     for (int y = 0; y < FULL_HEIGHT; y++) {
@@ -91,7 +91,7 @@ void Window::render(const Display& display) {
         }
     }
 
-    // Update texture
+    // Update texture (driver-optimized upload path)
     SDL_UpdateTexture(texture, nullptr, pixels, FB_WIDTH * sizeof(uint32_t));
 
     // Clear and render
