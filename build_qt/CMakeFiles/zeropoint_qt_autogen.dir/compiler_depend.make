@@ -1165,81 +1165,23 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
   /usr/local/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsVersionlessTargets.cmake \
   /usr/local/lib/cmake/SDL2/sdl2-config-version.cmake \
   /usr/local/lib/cmake/SDL2/sdl2-config.cmake \
-  /usr/local/share/cmake/Modules/CMakeCXXCompiler.cmake.in \
-  /usr/local/share/cmake/Modules/CMakeCXXCompilerABI.cpp \
   /usr/local/share/cmake/Modules/CMakeCXXInformation.cmake \
   /usr/local/share/cmake/Modules/CMakeCheckCompilerFlagCommonPatterns.cmake \
   /usr/local/share/cmake/Modules/CMakeCommonLanguageInclude.cmake \
-  /usr/local/share/cmake/Modules/CMakeCompilerIdDetection.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompilerABI.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompilerId.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineSystem.cmake \
-  /usr/local/share/cmake/Modules/CMakeFindBinUtils.cmake \
   /usr/local/share/cmake/Modules/CMakeFindDependencyMacro.cmake \
   /usr/local/share/cmake/Modules/CMakeGenericSystem.cmake \
   /usr/local/share/cmake/Modules/CMakeInitializeConfigs.cmake \
   /usr/local/share/cmake/Modules/CMakeLanguageInformation.cmake \
-  /usr/local/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake \
-  /usr/local/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake \
-  /usr/local/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake \
-  /usr/local/share/cmake/Modules/CMakeSystem.cmake.in \
   /usr/local/share/cmake/Modules/CMakeSystemSpecificInformation.cmake \
   /usr/local/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake \
-  /usr/local/share/cmake/Modules/CMakeTestCXXCompiler.cmake \
-  /usr/local/share/cmake/Modules/CMakeTestCompilerCommon.cmake \
-  /usr/local/share/cmake/Modules/CMakeUnixFindMake.cmake \
   /usr/local/share/cmake/Modules/CheckCXXCompilerFlag.cmake \
   /usr/local/share/cmake/Modules/CheckCXXSourceCompiles.cmake \
   /usr/local/share/cmake/Modules/CheckIncludeFileCXX.cmake \
   /usr/local/share/cmake/Modules/CheckLibraryExists.cmake \
-  /usr/local/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/Compiler/AppleClang-CXX.cmake \
-  /usr/local/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake \
   /usr/local/share/cmake/Modules/Compiler/Clang.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/Compiler/GNU.cmake \
-  /usr/local/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/FeatureSummary.cmake \
   /usr/local/share/cmake/Modules/FindOpenGL.cmake \
   /usr/local/share/cmake/Modules/FindPackageHandleStandardArgs.cmake \
@@ -1249,19 +1191,15 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
   /usr/local/share/cmake/Modules/GNUInstallDirs.cmake \
   /usr/local/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake \
   /usr/local/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake \
-  /usr/local/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake \
-  /usr/local/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake \
   /usr/local/share/cmake/Modules/Internal/CheckCompilerFlag.cmake \
   /usr/local/share/cmake/Modules/Internal/CheckFlagCommonConfig.cmake \
   /usr/local/share/cmake/Modules/Internal/CheckSourceCompiles.cmake \
-  /usr/local/share/cmake/Modules/Internal/FeatureTesting.cmake \
   /usr/local/share/cmake/Modules/Linker/AppleClang-CXX.cmake \
   /usr/local/share/cmake/Modules/Linker/AppleClang.cmake \
   /usr/local/share/cmake/Modules/MacroAddFileDependencies.cmake \
   /usr/local/share/cmake/Modules/Platform/Apple-AppleClang-CXX.cmake \
   /usr/local/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake \
   /usr/local/share/cmake/Modules/Platform/Apple-Clang.cmake \
-  /usr/local/share/cmake/Modules/Platform/Darwin-Determine-CXX.cmake \
   /usr/local/share/cmake/Modules/Platform/Darwin-Initialize.cmake \
   /usr/local/share/cmake/Modules/Platform/Darwin.cmake \
   /usr/local/share/cmake/Modules/Platform/Linker/Apple-AppleClang-CXX.cmake \
@@ -1275,8 +1213,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 
 /usr/local/share/cmake/Modules/Platform/Darwin-Initialize.cmake:
 
-/usr/local/share/cmake/Modules/Platform/Darwin-Determine-CXX.cmake:
-
 /usr/local/share/cmake/Modules/Platform/Apple-Clang.cmake:
 
 /usr/local/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake:
@@ -1287,8 +1223,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 
 /usr/local/share/cmake/Modules/Internal/CheckCompilerFlag.cmake:
 
-/usr/local/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake:
-
 /usr/local/share/cmake/Modules/FindThreads.cmake:
 
 /usr/local/share/cmake/Modules/FindPackageMessage.cmake:
@@ -1297,53 +1231,15 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 
 /usr/local/share/cmake/Modules/FeatureSummary.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake:
-
 /usr/local/share/cmake/Modules/Compiler/GNU.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake:
 
 /usr/local/share/cmake/Modules/Compiler/Clang.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake:
-
 /usr/local/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake:
 
 /usr/local/share/cmake/Modules/CheckCXXSourceCompiles.cmake:
 
 /usr/local/share/cmake/Modules/CheckCXXCompilerFlag.cmake:
-
-/usr/local/share/cmake/Modules/CMakeUnixFindMake.cmake:
-
-/usr/local/share/cmake/Modules/CMakeTestCompilerCommon.cmake:
 
 /usr/local/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake:
 
@@ -1351,17 +1247,9 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 
 /usr/local/share/cmake/Modules/CMakeGenericSystem.cmake:
 
-/usr/local/share/cmake/Modules/CMakeDetermineSystem.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:
-
 /usr/local/share/cmake/Modules/CMakeCheckCompilerFlagCommonPatterns.cmake:
 
 /usr/local/share/cmake/Modules/CMakeCXXInformation.cmake:
-
-/usr/local/share/cmake/Modules/CMakeCXXCompilerABI.cpp:
 
 /usr/local/lib/cmake/SDL2/sdl2-config-version.cmake:
 
@@ -1589,8 +1477,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinBluetoothPermissionPluginTargets.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinBluetoothPermissionPluginTargets-release.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinBluetoothPermissionPluginDependencies.cmake:
@@ -1611,8 +1497,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 
 /usr/local/lib/cmake/Qt6Core/Qt6CoreAdditionalTargetInfo.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6/QtPublicWindowsHelpers.cmake:
 
 /usr/local/lib/cmake/Qt6/QtPublicToolHelpers.cmake:
@@ -1622,8 +1506,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 /usr/local/lib/cmake/Qt6/QtPublicSbomSystemDepHelpers.cmake:
 
 /usr/local/lib/cmake/Qt6/QtPublicSbomPythonHelpers.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6/QtPublicSbomPurlHelpers.cmake:
 
@@ -1735,8 +1617,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtypeinfo.h:
 
-/usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake:
-
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtversionchecks.h:
 
 /usr/local/lib/cmake/Qt6CorePrivate/Qt6CorePrivateConfig.cmake:
@@ -1746,8 +1626,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qttypetraits.h:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtresource.h:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCompiler.cmake:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtpreprocessorsupport.h:
 
@@ -1760,8 +1638,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtimer.h:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtformat_impl.h:
-
-/usr/local/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtdeprecationdefinitions.h:
 
@@ -1812,8 +1688,6 @@ zeropoint_qt_autogen/timestamp: /Library/Developer/CommandLineTools/SDKs/MacOSX2
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qprocessordetection.h:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qpair.h:
-
-/usr/local/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qoverload.h:
 
@@ -1891,8 +1765,6 @@ CMakeFiles/4.1.2/CMakeSystem.cmake:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qcomparehelpers.h:
 
-/usr/local/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__new/exceptions.h:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qcompare_impl.h:
@@ -1911,8 +1783,6 @@ CMakeFiles/4.1.2/CMakeSystem.cmake:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qarraydataops.h:
 
-/usr/local/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake:
-
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qarraydata.h:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qanystringview.h:
@@ -1930,8 +1800,6 @@ CMakeFiles/4.1.2/CMakeSystem.cmake:
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/q17memory.h:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/QString:
-
-/usr/local/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake:
 
 /Users/alexanderwhite/Documents/Code/ZeroPoint/qt/mainwindow.h:
 
@@ -1984,8 +1852,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/xlocale/_time.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/xlocale.h:
-
-/usr/local/share/cmake/Modules/Internal/FeatureTesting.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__math/traits.h:
 
@@ -2127,8 +1993,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/string:
 
-/usr/local/share/cmake/Modules/CMakeSystem.cmake.in:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_trivially_copyable.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/streambuf:
@@ -2140,8 +2004,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/stdio.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/stdint.h:
-
-/usr/local/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/iter_swap.h:
 
@@ -2246,8 +2108,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qtdeprecationmarkers.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__utility/rel_ops.h:
-
-/usr/local/share/cmake/Modules/CMakeCXXCompiler.cmake.in:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__utility/private_constructor_tag.h:
 
@@ -2394,8 +2254,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_trivial.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_fd_isset.h:
-
-/usr/local/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6/QtFeature.cmake:
 
@@ -2583,8 +2441,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__thread/poll_with_backoff.h:
 
-/usr/local/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__atomic/atomic_init.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__utility/as_const.h:
@@ -2604,8 +2460,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/equal_range.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ranges/enable_view.h:
-
-/usr/local/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ranges/container_compatible_range.h:
 
@@ -2630,8 +2484,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/unique_temporary_buffer.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ranges/size.h:
-
-/usr/local/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake:
 
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qspan.h:
 
@@ -2703,8 +2555,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ranges/concepts.h:
 
-/usr/local/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/extent.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__new/placement_new_delete.h:
@@ -2733,8 +2583,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/ios:
 
-/usr/local/share/cmake/Modules/CMakeDetermineCompilerId.cmake:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/lower_bound.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/ostreambuf_iterator.h:
@@ -2761,8 +2609,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/i386/_types.h:
 
-/usr/local/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/locale:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/cmath:
@@ -2782,8 +2628,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__functional/invoke.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/string.h:
-
-/usr/local/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_aggregate.h:
 
@@ -2820,8 +2664,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/next.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/compressed_pair.h:
-
-/usr/local/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__memory/auto_ptr.h:
 
@@ -2868,8 +2710,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/generate.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/stable_partition.h:
-
-/usr/local/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QICNSPluginAdditionalTargetInfo.cmake:
 
@@ -2979,13 +2819,9 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_trivially_constructible.h:
 
-/usr/local/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/data.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/includes.h:
-
-/usr/local/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/default_sentinel.h:
 
@@ -2996,8 +2832,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__cstddef/nullptr_t.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__ios/fpos.h:
-
-/usr/local/share/cmake/Modules/CMakeCompilerIdDetection.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__concepts/totally_ordered.h:
 
@@ -3106,8 +2940,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/remove_copy.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__tree:
-
-/usr/local/share/cmake/Modules/CMakeFindBinUtils.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__iterator/iterator.h:
 
@@ -3220,8 +3052,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__bit/countl.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/TargetConditionals.h:
-
-/usr/local/share/cmake/Modules/CMakeTestCXXCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinContactsPermissionPluginTargets-release.cmake:
 
@@ -3403,8 +3233,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/partition_copy.h:
 
-/usr/local/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake:
-
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__concepts/convertible_to.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/unique_copy.h:
@@ -3454,8 +3282,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 /usr/local/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginConfig.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/sys/_types/_key_t.h:
-
-/usr/local/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/reverse_copy.h:
 
@@ -3533,8 +3359,6 @@ zeropoint_qt_autogen/moc_predefs.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/enable_if.h:
 
-/usr/local/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6GuiVersionlessAliasTargets.cmake:
 
 /usr/local/lib/cmake/Qt6/FindWrapOpenGL.cmake:
@@ -3576,8 +3400,6 @@ CMakeFiles/4.1.2/CMakeCXXCompiler.cmake:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/is_sorted.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__type_traits/is_standard_layout.h:
-
-/usr/local/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__atomic/memory_order.h:
 
@@ -3655,8 +3477,6 @@ CMakeFiles/4.1.2/CMakeCXXCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__fwd/memory.h:
 
-/usr/local/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake:
-
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/q20functional.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/for_each_segment.h:
@@ -3664,8 +3484,6 @@ CMakeFiles/4.1.2/CMakeCXXCompiler.cmake:
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/q23utility.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/find_segment_if.h:
-
-/usr/local/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/ranges_iterator_concept.h:
 
@@ -3698,8 +3516,6 @@ CMakeFiles/4.1.2/CMakeCXXCompiler.cmake:
 /usr/local/Cellar/qtbase/6.9.3/lib/QtCore.framework/Versions/A/Headers/qatomic_cxx11.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__undef_macros:
-
-/usr/local/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__configuration/availability.h:
 
@@ -3758,8 +3574,6 @@ CMakeFiles/4.1.2/CMakeCXXCompiler.cmake:
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/assert.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__cstddef/max_align_t.h:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCompilerABI.cmake:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX26.0.sdk/usr/include/c++/v1/__algorithm/lexicographical_compare_three_way.h:
 

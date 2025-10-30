@@ -421,33 +421,54 @@ bool Display::getScanlineSDL(int y, uint32_t* buffer) const {
     // Single-pass conversion to SDL ARGB format
     if (renderMode == RenderMode::RGBA16) {
         // 16-bit mode: Use lookup table for instant conversion
-        for (int x = 0; x < FB_WIDTH; x++) {
-            size_t pixelOffset = offset + x * 2;
-            if (pixelOffset + 1 < framebuffer.size()) {
-                uint8_t low = framebuffer[pixelOffset];
-                uint8_t high = framebuffer[pixelOffset + 1];
-                Color16 color16 = (high << 8) | low;
-
-                // Lookup pre-computed SDL ARGB value (zero bit operations!)
-                buffer[x] = color16ToSDL_LUT[color16];
-            } else {
-                buffer[x] = 0x00000000;
+        // Bounds check once for entire scanline (not per pixel!)
+        size_t scanlineEnd = offset + FB_WIDTH * 2;
+        if (scanlineEnd <= framebuffer.size()) {
+            // Fast path: entire scanline is in bounds (no per-pixel bounds check!)
+            const uint16_t* src = reinterpret_cast<const uint16_t*>(&framebuffer[offset]);
+            for (int x = 0; x < FB_WIDTH; x++) {
+                buffer[x] = color16ToSDL_LUT[src[x]];
+            }
+        } else {
+            // Slow path: partial scanline (rare, only at buffer edges)
+            for (int x = 0; x < FB_WIDTH; x++) {
+                size_t pixelOffset = offset + x * 2;
+                if (pixelOffset + 1 < framebuffer.size()) {
+                    uint8_t low = framebuffer[pixelOffset];
+                    uint8_t high = framebuffer[pixelOffset + 1];
+                    Color16 color16 = (high << 8) | low;
+                    buffer[x] = color16ToSDL_LUT[color16];
+                } else {
+                    buffer[x] = 0x00000000;
+                }
             }
         }
     } else {
         // 32-bit mode: Just reorder bytes from RRGGBBAA to ARGB
-        for (int x = 0; x < FB_WIDTH; x++) {
-            size_t pixelOffset = offset + x * 4;
-            if (pixelOffset + 3 < framebuffer.size()) {
-                uint8_t r = framebuffer[pixelOffset];
-                uint8_t g = framebuffer[pixelOffset + 1];
-                uint8_t b = framebuffer[pixelOffset + 2];
-                uint8_t a = framebuffer[pixelOffset + 3];
-
-                // Pack as SDL ARGB8888
+        size_t scanlineEnd = offset + FB_WIDTH * 4;
+        if (scanlineEnd <= framebuffer.size()) {
+            // Fast path: entire scanline is in bounds
+            const uint8_t* src = &framebuffer[offset];
+            for (int x = 0; x < FB_WIDTH; x++) {
+                uint8_t r = src[x * 4];
+                uint8_t g = src[x * 4 + 1];
+                uint8_t b = src[x * 4 + 2];
+                uint8_t a = src[x * 4 + 3];
                 buffer[x] = (a << 24) | (r << 16) | (g << 8) | b;
-            } else {
-                buffer[x] = 0x00000000;
+            }
+        } else {
+            // Slow path: partial scanline (rare)
+            for (int x = 0; x < FB_WIDTH; x++) {
+                size_t pixelOffset = offset + x * 4;
+                if (pixelOffset + 3 < framebuffer.size()) {
+                    uint8_t r = framebuffer[pixelOffset];
+                    uint8_t g = framebuffer[pixelOffset + 1];
+                    uint8_t b = framebuffer[pixelOffset + 2];
+                    uint8_t a = framebuffer[pixelOffset + 3];
+                    buffer[x] = (a << 24) | (r << 16) | (g << 8) | b;
+                } else {
+                    buffer[x] = 0x00000000;
+                }
             }
         }
     }

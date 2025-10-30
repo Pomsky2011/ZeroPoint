@@ -259,81 +259,23 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
   /usr/local/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsVersionlessTargets.cmake \
   /usr/local/lib/cmake/SDL2/sdl2-config-version.cmake \
   /usr/local/lib/cmake/SDL2/sdl2-config.cmake \
-  /usr/local/share/cmake/Modules/CMakeCXXCompiler.cmake.in \
-  /usr/local/share/cmake/Modules/CMakeCXXCompilerABI.cpp \
   /usr/local/share/cmake/Modules/CMakeCXXInformation.cmake \
   /usr/local/share/cmake/Modules/CMakeCheckCompilerFlagCommonPatterns.cmake \
   /usr/local/share/cmake/Modules/CMakeCommonLanguageInclude.cmake \
-  /usr/local/share/cmake/Modules/CMakeCompilerIdDetection.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompilerABI.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompilerId.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake \
-  /usr/local/share/cmake/Modules/CMakeDetermineSystem.cmake \
-  /usr/local/share/cmake/Modules/CMakeFindBinUtils.cmake \
   /usr/local/share/cmake/Modules/CMakeFindDependencyMacro.cmake \
   /usr/local/share/cmake/Modules/CMakeGenericSystem.cmake \
   /usr/local/share/cmake/Modules/CMakeInitializeConfigs.cmake \
   /usr/local/share/cmake/Modules/CMakeLanguageInformation.cmake \
-  /usr/local/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake \
-  /usr/local/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake \
-  /usr/local/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake \
-  /usr/local/share/cmake/Modules/CMakeSystem.cmake.in \
   /usr/local/share/cmake/Modules/CMakeSystemSpecificInformation.cmake \
   /usr/local/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake \
-  /usr/local/share/cmake/Modules/CMakeTestCXXCompiler.cmake \
-  /usr/local/share/cmake/Modules/CMakeTestCompilerCommon.cmake \
-  /usr/local/share/cmake/Modules/CMakeUnixFindMake.cmake \
   /usr/local/share/cmake/Modules/CheckCXXCompilerFlag.cmake \
   /usr/local/share/cmake/Modules/CheckCXXSourceCompiles.cmake \
   /usr/local/share/cmake/Modules/CheckIncludeFileCXX.cmake \
   /usr/local/share/cmake/Modules/CheckLibraryExists.cmake \
-  /usr/local/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/Compiler/AppleClang-CXX.cmake \
-  /usr/local/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake \
   /usr/local/share/cmake/Modules/Compiler/Clang.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/Compiler/GNU.cmake \
-  /usr/local/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake \
-  /usr/local/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake \
   /usr/local/share/cmake/Modules/FeatureSummary.cmake \
   /usr/local/share/cmake/Modules/FindOpenGL.cmake \
   /usr/local/share/cmake/Modules/FindPackageHandleStandardArgs.cmake \
@@ -343,19 +285,15 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
   /usr/local/share/cmake/Modules/GNUInstallDirs.cmake \
   /usr/local/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake \
   /usr/local/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake \
-  /usr/local/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake \
-  /usr/local/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake \
   /usr/local/share/cmake/Modules/Internal/CheckCompilerFlag.cmake \
   /usr/local/share/cmake/Modules/Internal/CheckFlagCommonConfig.cmake \
   /usr/local/share/cmake/Modules/Internal/CheckSourceCompiles.cmake \
-  /usr/local/share/cmake/Modules/Internal/FeatureTesting.cmake \
   /usr/local/share/cmake/Modules/Linker/AppleClang-CXX.cmake \
   /usr/local/share/cmake/Modules/Linker/AppleClang.cmake \
   /usr/local/share/cmake/Modules/MacroAddFileDependencies.cmake \
   /usr/local/share/cmake/Modules/Platform/Apple-AppleClang-CXX.cmake \
   /usr/local/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake \
   /usr/local/share/cmake/Modules/Platform/Apple-Clang.cmake \
-  /usr/local/share/cmake/Modules/Platform/Darwin-Determine-CXX.cmake \
   /usr/local/share/cmake/Modules/Platform/Darwin-Initialize.cmake \
   /usr/local/share/cmake/Modules/Platform/Darwin.cmake \
   /usr/local/share/cmake/Modules/Platform/Linker/Apple-AppleClang-CXX.cmake \
@@ -365,17 +303,17 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/share/cmake/Modules/Platform/UnixPaths.cmake:
 
+/usr/local/share/cmake/Modules/Platform/Linker/Apple-AppleClang.cmake:
+
 /usr/local/share/cmake/Modules/Platform/Darwin-Initialize.cmake:
 
-/usr/local/share/cmake/Modules/Platform/Darwin-Determine-CXX.cmake:
+/usr/local/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake:
 
 /usr/local/share/cmake/Modules/Platform/Apple-AppleClang-CXX.cmake:
 
 /usr/local/share/cmake/Modules/Platform/Apple-Clang.cmake:
 
 /usr/local/share/cmake/Modules/Linker/AppleClang.cmake:
-
-/usr/local/share/cmake/Modules/Internal/FeatureTesting.cmake:
 
 /usr/local/share/cmake/Modules/Internal/CheckSourceCompiles.cmake:
 
@@ -387,91 +325,19 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/share/cmake/Modules/FeatureSummary.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Platform/Apple-Clang-CXX.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Platform/Linker/Apple-AppleClang.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake:
-
 /usr/local/share/cmake/Modules/Compiler/GNU.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake:
 
 /usr/local/share/cmake/Modules/Compiler/CMakeCommonCompilerMacros.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake:
-
 /usr/local/share/cmake/Modules/Compiler/AppleClang-CXX.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake:
 
 /usr/local/share/cmake/Modules/CheckCXXSourceCompiles.cmake:
 
-/usr/local/share/cmake/Modules/CMakeUnixFindMake.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake:
-
-/usr/local/share/cmake/Modules/CMakeTestCXXCompiler.cmake:
-
 /usr/local/share/cmake/Modules/CMakeSystemSpecificInformation.cmake:
-
-/usr/local/share/cmake/Modules/CMakeSystem.cmake.in:
-
-/usr/local/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake:
 
 /usr/local/share/cmake/Modules/CMakeGenericSystem.cmake:
 
 /usr/local/share/cmake/Modules/CMakeFindDependencyMacro.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineSystem.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCompiler.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:
 
 /usr/local/share/cmake/Modules/CMakeCommonLanguageInclude.cmake:
 
@@ -479,15 +345,9 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/share/cmake/Modules/CMakeCXXInformation.cmake:
 
-/usr/local/share/cmake/Modules/CMakeFindBinUtils.cmake:
-
-/usr/local/share/cmake/Modules/CMakeCXXCompilerABI.cpp:
-
 /usr/local/lib/cmake/SDL2/sdl2-config-version.cmake:
 
 /usr/local/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsTargets.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsTargets-release.cmake:
 
@@ -523,8 +383,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Widgets/Qt6QMacStylePluginTargets.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6Widgets/Qt6QMacStylePluginAdditionalTargetInfo.cmake:
 
 /usr/local/lib/cmake/Qt6GuiTools/Qt6GuiToolsTargets.cmake:
@@ -535,13 +393,9 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6GuiTools/Qt6GuiToolsDependencies.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6GuiTools/Qt6GuiToolsConfigVersionImpl.cmake:
 
 /usr/local/lib/cmake/Qt6GuiTools/Qt6GuiToolsAdditionalTargetInfo.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6GuiPrivate/Qt6GuiPrivateVersionlessAliasTargets.cmake:
 
@@ -561,11 +415,7 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QWebpPluginTargets.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6QWebpPluginTargets-release.cmake:
-
-/usr/local/share/cmake/Modules/CMakeCXXCompiler.cmake.in:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QWbmpPluginTargets.cmake:
 
@@ -585,8 +435,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QSvgPluginTargets-release.cmake:
 
-/usr/local/share/cmake/Modules/CMakeCompilerIdDetection.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6QSvgIconPluginTargets-release.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QPdfPluginConfig.cmake:
@@ -599,15 +447,11 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QOffscreenIntegrationPluginConfig.cmake:
 
-/usr/local/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake:
-
 /usr/local/share/cmake/Modules/CMakeInitializeConfigs.cmake:
 
 /usr/local/lib/cmake/Qt6WidgetsTools/Qt6WidgetsToolsAdditionalTargetInfo.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QOffscreenIntegrationPluginAdditionalTargetInfo.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6Widgets/Qt6QMacStylePluginTargets-release.cmake:
 
@@ -620,8 +464,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 /usr/local/lib/cmake/Qt6Gui/Qt6QMinimalIntegrationPluginTargets.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QMacHeifPluginTargets.cmake:
-
-/usr/local/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinLocationPermissionPluginTargets.cmake:
 
@@ -642,8 +484,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 /usr/local/lib/cmake/Qt6Gui/Qt6QJpegPluginTargets.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QPdfPluginTargets-release.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCompilerABI.cmake:
 
 /usr/local/lib/cmake/Qt6Widgets/Qt6WidgetsTargets.cmake:
 
@@ -691,8 +531,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QGifPluginConfig.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6QTuioTouchPluginAdditionalTargetInfo.cmake:
 
 /usr/local/lib/cmake/Qt6/Qt6Dependencies.cmake:
@@ -704,8 +542,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 /usr/local/lib/cmake/Qt6/QtPublicSbomPythonHelpers.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QCocoaIntegrationPluginTargets.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCompilerId.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QCocoaIntegrationPluginTargets-release.cmake:
 
@@ -737,11 +573,7 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6DBusTools/Qt6DBusToolsConfigVersionImpl.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6DBusPrivate/Qt6DBusPrivateConfigVersion.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6DBusPrivate/Qt6DBusPrivateAdditionalTargetInfo.cmake:
 
@@ -758,8 +590,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 /usr/local/lib/cmake/Qt6DBus/Qt6DBusAdditionalTargetInfo.cmake:
 
 /usr/local/lib/cmake/Qt6CoreTools/Qt6CoreToolsVersionlessTargets.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6CoreTools/Qt6CoreToolsTargets.cmake:
 
@@ -851,8 +681,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QSvgPluginAdditionalTargetInfo.cmake:
 
-/usr/local/share/cmake/Modules/CMakeTestCompilerCommon.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6QVirtualKeyboardPluginConfig.cmake:
 
 /usr/local/lib/cmake/Qt6/Qt6Targets.cmake:
@@ -874,8 +702,6 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 /usr/local/lib/cmake/Qt6/QtPublicGitHelpers.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinCameraPermissionPluginTargets-release.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6DBus/Qt6DBusConfig.cmake:
 
@@ -899,15 +725,11 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinCalendarPermissionPluginTargets.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6CorePrivate/Qt6CorePrivateDependencies.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6CoreConfigVersionImpl.cmake:
 
 /usr/local/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake:
-
-/usr/local/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake:
 
 /usr/local/lib/cmake/Qt6CoreTools/Qt6CoreToolsConfig.cmake:
 
@@ -983,11 +805,7 @@ make_test_rom_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint/
 
 /usr/local/lib/cmake/Qt6Gui/Qt6GuiConfigVersion.cmake:
 
-/usr/local/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake:
-
 /usr/local/lib/cmake/Qt6/QtInstallPaths.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6/QtPublicSbomAttributionHelpers.cmake:
 
@@ -1055,8 +873,6 @@ CMakeFiles/4.1.2/CMakeSystem.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6CoreTargets-release.cmake:
 
-/usr/local/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6QMinimalIntegrationPluginConfig.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinBluetoothPermissionPluginConfig.cmake:
@@ -1072,8 +888,6 @@ CMakeFiles/4.1.2/CMakeSystem.cmake:
 /usr/local/share/cmake/Modules/CheckLibraryExists.cmake:
 
 /usr/local/lib/cmake/Qt6/QtPublicSbomLicenseHelpers.cmake:
-
-/usr/local/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake:
 
 /usr/local/lib/cmake/Qt6/QtPublicAppleHelpers.cmake:
 

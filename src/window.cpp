@@ -55,7 +55,7 @@ bool Window::init() {
 
     texture = SDL_CreateTexture(
         renderer,
-        SDL_PIXELFORMAT_RGBA8888,
+        SDL_PIXELFORMAT_ARGB8888,  // Match our LUT output format (ARGB)
         SDL_TEXTUREACCESS_STREAMING,
         FB_WIDTH,
         FULL_HEIGHT
@@ -70,21 +70,19 @@ bool Window::init() {
 }
 
 void Window::render(const Display& display) {
-    // Allocate pixel buffer (SDL_UpdateTexture is faster than LockTexture on some drivers)
+    // Use SDL_UpdateTexture (faster than LockTexture on macOS drivers)
+    // Allocate buffer on stack (fast, avoids heap allocation overhead)
     uint32_t pixels[FB_WIDTH * FULL_HEIGHT];
 
-    // Read scanline-by-scanline with DIRECT conversion to SDL ARGB format
-    // This eliminates the double color conversion (was: RGBA16->RGBA32->ARGB)
+    // Convert all scanlines to SDL ARGB format
     for (int y = 0; y < FULL_HEIGHT; y++) {
-        // Get scanline directly in SDL format (single conversion)
         display.getScanlineSDL(y, &pixels[y * FB_WIDTH]);
     }
 
-    // Update texture (driver-optimized upload path)
+    // Upload to GPU (driver-optimized DMA path)
     SDL_UpdateTexture(texture, nullptr, pixels, FB_WIDTH * sizeof(uint32_t));
 
-    // Clear and render
-    SDL_RenderClear(renderer);
+    // Render (no clear needed, texture contains full frame)
     SDL_RenderCopy(renderer, texture, nullptr, nullptr);
     SDL_RenderPresent(renderer);
 }

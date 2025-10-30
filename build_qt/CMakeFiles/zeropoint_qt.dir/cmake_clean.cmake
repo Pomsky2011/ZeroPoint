@@ -13,6 +13,7 @@ file(REMOVE_RECURSE
   "CMakeFiles/zeropoint_qt.dir/zeropoint_qt_autogen/mocs_compilation.cpp.o"
   "CMakeFiles/zeropoint_qt.dir/zeropoint_qt_autogen/mocs_compilation.cpp.o.d"
   "bin/zeropoint_qt.app/Contents/MacOS/zeropoint_qt"
+  "bin/zeropoint_qt.app/Contents/Resources/zeropoint.icns"
   "bin/zeropoint_qt.pdb"
   "zeropoint_qt_autogen/mocs_compilation.cpp"
   "zeropoint_qt_autogen/timestamp"

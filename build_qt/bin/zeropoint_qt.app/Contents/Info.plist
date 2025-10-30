@@ -9,7 +9,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string>ZeroPoint Fantasy Console Emulator</string>
 	<key>CFBundleIconFile</key>
-	<string></string>
+	<string>zeropoint.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.zeropoint.emulator</string>
 	<key>CFBundleInfoDictionaryVersion</key>
