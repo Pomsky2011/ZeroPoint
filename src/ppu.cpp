@@ -140,21 +140,25 @@ uint16_t PPU::fetchInstruction() {
 }
 
 void PPU::executeInstruction() {
-    uint16_t instruction = fetchInstruction();
+    // OPTIMIZED: Inline fetch and decode
+    // Fetch instruction (big-endian, 2 bytes)
+    uint16_t ep = executionPointer;
+    uint16_t instruction = (memory[ep] << 8) | memory[ep + 1];
+    executionPointer = ep + 2;
 
     // Decode: 4-bit opcode, 12-bit operand
-    uint8_t opcode = (instruction >> 12) & 0x0F;
+    uint8_t opcode = instruction >> 12;  // No need to mask, only 4 bits
     uint16_t operand = instruction & 0x0FFF;
+
+    // Pre-extract common operand patterns (for most instructions)
+    // This avoids re-extracting in each case
+    uint8_t regX = (operand >> 6) & 0x3F;
+    uint8_t regY = operand & 0x3F;
 
     switch (static_cast<PPUOpcode>(opcode)) {
         case PPUOpcode::DEFCALL: {
             // defcall X, Y - define callable function
-            // Encoding: 0000 XXXXXX YYYYYY
-            // Address in register X, ID in LSB of register Y
-            uint8_t regX = (operand >> 6) & 0x3F;
-            uint8_t regY = operand & 0x3F;
-            // uint16_t address = registers[regX];
-            // uint8_t callID = registers[regY] & 0xFF;
+            // Encoding: 0000 XXXXXX YYYYYY (regX, regY pre-extracted)
             // For now, this is a no-op marker
             // TODO: Implement call table registration
             break;
@@ -164,20 +168,16 @@ void PPU::executeInstruction() {
             // Encoding: 0001 D 00000 XXXXXX
             // D=0: movxp X - copy execution pointer + 2 to register X
             // D=1: nop - do nothing
-            bool isNop = (operand >> 11) & 0x01;
-            if (!isNop) {
+            if (__builtin_expect((operand & 0x800) == 0, 1)) {  // Likely MOVXP
                 // MOVXP X - copy EP+2 to register X
-                uint8_t regX = operand & 0x3F;
-                registers[regX] = executionPointer + 2;
+                registers[regY] = executionPointer + 2;  // Uses regY (lower 6 bits)
             }
-            // If isNop=true, do nothing
+            // If bit 11 set, it's NOP - do nothing
             break;
         }
 
         case PPUOpcode::SWAPREG: {
-            // swapreg X Y - swap registers X and Y
-            uint8_t regX = (operand >> 6) & 0x3F;
-            uint8_t regY = operand & 0x3F;
+            // swapreg X Y - swap registers X and Y (regX, regY pre-extracted)
             uint16_t temp = registers[regX];
             registers[regX] = registers[regY];
             registers[regY] = temp;
@@ -185,16 +185,13 @@ void PPU::executeInstruction() {
         }
 
         case PPUOpcode::CLR: {
-            // clr X - clear register X
-            uint8_t regX = operand & 0x3F;
-            registers[regX] = 0;
+            // clr X - clear register X (regY = lower 6 bits)
+            registers[regY] = 0;
             break;
         }
 
         case PPUOpcode::CMP: {
-            // cmp X Y - compare X and Y
-            uint8_t regX = (operand >> 6) & 0x3F;
-            uint8_t regY = operand & 0x3F;
+            // cmp X Y - compare X and Y (regX, regY pre-extracted)
             updateFlags(registers[regX] - registers[regY], registers[regX], registers[regY]);
             break;
         }
@@ -240,48 +237,38 @@ void PPU::executeInstruction() {
         }
 
         case PPUOpcode::INC: {
-            // inc X - increment register X
-            uint8_t regX = operand & 0x3F;
-            registers[regX]++;
+            // inc X - increment register X (regY = lower 6 bits)
+            registers[regY]++;
             break;
         }
 
         case PPUOpcode::DEC: {
-            // dec X - decrement register X
-            uint8_t regX = operand & 0x3F;
-            registers[regX]--;
+            // dec X - decrement register X (regY = lower 6 bits)
+            registers[regY]--;
             break;
         }
 
         case PPUOpcode::ADD: {
-            // add X Y - X = X + Y
-            uint8_t regX = (operand >> 6) & 0x3F;
-            uint8_t regY = operand & 0x3F;
+            // add X Y - X = X + Y (regX, regY pre-extracted)
             registers[regX] += registers[regY];
             break;
         }
 
         case PPUOpcode::SUB: {
-            // sub X Y - X = X - Y
-            uint8_t regX = (operand >> 6) & 0x3F;
-            uint8_t regY = operand & 0x3F;
+            // sub X Y - X = X - Y (regX, regY pre-extracted)
             registers[regX] -= registers[regY];
             break;
         }
 
         case PPUOpcode::MUL: {
-            // mul X Y - X = X * Y
-            uint8_t regX = (operand >> 6) & 0x3F;
-            uint8_t regY = operand & 0x3F;
+            // mul X Y - X = X * Y (regX, regY pre-extracted)
             registers[regX] *= registers[regY];
             break;
         }
 
         case PPUOpcode::INTDIV: {
-            // intdiv X Y - X = X / Y (integer division)
-            uint8_t regX = (operand >> 6) & 0x3F;
-            uint8_t regY = operand & 0x3F;
-            if (registers[regY] != 0) {
+            // intdiv X Y - X = X / Y (regX, regY pre-extracted)
+            if (__builtin_expect(registers[regY] != 0, 1)) {  // Division by zero is unlikely
                 registers[regX] /= registers[regY];
             }
             break;
@@ -670,15 +657,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
     }
 }
 
-void PPU::updateFlags(uint16_t result, uint16_t left, uint16_t right) {
-    flags.zero = (result == 0);
-    flags.greater = (left > right);
-}
-
-void PPU::clearFlags() {
-    flags.zero = false;
-    flags.greater = false;
-}
+// updateFlags and clearFlags are now inline in ppu.h
 
 uint8_t PPU::handleMemoryRead(uint16_t address) const {
     // VOC registers: 0x00F0-0x00FF

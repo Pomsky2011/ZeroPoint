@@ -215,8 +215,16 @@ private:
     uint16_t fetchInstruction();
 
     // Helper methods
-    void updateFlags(uint16_t result, uint16_t left, uint16_t right);
-    void clearFlags();
+    // Inline hot-path flag functions to eliminate function call overhead
+    inline void updateFlags(uint16_t result, uint16_t left, uint16_t right) {
+        flags.zero = (result == 0);
+        flags.greater = (left > right);
+    }
+
+    inline void clearFlags() {
+        flags.zero = false;
+        flags.greater = false;
+    }
 
     // Memory-mapped I/O handlers
     void handleMemoryWrite(uint16_t address, uint8_t value);
