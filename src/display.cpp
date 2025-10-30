@@ -312,6 +312,64 @@ Color32 Display::getPixel(int x, int y) const {
     return 0x00000000;
 }
 
+bool Display::getScanline(int y, Color32* buffer) const {
+    if (y < 0 || y >= FULL_HEIGHT || !buffer) {
+        return false;
+    }
+
+    // Get bank and offset for this scanline
+    int offsetInBank;
+    int bank = getBufferBank(y, offsetInBank);
+
+    if (bank < 0) {
+        // Outside buffer window - fill with black
+        for (int x = 0; x < FB_WIDTH; x++) {
+            buffer[x] = 0x00000000;
+        }
+        return false;
+    }
+
+    // Read entire scanline at once
+    if (renderMode == RenderMode::RGBA16) {
+        // 16-bit mode: 2 bytes per pixel, need to convert to 32-bit
+        size_t offset = bank * FB_BANK_SIZE + offsetInBank;
+        for (int x = 0; x < FB_WIDTH; x++) {
+            size_t pixelOffset = offset + x * 2;
+            if (pixelOffset + 1 < framebuffer.size()) {
+                uint8_t low = framebuffer[pixelOffset];
+                uint8_t high = framebuffer[pixelOffset + 1];
+                Color16 color16 = (high << 8) | low;
+                buffer[x] = color16To32(color16);
+            } else {
+                buffer[x] = 0x00000000;
+            }
+        }
+    } else {
+        // 32-bit mode: 4 bytes per pixel, can use memcpy
+        size_t offset = bank * FB_BANK_SIZE + offsetInBank;
+        if (offset + FB_WIDTH * 4 <= framebuffer.size()) {
+            // Fast path: direct memory copy
+            std::memcpy(buffer, &framebuffer[offset], FB_WIDTH * sizeof(Color32));
+        } else {
+            // Slow path: bounds-checked copy
+            for (int x = 0; x < FB_WIDTH; x++) {
+                size_t pixelOffset = offset + x * 4;
+                if (pixelOffset + 3 < framebuffer.size()) {
+                    uint8_t r = framebuffer[pixelOffset];
+                    uint8_t g = framebuffer[pixelOffset + 1];
+                    uint8_t b = framebuffer[pixelOffset + 2];
+                    uint8_t a = framebuffer[pixelOffset + 3];
+                    buffer[x] = (r << 24) | (g << 16) | (b << 8) | a;
+                } else {
+                    buffer[x] = 0x00000000;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
 Color32 Display::color16To32(Color16 color) {
     // Extract 5-bit components from 16-bit color
     // Format: BBBBBGGGGGRRRRR-

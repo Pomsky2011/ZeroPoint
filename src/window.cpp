@@ -70,12 +70,17 @@ bool Window::init() {
 void Window::render(const Display& display) {
     uint32_t pixels[FB_WIDTH * FULL_HEIGHT];
 
-    // Read from rolling buffer using getPixel()
-    // Pixels outside the 8-scanline window will be black
+    // Read scanline-by-scanline for much better performance
+    // Reduces 66,816 function calls to 261 calls
+    Color32 scanlineBuffer[FB_WIDTH];
+
     for (int y = 0; y < FULL_HEIGHT; y++) {
+        // Get entire scanline at once
+        display.getScanline(y, scanlineBuffer);
+
+        // Convert from RRGGBBAA to ARGB for SDL
         for (int x = 0; x < FB_WIDTH; x++) {
-            Color32 color = display.getPixel(x, y);
-            // Convert from RRGGBBAA to ARGB for SDL
+            Color32 color = scanlineBuffer[x];
             uint8_t r = (color >> 24) & 0xFF;
             uint8_t g = (color >> 16) & 0xFF;
             uint8_t b = (color >> 8) & 0xFF;

@@ -115,6 +115,11 @@ public:
     // Returns 0 (black/transparent) if outside rolling buffer window
     Color32 getPixel(int x, int y) const;
 
+    // Get entire scanline (optimized for window rendering)
+    // Fills buffer with 256 pixels (RGBA32 format)
+    // Returns false if scanline is outside rolling buffer window
+    bool getScanline(int y, Color32* buffer) const;
+
     // Helper: Convert 16-bit color to 32-bit
     static Color32 color16To32(Color16 color);
 
