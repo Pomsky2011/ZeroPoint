@@ -113,25 +113,27 @@ cmake --build . -j
 
 ### Platform Support
 
-| Platform | Architecture | JIT Support | CI/CD |
-|----------|-------------|-------------|-------|
-| Windows  | x64         | ✅ x86-64   | ✅    |
-| Windows  | ARM64       | ✅ ARM64    | ✅    |
-| Linux    | x86_64      | ✅ x86-64   | ✅    |
-| Linux    | ARM64       | ✅ ARM64    | ✅    |
-| macOS    | Intel       | ✅ x86-64   | ✅    |
-| macOS    | Apple Silicon | ✅ ARM64  | ✅    |
+| Platform | Architecture | JIT Support | App Bundles | CI/CD |
+|----------|-------------|-------------|-------------|-------|
+| Windows  | x64         | ✅ x86-64   | -           | ✅    |
+| Windows  | ARM64       | ✅ ARM64    | -           | ✅    |
+| Linux    | x86_64      | ✅ x86-64   | -           | ✅    |
+| Linux    | ARM64       | ✅ ARM64    | -           | ✅    |
+| macOS    | Intel       | ✅ x86-64   | ✅ .app     | ✅    |
+| macOS    | Apple Silicon | ✅ ARM64  | ✅ .app     | ✅    |
 
 ### Executables
-- `bin/zeropoint_sdl` - SDL frontend
-- `bin/zeropoint_qt` - Qt frontend
+- `bin/zeropoint_sdl` (or `zeropoint_sdl.app` on macOS) - SDL frontend
+- `bin/zeropoint_qt` (or `zeropoint_qt.app` on macOS) - Qt frontend
 - `bin/test_cpu` - DEF88186 CPU interpreter test
 - `bin/test_ppu` - PPU microcode test suite
 - `bin/test_apu <program.bin>` - APU program tester
-- `bin/test_dma` - **DMA controller test suite** ✨ NEW!
-- `bin/run_demo <demo.bin> [--jit]` - Run PPU demo with SDL window (optional JIT compilation)
+- `bin/test_dma` - DMA controller test suite
+- `bin/run_demo <demo.bin> [--jit]` (or `run_demo.app` on macOS) - Run PPU demo with SDL window (optional JIT compilation)
 - `bin/test_demo <demo.bin>` - Run PPU demo headless (testing)
-- `bin/run_apu_demo <program.bin>` - Run APU program with audio output
+- `bin/run_apu_demo <program.bin>` (or `run_apu_demo.app` on macOS) - Run APU program with audio output
+
+**macOS Note**: All GUI applications are packaged as native .app bundles with custom icons. Double-click in Finder or drag to Applications folder.
 
 ## Creating Demos
 
@@ -186,11 +188,13 @@ cd ../ZeroPoint/build
 
 **CPU (DEF88186)**: ✅ **COMPLETE!** All 256 opcodes implemented and tested. Production ready. Can execute any valid DEF88186 program.
 
-**PPU**: ✅ **DISPLAY COMPLETE!** Rolling framebuffer with NTSC timing fully functional. Tile system, interrupts, microcode execution, and VOC all operational. Experimental JIT compiler for x86-64/ARM64 (use `--jit` flag).
+**PPU**: ✅ **DISPLAY COMPLETE!** Rolling framebuffer with NTSC timing fully functional. Tile system, interrupts, microcode execution, and VOC all operational. Stable JIT compiler for x86-64/ARM64 (use `--jit` flag).
 
 **APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 stereo channels) all implemented. SST header bug fixed - clean audio playback confirmed.
 
 **DMA**: ✅ **COMPLETE!** All 4 transfer modes implemented with 16-channel support. Fully integrated with CPU memory system and interrupt handling. Comprehensive test suite (7/7 passing).
+
+**macOS**: ✅ **NATIVE APP BUNDLES!** Professional .app packages with custom icon support. Double-click to launch, ready for Applications folder distribution.
 
 ## License
 

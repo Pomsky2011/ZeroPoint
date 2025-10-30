@@ -155,6 +155,14 @@ else()
     )
 endif()
 
+# Add icon to macOS bundle
+if(PLATFORM_MACOS)
+    set(ICON_FILE ${CMAKE_SOURCE_DIR}/resources/zeropoint.icns)
+    set_source_files_properties(${ICON_FILE} PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources")
+    target_sources(zeropoint_qt PRIVATE ${ICON_FILE})
+endif()
+
 # Test ROM creation tool
 add_executable(make_test_rom tools/make_test_rom.cpp)
 

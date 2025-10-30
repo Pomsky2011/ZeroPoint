@@ -36,6 +36,12 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Master**: 67.108864 MHz (2^26 Hz, 16-cycle pattern)
 - **Frequencies**: PPU/Display (67.108864 MHz / 2^26 Hz), DMA (32 MHz), CPU (16 MHz), APU (4 MHz)
 
+### Platform Support
+- **macOS**: Native .app bundles with custom icons (Intel & Apple Silicon)
+- **Windows**: x64, ARM64 (MSVC, MinGW-w64)
+- **Linux**: x86_64, ARM64/aarch64
+- **JIT**: x86-64, ARM64 (stable, use `--jit` flag)
+
 ## Memory Maps
 
 ### PPU Memory-Mapped I/O
@@ -178,15 +184,17 @@ cd ZPdevtools && make
 - Tile system (4 modes), palettes (16/256 colors), translucency
 - VOC (16 control registers)
 - DMA controller (4 modes, 16 channels)
-- C compiler, assemblers (ppuasm/apuasm/cpuasm), ROM builder
+- C compiler (~95% C89 complete), assemblers (ppuasm/apuasm/cpuasm), ROM builder
 - Memory mapping (24-bit), I/O registers (Bank $D8)
 - System integration, interrupt routing (V-Blank/H-Blank)
 - Development tools (5 disassemblers/analyzers)
 - MMP audio (16 stereo channels, SDL output)
+- **PPU JIT Compiler** (x86-64/ARM64, stable - use `--jit` flag)
+- **macOS App Bundles** with custom icon support
 
 ### In Progress ⏳
 - Boot ROM development
-- **PPU JIT Compiler** (x86-64/ARM64, experimental - use `--jit` flag)
+- System integration (CPU ↔ PPU ↔ APU communication)
 
 ### Planned 🔲
 - Debugger with register inspection

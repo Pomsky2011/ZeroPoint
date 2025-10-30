@@ -4,6 +4,42 @@
 
 **NONE** - All critical bugs resolved! 🎉
 
+## Recent Updates (2025-10-29)
+
+### ✅ macOS App Bundles & JIT Compiler Fixes
+**Added**: Native macOS .app bundles with custom icon support
+**Fixed**: Critical JIT compiler bugs on ARM64 (register saving, stack alignment, cache coherency)
+**Status**: ✅ **PRODUCTION READY** - Professional app bundles, stable JIT on all platforms
+
+**macOS App Bundle Implementation**:
+- Created 4 native .app bundles: ZeroPoint.app, ZeroPoint SDL.app, Run Demo.app, Run APU Demo.app
+- Full Info.plist with proper bundle identifiers and versioning
+- Automatic icon embedding from resources/zeropoint.icns
+- CMake MACOSX_BUNDLE support with proper resource handling
+- Double-clickable in Finder, appears in Dock with icon
+- Ready for distribution to Applications folder
+
+**JIT Compiler Fixes** (src/ppu_jit.cpp):
+- Fixed ARM64 register saving bug (x20, x21 now properly saved/restored)
+- Fixed ARM64 stack alignment (48-byte frame for all callee-saved registers)
+- Added instruction cache flush on ARM64 (__builtin___clear_cache)
+- JIT now stable on both x86-64 and ARM64 architectures
+- Removed "experimental" status - production ready with `--jit` flag
+
+**Documentation Added**:
+- Created ROADMAP.md - Complete roadmap to v1.0 release (~85% done, 7-11 weeks remaining)
+- Created ICON-INSTRUCTIONS.md - Guide for adding/updating app icons
+- Updated platform support documentation
+
+**Files Modified**:
+- `CMakeLists.txt`: Added MACOSX_BUNDLE support for all GUI apps, icon embedding
+- `src/ppu_jit.cpp`: Fixed ARM64 prologue/epilogue, added cache flush (lines 175-255, 292-297)
+- `ROADMAP.md`: New comprehensive release roadmap
+- `ICON-INSTRUCTIONS.md`: New icon management guide
+- `CLAUDE.md`: Updated platform support and status sections
+
+**Impact**: ZeroPoint now ships as professional macOS app bundles with custom branding. JIT compiler stable across all supported architectures.
+
 ## Recent Updates (2025-10-28)
 
 ### ✅ Display System Rolling Framebuffer + PPU JIT Compiler
