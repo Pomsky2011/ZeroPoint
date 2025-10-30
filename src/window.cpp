@@ -45,7 +45,9 @@ bool Window::init() {
         return false;
     }
 
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    // Use accelerated rendering without vsync for maximum performance
+    // The emulator controls frame timing, not the display
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
         std::cerr << "Renderer creation failed: " << SDL_GetError() << "\n";
         return false;
