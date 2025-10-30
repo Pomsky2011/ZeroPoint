@@ -225,3 +225,4 @@ ZPdevtools/         - Development tools
 Built with [Claude Code](https://claude.com/claude-code)
 
 Co-Authored-By: Claude <noreply@anthropic.com>
+- Use interpreter for most tests.
