@@ -17,10 +17,10 @@ static const uint32_t vertShaderCode[] = { 0 };
 static const uint32_t fragShaderCode[] = { 0 };
 
 VulkanWindow::VulkanWindow(int scale)
-    : scale(scale)
+    : window(nullptr)
+    , scale(scale)
     , quit(false)
     , instance(VK_NULL_HANDLE)
-    , debugMessenger(VK_NULL_HANDLE)
     , surface(VK_NULL_HANDLE)
     , physicalDevice(VK_NULL_HANDLE)
     , device(VK_NULL_HANDLE)
@@ -29,6 +29,7 @@ VulkanWindow::VulkanWindow(int scale)
     , swapChain(VK_NULL_HANDLE)
     , swapChainImageFormat(VK_FORMAT_UNDEFINED)
     , renderPass(VK_NULL_HANDLE)
+    , descriptorSetLayout(VK_NULL_HANDLE)
     , pipelineLayout(VK_NULL_HANDLE)
     , graphicsPipeline(VK_NULL_HANDLE)
     , commandPool(VK_NULL_HANDLE)
@@ -40,10 +41,7 @@ VulkanWindow::VulkanWindow(int scale)
     , stagingBuffer(VK_NULL_HANDLE)
     , stagingBufferMemory(VK_NULL_HANDLE)
     , stagingBufferMapped(nullptr)
-    , descriptorSetLayout(VK_NULL_HANDLE)
     , descriptorPool(VK_NULL_HANDLE)
-    , vertexBuffer(VK_NULL_HANDLE)
-    , vertexBufferMemory(VK_NULL_HANDLE)
 {
 }
 
@@ -71,16 +69,8 @@ void VulkanWindow::cleanup() {
     // TODO: Implement cleanup
 }
 
-void VulkanWindow::cleanupSwapChain() {
-    // TODO: Implement swap chain cleanup
-}
-
 void VulkanWindow::createInstance() {
     // TODO: Implement instance creation
-}
-
-void VulkanWindow::setupDebugMessenger() {
-    // TODO: Implement debug messenger
 }
 
 void VulkanWindow::createSurface() {
@@ -135,10 +125,6 @@ void VulkanWindow::createTextureSampler() {
     // TODO: Implement texture sampler
 }
 
-void VulkanWindow::createVertexBuffer() {
-    // TODO: Implement vertex buffer
-}
-
 void VulkanWindow::createStagingBuffer() {
     // TODO: Implement staging buffer
 }
@@ -170,32 +156,6 @@ uint32_t VulkanWindow::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags
     }
 
     throw std::runtime_error("Failed to find suitable memory type");
-}
-
-VkShaderModule VulkanWindow::createShaderModule(const std::vector<uint8_t>& code) {
-    VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-    VkShaderModule shaderModule;
-    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create shader module");
-    }
-
-    return shaderModule;
-}
-
-VkBool32 VulkanWindow::debugCallback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData)
-{
-    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-        std::cerr << "Vulkan validation layer: " << pCallbackData->pMessage << "\n";
-    }
-    return VK_FALSE;
 }
 
 } // namespace ZeroPoint

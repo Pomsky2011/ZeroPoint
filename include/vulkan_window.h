@@ -3,36 +3,46 @@
 
 #include "display.h"
 #include <vulkan/vulkan.h>
+#include <SDL.h>
+#include <SDL_vulkan.h>
 #include <vector>
-#include <string>
+#include <optional>
 
 namespace ZeroPoint {
+
+struct QueueFamilyIndices {
+    std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily;
+
+    bool isComplete() {
+        return graphicsFamily.has_value() && presentFamily.has_value();
+    }
+};
+
+struct SwapChainSupportDetails {
+    VkSurfaceCapabilitiesKHR capabilities;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> presentModes;
+};
 
 class VulkanWindow {
 public:
     VulkanWindow(int scale = 2);
     ~VulkanWindow();
 
-    // Initialize Vulkan and create window
     bool init();
-
-    // Render the display
     void render(const Display& display);
-
-    // Poll events (keyboard, mouse, close)
     void pollEvents();
-
-    // Check if window should close
     bool shouldClose() const { return quit; }
 
 private:
-    // Window scale factor
+    // SDL window
+    SDL_Window* window;
     int scale;
     bool quit;
 
-    // Vulkan core objects
+    // Vulkan core
     VkInstance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
     VkSurfaceKHR surface;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
@@ -43,12 +53,13 @@ private:
     VkSwapchainKHR swapChain;
     std::vector<VkImage> swapChainImages;
     std::vector<VkImageView> swapChainImageViews;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
+    std::vector<VkFramebuffer> swapChainFramebuffers;
 
-    // Render pass and pipeline
+    // Pipeline
     VkRenderPass renderPass;
+    VkDescriptorSetLayout descriptorSetLayout;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
 
@@ -63,29 +74,23 @@ private:
     size_t currentFrame;
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
-    // Texture for framebuffer
+    // Texture
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
     VkImageView textureImageView;
     VkSampler textureSampler;
 
-    // Staging buffer for texture uploads
+    // Staging buffer (persistent, mapped)
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
     void* stagingBufferMapped;
 
     // Descriptor sets
-    VkDescriptorSetLayout descriptorSetLayout;
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
 
-    // Vertex buffer for fullscreen quad
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-
-    // Initialization helpers
+    // Init functions
     void createInstance();
-    void setupDebugMessenger();
     void createSurface();
     void pickPhysicalDevice();
     void createLogicalDevice();
@@ -99,27 +104,26 @@ private:
     void createTextureImage();
     void createTextureImageView();
     void createTextureSampler();
-    void createVertexBuffer();
     void createStagingBuffer();
     void createDescriptorPool();
     void createDescriptorSets();
     void createCommandBuffers();
     void createSyncObjects();
 
-    // Cleanup helpers
+    // Helpers
     void cleanup();
-    void cleanupSwapChain();
-
-    // Utility functions
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    VkShaderModule createShaderModule(const std::vector<uint8_t>& code);
-
-    // Debug callback
-    static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-        VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-        VkDebugUtilsMessageTypeFlagsEXT messageType,
-        const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-        void* pUserData);
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+    void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
+    void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+    void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+    VkCommandBuffer beginSingleTimeCommands();
+    void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 };
 
 } // namespace ZeroPoint

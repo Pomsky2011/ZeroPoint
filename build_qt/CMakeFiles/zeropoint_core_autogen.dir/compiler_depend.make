@@ -11,6 +11,7 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
   /Users/alexanderwhite/Documents/Code/ZeroPoint/include/ppu.h \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/include/ppu_jit.h \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/include/rom.h \
+  /Users/alexanderwhite/Documents/Code/ZeroPoint/include/vulkan_window.h \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/include/window.h \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu.cpp \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp \
@@ -19,6 +20,7 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
   /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu.cpp \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_jit.cpp \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/src/rom.cpp \
+  /Users/alexanderwhite/Documents/Code/ZeroPoint/src/vulkan_window.cpp \
   /Users/alexanderwhite/Documents/Code/ZeroPoint/src/window.cpp \
   /usr/local/bin/cmake \
   /usr/local/lib/cmake/Qt6/FindWrapAtomic.cmake \
@@ -458,6 +460,10 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6Gui/Qt6QSvgIconPluginTargets-release.cmake:
 
+/usr/local/lib/cmake/Qt6Gui/Qt6QSvgIconPluginConfig.cmake:
+
+/usr/local/lib/cmake/Qt6Gui/Qt6QSvgIconPluginAdditionalTargetInfo.cmake:
+
 /usr/local/lib/cmake/Qt6DBus/Qt6DBusDependencies.cmake:
 
 /usr/local/lib/cmake/Qt6Gui/Qt6GuiTargets-release.cmake:
@@ -580,8 +586,6 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6CoreTools/Qt6CoreToolsDependencies.cmake:
 
-/usr/local/lib/cmake/Qt6Gui/Qt6QSvgIconPluginAdditionalTargetInfo.cmake:
-
 /usr/local/lib/cmake/Qt6CoreTools/Qt6CoreToolsConfigVersion.cmake:
 
 /usr/local/lib/cmake/Qt6CorePrivate/Qt6CorePrivateVersionlessAliasTargets.cmake:
@@ -634,12 +638,6 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinMicrophonePermissionPluginAdditionalTargetInfo.cmake:
 
-/usr/local/lib/cmake/Qt6Gui/Qt6QOffscreenIntegrationPluginTargets.cmake:
-
-/Users/alexanderwhite/Documents/Code/ZeroPoint/src/dma.cpp:
-
-/usr/local/lib/cmake/Qt6Core/Qt6QDarwinLocationPermissionPluginTargets-release.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6QICOPluginTargets.cmake:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinLocationPermissionPluginDependencies.cmake:
@@ -680,6 +678,8 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinBluetoothPermissionPluginTargets.cmake:
 
+/Users/alexanderwhite/Documents/Code/ZeroPoint/include/vulkan_window.h:
+
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinCameraPermissionPluginTargets.cmake:
 
 /usr/local/lib/cmake/Qt6DBus/Qt6DBusConfig.cmake:
@@ -694,13 +694,13 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinCameraPermissionPluginConfig.cmake:
 
+/usr/local/lib/cmake/Qt6Core/Qt6CoreAdditionalTargetInfo.cmake:
+
 /Users/alexanderwhite/Documents/Code/ZeroPoint/include/ppu.h:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinCalendarPermissionPluginConfig.cmake:
 
 /usr/local/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake:
-
-/usr/local/lib/cmake/Qt6Core/Qt6CoreAdditionalTargetInfo.cmake:
 
 /usr/local/lib/cmake/Qt6DBusPrivate/Qt6DBusPrivateVersionlessAliasTargets.cmake:
 
@@ -752,11 +752,13 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6Core/Qt6CoreDependencies.cmake:
 
-/usr/local/lib/cmake/Qt6/QtPublicFinalizerHelpers.cmake:
-
 /usr/local/lib/cmake/Qt6Gui/Qt6QOffscreenIntegrationPluginTargets-release.cmake:
 
+/usr/local/lib/cmake/Qt6/QtPublicFinalizerHelpers.cmake:
+
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinCalendarPermissionPluginTargets-release.cmake:
+
+/Users/alexanderwhite/Documents/Code/ZeroPoint/src/vulkan_window.cpp:
 
 /usr/local/lib/cmake/Qt6/QtPublicTargetHelpers.cmake:
 
@@ -805,22 +807,6 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 /usr/local/lib/cmake/Qt6/Qt6ConfigExtras.cmake:
 
 /usr/local/lib/cmake/Qt6/QtPublicSbomDepHelpers.cmake:
-
-/Users/alexanderwhite/Documents/Code/ZeroPoint/include/window.h:
-
-/usr/local/lib/cmake/Qt6/QtPublicSbomCpeHelpers.cmake:
-
-/usr/local/lib/cmake/Qt6Gui/Qt6QTiffPluginConfig.cmake:
-
-/usr/local/lib/cmake/Qt6/QtPublicSbomOpsHelpers.cmake:
-
-/usr/local/lib/cmake/Qt6/QtInstallPaths.cmake:
-
-/usr/local/lib/cmake/Qt6/QtPublicSbomAttributionHelpers.cmake:
-
-/usr/local/lib/cmake/Qt6Gui/Qt6QVirtualKeyboardPluginTargets-release.cmake:
-
-/usr/local/lib/cmake/Qt6/QtPublicPluginHelpers.cmake:
 
 /usr/local/share/cmake/Modules/CMakeLanguageInformation.cmake:
 
@@ -876,15 +862,7 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6/QtPublicPluginHelpers_v2.cmake:
 
-/usr/local/lib/cmake/Qt6Core/Qt6QDarwinLocationPermissionPluginAdditionalTargetInfo.cmake:
-
-/usr/local/lib/cmake/Qt6Gui/Qt6QJp2PluginTargets-release.cmake:
-
-/usr/local/lib/cmake/Qt6Core/Qt6CoreTargets-release.cmake:
-
-/usr/local/lib/cmake/Qt6Core/Qt6QDarwinMicrophonePermissionPluginConfig.cmake:
-
-/usr/local/lib/cmake/Qt6/QtPublicSbomPurlHelpers.cmake:
+/usr/local/lib/cmake/Qt6Gui/Qt6QMinimalIntegrationPluginConfig.cmake:
 
 /Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu.cpp:
 
@@ -912,17 +890,27 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /usr/local/lib/cmake/Qt6/Qt6VersionlessAliasTargets.cmake:
 
-/usr/local/lib/cmake/Qt6Gui/Qt6QSvgIconPluginConfig.cmake:
+/usr/local/lib/cmake/Qt6Gui/Qt6QOffscreenIntegrationPluginTargets.cmake:
+
+/usr/local/lib/cmake/Qt6Core/Qt6QDarwinLocationPermissionPluginTargets-release.cmake:
+
+/Users/alexanderwhite/Documents/Code/ZeroPoint/src/dma.cpp:
 
 /usr/local/lib/cmake/Qt6Core/Qt6QDarwinCameraPermissionPluginAdditionalTargetInfo.cmake:
 
 /Users/alexanderwhite/Documents/Code/ZeroPoint/include/ppu_jit.h:
 
+/usr/local/lib/cmake/Qt6/QtPublicSbomCpeHelpers.cmake:
+
+/Users/alexanderwhite/Documents/Code/ZeroPoint/include/window.h:
+
 /Users/alexanderwhite/Documents/Code/ZeroPoint/include/dma.h:
 
-/usr/local/lib/cmake/Qt6/QtFeatureCommon.cmake:
+/usr/local/lib/cmake/Qt6Gui/Qt6QVirtualKeyboardPluginTargets-release.cmake:
 
-/usr/local/lib/cmake/Qt6Gui/Qt6QMinimalIntegrationPluginConfig.cmake:
+/usr/local/lib/cmake/Qt6/QtPublicPluginHelpers.cmake:
+
+/usr/local/lib/cmake/Qt6/QtFeatureCommon.cmake:
 
 /usr/local/lib/cmake/Qt6Widgets/Qt6WidgetsTargets-release.cmake:
 
@@ -932,7 +920,25 @@ zeropoint_core_autogen/timestamp: /Users/alexanderwhite/Documents/Code/ZeroPoint
 
 /Users/alexanderwhite/Documents/Code/ZeroPoint/include/display.h:
 
+/usr/local/lib/cmake/Qt6Core/Qt6QDarwinMicrophonePermissionPluginConfig.cmake:
+
+/usr/local/lib/cmake/Qt6/QtPublicSbomPurlHelpers.cmake:
+
+/usr/local/lib/cmake/Qt6Core/Qt6QDarwinLocationPermissionPluginAdditionalTargetInfo.cmake:
+
+/usr/local/lib/cmake/Qt6Gui/Qt6QJp2PluginTargets-release.cmake:
+
+/usr/local/lib/cmake/Qt6Core/Qt6CoreTargets-release.cmake:
+
 /usr/local/lib/cmake/Qt6DBusTools/Qt6DBusToolsTargets.cmake:
+
+/usr/local/lib/cmake/Qt6Gui/Qt6QTiffPluginConfig.cmake:
+
+/usr/local/lib/cmake/Qt6/QtPublicSbomOpsHelpers.cmake:
+
+/usr/local/lib/cmake/Qt6/QtPublicSbomAttributionHelpers.cmake:
+
+/usr/local/lib/cmake/Qt6/QtInstallPaths.cmake:
 
 CMakeFiles/4.1.2/CMakeSystem.cmake:
 
