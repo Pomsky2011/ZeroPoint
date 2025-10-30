@@ -130,17 +130,16 @@ int main(int argc, char* argv[]) {
 
     while (!window.shouldClose() && ppu.getState() == PPUState::Running && cycles < MAX_CYCLES) {
         // Execute PPU in large batches (JIT or interpreter)
-        int batchSize = (useJIT && jitBlock) ? 10000 : 1000;  // Larger batches for better performance
+        int batchSize = (useJIT && jitBlock) ? 10 : 1000;  // JIT does 1000 cycles per call, so 10 calls = 10k cycles
 
         auto ppuStart = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < batchSize && ppu.getState() == PPUState::Running; i++) {
             if (useJIT && jitBlock) {
-                // Execute 100 PPU cycles via JIT (batched within batch)
+                // Execute 1000 PPU cycles via JIT (batched within call)
                 jit.execute(jitBlock, &ppu);
-                cycles += 100;
-                displayCycleAccumulator += DISPLAY_TICK_INCREMENT * 100;
-                renderCycleCounter += 100;
-                i += 99;  // Skip ahead since we did 100 cycles
+                cycles += 1000;
+                displayCycleAccumulator += DISPLAY_TICK_INCREMENT * 1000;
+                renderCycleCounter += 1000;
             } else {
                 // Execute 1 PPU cycle via interpreter
                 ppu.tick();

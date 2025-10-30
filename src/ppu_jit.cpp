@@ -258,33 +258,24 @@ void PPUJIT::emitARM64(std::vector<uint8_t>& code, PPU* ppu, uint16_t startAddr,
 
 JITBlock* PPUJIT::compileBlock(PPU* ppu, uint16_t startAddr, size_t maxInstructions) {
     if (!isSupported()) {
-        std::cerr << "JIT: Platform not supported\n";
         return nullptr;
     }
 
     std::vector<uint8_t> code;
 
 #if defined(__x86_64__) || defined(_M_X64)
-    std::cerr << "JIT: Emitting x86-64 code...\n";
     emitX86_64(code, ppu, startAddr, maxInstructions);
 #elif defined(__aarch64__) || defined(_M_ARM64)
-    std::cerr << "JIT: Emitting ARM64 code...\n";
     emitARM64(code, ppu, startAddr, maxInstructions);
 #else
-    std::cerr << "JIT: Unknown architecture\n";
     return nullptr;
 #endif
-
-    std::cerr << "JIT: Generated " << code.size() << " bytes of code\n";
 
     // Allocate executable memory
     void* execMem = allocateExecutable(code.size());
     if (!execMem) {
-        std::cerr << "JIT: Failed to allocate executable memory\n";
         return nullptr;
     }
-
-    std::cerr << "JIT: Allocated executable memory at " << execMem << "\n";
 
     // Copy code to executable memory
     memcpy(execMem, code.data(), code.size());
@@ -293,26 +284,21 @@ JITBlock* PPUJIT::compileBlock(PPU* ppu, uint16_t startAddr, size_t maxInstructi
 #if defined(__aarch64__) || defined(_M_ARM64)
     // Use compiler builtin to flush instruction cache
     __builtin___clear_cache((char*)execMem, (char*)execMem + code.size());
-    std::cerr << "JIT: Instruction cache flushed\n";
 #endif
 
     // Make it executable
 #if defined(_WIN32)
     DWORD oldProtect;
     if (!VirtualProtect(execMem, code.size(), PAGE_EXECUTE_READ, &oldProtect)) {
-        std::cerr << "JIT: Failed to set memory protection\n";
         freeExecutable(execMem, code.size());
         return nullptr;
     }
 #else
     if (mprotect(execMem, code.size(), PROT_READ | PROT_EXEC) != 0) {
-        std::cerr << "JIT: Failed to set memory protection\n";
         freeExecutable(execMem, code.size());
         return nullptr;
     }
 #endif
-
-    std::cerr << "JIT: Memory protection set to RX\n";
 
     // Create block
     JITBlock* block = new JITBlock();
@@ -322,28 +308,19 @@ JITBlock* PPUJIT::compileBlock(PPU* ppu, uint16_t startAddr, size_t maxInstructi
     block->endAddr = startAddr + maxInstructions;
     block->valid = true;
 
-    std::cerr << "JIT: Block compiled successfully\n";
-
     return block;
 }
 
 void PPUJIT::execute(JITBlock* block, PPU* ppu) {
     if (!block || !block->valid) {
-        std::cerr << "JIT: Invalid block\n";
         return;
-    }
-
-    static bool first_call = true;
-    if (first_call) {
-        std::cerr << "JIT: First execute call, block at " << block->code << "\n";
-        first_call = false;
     }
 
     // Call the JIT-compiled function
     // Signature: void jit_execute(PPU* ppu, uint32_t cycles)
     typedef void (*JITFunc)(PPU*, uint32_t);
     JITFunc func = (JITFunc)block->code;
-    func(ppu, 100);  // Execute 100 PPU ticks per JIT call (matches run_demo.cpp)
+    func(ppu, 1000);  // Execute 1000 PPU ticks per JIT call for better batching
 }
 
 void PPUJIT::invalidateAll() {

@@ -1,0 +1,125 @@
+# Build directories
+build/
+build_qt/
+bin/
+*.app/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+CTestTestfile.cmake
+_deps/
+
+# Compiled Object files
+*.o
+*.obj
+*.lo
+*.slo
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.a
+*.lib
+*.la
+
+# Executables
+*.exe
+*.out
+*.app
+zeropoint_sdl
+zeropoint_qt
+run_demo
+run_apu_demo
+test_cpu
+test_ppu
+test_apu
+test_dma
+test_demo
+test_demo_white
+test_demo_white_debug
+test_white_fill
+make_test_rom
+
+# ZPdevtools compiled binaries
+ZPdevtools/cpuasm
+ZPdevtools/ppuasm
+ZPdevtools/apuasm
+ZPdevtools/cpudisasm
+ZPdevtools/ppudisasm
+ZPdevtools/apudisasm
+ZPdevtools/rombuilder
+ZPdevtools/rominspect
+ZPdevtools/hexview
+ZPdevtools/wav2mmp
+ZPdevtools/c_compiler/def88186cc
+ZPdevtools/c_compiler/lex.yy.c
+ZPdevtools/c_compiler/parser.tab.c
+ZPdevtools/c_compiler/parser.tab.h
+
+# Compiled assembly/ROM files
+*.bin
+*.rom
+*.txt
+!CMakeLists.txt
+!README.md
+*.asm
+!ZPdevtools/examples/**/*.asm
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+*.sublime-*
+
+# Qt
+*.pro.user
+*.pro.user.*
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+.qmake.stash
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
