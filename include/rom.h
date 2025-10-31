@@ -2,6 +2,7 @@
 #define ZEROPOINT_ROM_H
 
 #include <cstdint>
+#include <cstddef>
 #include <string>
 #include <vector>
 

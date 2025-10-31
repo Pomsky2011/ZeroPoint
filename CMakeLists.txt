@@ -188,9 +188,25 @@ else()
 endif()
 target_link_libraries(run_demo zeropoint_core ${SDL2_LIBRARIES})
 
+# Demo runner (with Vulkan)
+if(PLATFORM_MACOS)
+    add_executable(run_demo_vulkan MACOSX_BUNDLE tools/run_demo_vulkan.cpp)
+else()
+    add_executable(run_demo_vulkan tools/run_demo_vulkan.cpp)
+endif()
+target_link_libraries(run_demo_vulkan zeropoint_core ${SDL2_LIBRARIES} Vulkan::Vulkan)
+
 # Demo test (no SDL)
 add_executable(test_demo tools/test_demo.cpp)
 target_link_libraries(test_demo zeropoint_core)
+
+# JIT test (no SDL, for Docker testing)
+add_executable(test_jit tools/test_jit.cpp)
+target_link_libraries(test_jit zeropoint_core)
+
+# ARM64 JIT debug test
+add_executable(test_arm64_jit_debug tools/test_arm64_jit_debug.cpp)
+target_link_libraries(test_arm64_jit_debug zeropoint_core)
 
 # APU test tool
 add_executable(test_apu tools/test_apu.cpp)
@@ -245,7 +261,19 @@ set_target_properties(run_demo PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
+set_target_properties(run_demo_vulkan PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 set_target_properties(test_demo PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_jit PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_arm64_jit_debug PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
@@ -301,6 +329,15 @@ if(PLATFORM_MACOS)
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
         MACOSX_BUNDLE_INFO_STRING "ZeroPoint PPU Demo Runner"
+    )
+
+    # Run Demo Vulkan
+    set_target_properties(run_demo_vulkan PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "Run Demo Vulkan"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.zeropoint.rundemovulkan"
+        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+        MACOSX_BUNDLE_INFO_STRING "ZeroPoint PPU Demo Runner (Vulkan)"
     )
 
     # Run APU Demo

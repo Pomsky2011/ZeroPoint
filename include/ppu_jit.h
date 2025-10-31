@@ -2,6 +2,7 @@
 #define ZEROPOINT_PPU_JIT_H
 
 #include <cstdint>
+#include <cstddef>
 #include <vector>
 #include <unordered_map>
 

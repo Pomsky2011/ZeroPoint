@@ -2,6 +2,7 @@
 #define ZEROPOINT_CPU_H
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
 #include <functional>
 #include <memory>

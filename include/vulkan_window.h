@@ -2,6 +2,7 @@
 #define ZEROPOINT_VULKAN_WINDOW_H
 
 #include "display.h"
+#include <cstddef>
 #include <vulkan/vulkan.h>
 #include <SDL.h>
 #include <SDL_vulkan.h>

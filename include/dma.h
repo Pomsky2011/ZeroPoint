@@ -2,6 +2,7 @@
 #define ZEROPOINT_DMA_H
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
 #include <queue>
 

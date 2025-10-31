@@ -2,6 +2,7 @@
 #define ZEROPOINT_PPU_H
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
 
 namespace ZeroPoint {
