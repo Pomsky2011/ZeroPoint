@@ -72,9 +72,12 @@ set(CORE_SOURCES
     src/rom.cpp
     src/dma.cpp
     src/ppu.cpp
+    src/ppu_instructions.cpp
     src/ppu_jit.cpp
     src/apu.cpp
+    src/apu_instructions.cpp
     src/cpu.cpp
+    src/cpu_instructions.cpp
     src/window.cpp
     src/vulkan_window.cpp
 )

@@ -131,73 +131,12 @@ public:
     uint64_t getCycleCount() const { return cycleCount; }
     uint64_t getInstructionCount() const { return instructionCount; }
 
-private:
-    // Registers
-    uint16_t A;      // Accumulator (16-bit or 8-bit based on M flag)
-    uint16_t X;      // Index X (16-bit or 8-bit based on X flag)
-    uint16_t Y;      // Index Y (16-bit or 8-bit based on X flag)
-    uint16_t SP;     // Stack Pointer (16-bit, grows downward)
-    uint16_t D;      // Direct Page (16-bit base for direct page addressing)
-    uint16_t PC;     // Program Counter (16-bit)
-    uint8_t PB;      // Program Bank (8-bit)
-    uint8_t DB;      // Data Bank (8-bit)
-    CPUFlags P;      // Processor Status (8 flags)
+    // ========================================================================
+    // Public API for instruction handlers (cpu_instructions.cpp)
+    // ========================================================================
+    // These methods are public so individual instruction handlers can use them
 
-    // Hardware loop counter (LOOP/LPEND)
-    uint16_t loopCounter;
-    uint16_t loopStart;
-
-    // Memory regions
-    struct MemoryRegion {
-        enum Type {
-            UNMAPPED,
-            ROM,
-            RAM,
-            PPU_WINDOW,
-            APU_WINDOW,
-            IO_REGISTERS
-        };
-
-        Type type;
-        uint8_t startBank;
-        uint8_t endBank;
-        uint16_t startOffset;  // Offset within bank
-        uint16_t endOffset;
-        uint8_t* data;         // For ROM/RAM
-        size_t dataSize;
-        IOReadCallback ioRead;
-        IOWriteCallback ioWrite;
-
-        MemoryRegion() : type(UNMAPPED), startBank(0), endBank(0),
-                        startOffset(0), endOffset(0xFFFF),
-                        data(nullptr), dataSize(0) {}
-    };
-
-    std::vector<MemoryRegion> memoryMap;
-    bool useMemoryMap;  // Optimization: avoid checking vector size every access
-
-    // Legacy memory interface
-    uint8_t* memory;
-    size_t memorySize;
-
-    // Hardware pointers
-    PPU* ppuPtr;
-    APU* apuPtr;
-    Display* displayPtr;
-    DMAController* dmaPtr;
-
-    // Memory mapping helpers
-    uint8_t readMapped(uint32_t address);
-    void writeMapped(uint32_t address, uint8_t value);
-    MemoryRegion* findRegion(uint32_t address);
-
-    // State
-    CPUState state;
-    uint64_t cycleCount;
-    uint64_t instructionCount;
-
-    // Execution
-    void executeInstruction();
+    // Fetch operations
     uint8_t fetch();
     uint16_t fetch16();
     uint32_t fetch24();
@@ -358,6 +297,76 @@ private:
     // Block Move
     void opMVN();
     void opMVP();
+
+    // Direct register and cycle counter access for instruction handlers
+    uint64_t cycleCount;
+
+private:
+    // Registers
+    uint16_t A;      // Accumulator (16-bit or 8-bit based on M flag)
+    uint16_t X;      // Index X (16-bit or 8-bit based on X flag)
+    uint16_t Y;      // Index Y (16-bit or 8-bit based on X flag)
+    uint16_t SP;     // Stack Pointer (16-bit, grows downward)
+    uint16_t D;      // Direct Page (16-bit base for direct page addressing)
+    uint16_t PC;     // Program Counter (16-bit)
+    uint8_t PB;      // Program Bank (8-bit)
+    uint8_t DB;      // Data Bank (8-bit)
+    CPUFlags P;      // Processor Status (8 flags)
+
+    // Hardware loop counter (LOOP/LPEND)
+    uint16_t loopCounter;
+    uint16_t loopStart;
+
+    // Memory regions
+    struct MemoryRegion {
+        enum Type {
+            UNMAPPED,
+            ROM,
+            RAM,
+            PPU_WINDOW,
+            APU_WINDOW,
+            IO_REGISTERS
+        };
+
+        Type type;
+        uint8_t startBank;
+        uint8_t endBank;
+        uint16_t startOffset;  // Offset within bank
+        uint16_t endOffset;
+        uint8_t* data;         // For ROM/RAM
+        size_t dataSize;
+        IOReadCallback ioRead;
+        IOWriteCallback ioWrite;
+
+        MemoryRegion() : type(UNMAPPED), startBank(0), endBank(0),
+                        startOffset(0), endOffset(0xFFFF),
+                        data(nullptr), dataSize(0) {}
+    };
+
+    std::vector<MemoryRegion> memoryMap;
+    bool useMemoryMap;  // Optimization: avoid checking vector size every access
+
+    // Legacy memory interface
+    uint8_t* memory;
+    size_t memorySize;
+
+    // Hardware pointers
+    PPU* ppuPtr;
+    APU* apuPtr;
+    Display* displayPtr;
+    DMAController* dmaPtr;
+
+    // Memory mapping helpers
+    uint8_t readMapped(uint32_t address);
+    void writeMapped(uint32_t address, uint8_t value);
+    MemoryRegion* findRegion(uint32_t address);
+
+    // State
+    CPUState state;
+    uint64_t instructionCount;
+
+    // Execution
+    void executeInstruction();
 };
 
 } // namespace ZeroPoint

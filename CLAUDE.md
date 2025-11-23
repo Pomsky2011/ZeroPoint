@@ -175,11 +175,13 @@ cd ZPdevtools && make
 - **PPU**: `docs/ppu/`, `ZPdevtools/docs/ppu/`
 - **APU**: `ZPdevtools/docs/apu/`
 - **CPU**: `ZPdevtools/docs/cpu/`
+- **Instruction Implementation**: `docs/INSTRUCTION_IMPLEMENTATION_GUIDE.md` - Complete guide for implementing CPU/PPU/APU instructions
 
 ## Status
 
 ### Complete ✅
 - DEF88186 CPU (256 opcodes), APU (47 instructions), PPU (31 opcodes)
+- **Clean Instruction Dispatch System** (table-driven, easy to modify/implement)
 - Display system with rolling framebuffer, NTSC timing
 - Tile system (4 modes), palettes (16/256 colors), translucency
 - VOC (16 control registers)
@@ -211,11 +213,14 @@ cd ZPdevtools && make
 ```
 ZeroPoint/          - Emulator core
 ├── include/        - Headers (display, ppu, apu, cpu, dma, rom, window, vulkan_window, ppu_jit)
+│   ├── cpu_instructions.h, ppu_instructions.h, apu_instructions.h - Instruction dispatch headers
 ├── src/            - Implementation (including vulkan_window.cpp)
+│   ├── cpu_instructions.cpp, ppu_instructions.cpp, apu_instructions.cpp - Instruction handlers
 ├── qt/             - Qt frontend
 ├── tools/          - Test/demo runners (test_jit, run_demo_vulkan, etc.)
 ├── shaders/        - Vulkan GLSL shaders (compiled to SPIR-V)
 └── docs/           - Documentation
+    └── INSTRUCTION_IMPLEMENTATION_GUIDE.md - How to implement instructions
 
 ZPdevtools/         - Development tools
 ├── c_compiler/     - def88186cc compiler

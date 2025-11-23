@@ -88,6 +88,9 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **zpasm** - PPU microcode assembler
 - **apuasm** - APU assembly language compiler
 - **test_cpu** - CPU interpreter test suite ✨ NEW!
+- **Instruction Implementation Framework** - Table-driven dispatch system for easy CPU/PPU/APU instruction modification ✨ NEW!
+  - 256 CPU handler functions (cpu_inst_0xXX), 16 PPU handlers (ppu_exec_0xX), 32 APU handlers (apu_exec_0xXX)
+  - See `docs/INSTRUCTION_IMPLEMENTATION_GUIDE.md` for comprehensive implementation guide
 - Two frontends:
   - **SDL**: Standalone emulator with simple display
   - **Qt**: Full GUI with ROM loading and configuration
@@ -173,6 +176,7 @@ cd ../ZeroPoint/build
 - `CLAUDE.md` - **Condensed system architecture** (184 lines, all essential info)
 - `README.md` - This file (quick start and overview)
 - `TODO.md` - Development status and roadmap
+- `docs/INSTRUCTION_IMPLEMENTATION_GUIDE.md` - **Complete guide for implementing CPU/PPU/APU instructions** (400+ lines) ✨ NEW!
 
 ### CPU (DEF88186) ✨ NEW!
 - `ZPdevtools/docs/cpu/README.txt` - CPU documentation index

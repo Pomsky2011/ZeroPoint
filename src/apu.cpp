@@ -1,4 +1,5 @@
 #include "apu.h"
+#include "apu_instructions.h"
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
