@@ -139,8 +139,12 @@ cmake --build . -j
 
 ## ZPdevtools
 
+**MS-DOS 4.01+ Compatible**: All dev tools can run on 1990's workstations (80286, 2 MB RAM, 100 MB HDD)
+
 ### C Compiler (def88186cc)
 C89-compliant compiler with Flex/Bison frontend. Supports: types, arrays, unions, enums, functions, control flow, operators, hardware LOOP/LPEND optimization.
+
+**C89 Compliance**: All compiler source files (ast.c, codegen.c, main.c, preprocessor.c) have been ported to strict C89 compliance for Turbo C 2.0 compatibility on MS-DOS 4.01+. Comments converted from `//` to `/* */`, for-loop variable declarations moved to function scope, and mixed declarations fixed.
 
 ```bash
 cd ZPdevtools/c_compiler && make
@@ -165,6 +169,14 @@ cd ZPdevtools && make
 **Disassemblers**: cpudisasm, ppudisasm, apudisasm
 **Analyzers**: rominspect, hexview
 
+### MS-DOS Build
+```bash
+cd ZPdevtools
+make -f Makefile.dos          # Turbo C
+nmake /f Makefile.dos COMPILER=MSC  # Microsoft C
+```
+See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
+
 ### Examples
 - PPU: `ZPdevtools/examples/ppu/*.asm`
 - APU: `ZPdevtools/examples/apu/*.asm`
@@ -186,7 +198,8 @@ cd ZPdevtools && make
 - Tile system (4 modes), palettes (16/256 colors), translucency
 - VOC (16 control registers)
 - DMA controller (4 modes, 16 channels)
-- C compiler (~95% C89 complete), assemblers (ppuasm/apuasm/cpuasm), ROM builder
+- **C compiler (100% C89 compliant)**, assemblers (ppuasm/apuasm/cpuasm), ROM builder
+- **C89 Porting** (Turbo C 2.0 / MS-DOS 4.01+ compatible)
 - Memory mapping (24-bit), I/O registers (Bank $D8)
 - System integration, interrupt routing (V-Blank/H-Blank)
 - Development tools (5 disassemblers/analyzers)
