@@ -108,20 +108,26 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 
 ### Quick Start
 
-**macOS** (Intel & Apple Silicon):
+**Build Everything (Recommended):**
 ```bash
-./build-macos.sh
+./build-all.sh              # Builds emulator AND all dev tools in one step
 ```
 
-**Linux** (x86_64 & ARM64):
+**Build Emulator Only:**
 ```bash
-./build-linux.sh
+./build-macos.sh            # macOS (Intel & Apple Silicon)
+./build-linux.sh            # Linux (x86_64 & ARM64)
+build-windows.bat           # Windows (x64 & ARM64)
 ```
 
-**Windows** (x64 & ARM64):
-```cmd
-build-windows.bat
+**Build Dev Tools Only:**
+```bash
+cd ../ZPdevtools
+./build-native.sh           # Native build (macOS/Linux)
+build-dos.bat               # MS-DOS 4.01+ build (Turbo C/MS C)
 ```
+
+**See `BUILD.md` for complete build instructions.**
 
 ### Manual Build
 

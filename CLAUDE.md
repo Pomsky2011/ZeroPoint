@@ -117,19 +117,23 @@ HLT             ; Infinite loop
 
 ### Quick Start
 
-**macOS** (Intel & Apple Silicon):
+**Build Everything (Emulator + Dev Tools):**
 ```bash
-./build-macos.sh
+./build-all.sh              # Builds emulator AND all dev tools
 ```
 
-**Linux** (x86_64 & ARM64):
+**Build Emulator Only:**
 ```bash
-./build-linux.sh
+./build-macos.sh            # macOS (Intel & Apple Silicon)
+./build-linux.sh            # Linux (x86_64 & ARM64)
+build-windows.bat           # Windows (x64 & ARM64)
 ```
 
-**Windows** (x64 & ARM64):
-```cmd
-build-windows.bat
+**Build Dev Tools Only:**
+```bash
+cd ../ZPdevtools
+./build-native.sh           # Native build (macOS/Linux)
+build-dos.bat               # MS-DOS build (Turbo C/MS C)
 ```
 
 ### Manual Build
