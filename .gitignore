@@ -1,6 +1,7 @@
 # Build directories
 build/
 build_qt/
+build_arm64_test/
 bin/
 *.app/
 
@@ -47,6 +48,10 @@ test_demo_white
 test_demo_white_debug
 test_white_fill
 make_test_rom
+test_jit
+test_arm64_jit_debug
+run_demo_vulkan
+tools/test_arm64_alloc
 
 # ZPdevtools compiled binaries
 ZPdevtools/cpuasm
