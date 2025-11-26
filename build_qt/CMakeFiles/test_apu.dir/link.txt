@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/test_apu.dir/test_apu_autogen/mocs_compilation.cpp.o CMakeFiles/test_apu.dir/tools/test_apu.cpp.o -o bin/test_apu   -L/usr/local/Cellar/sdl2/2.32.8/lib  -Wl,-rpath,/usr/local/Cellar/sdl2/2.32.8/lib libzeropoint_core.a /usr/local/Cellar/sdl2/2.32.8/lib/libSDL2.dylib /usr/local/lib/libvulkan.dylib
