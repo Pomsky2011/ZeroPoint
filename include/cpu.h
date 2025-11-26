@@ -88,6 +88,7 @@ public:
     void setAPU(APU* apu) { apuPtr = apu; }
     void setDisplay(Display* disp) { displayPtr = disp; }
     void setDMA(DMAController* dma) { dmaPtr = dma; }
+    void setSystem(class System* sys) { systemPtr = sys; }
     void loadROM(const uint8_t* data, size_t size, uint8_t startBank);
     void allocateRAM(uint8_t startBank, uint8_t numBanks);
     void mapPPUWindow(uint8_t bank);
@@ -301,8 +302,7 @@ public:
     // Direct register and cycle counter access for instruction handlers
     uint64_t cycleCount;
 
-private:
-    // Registers
+    // Registers (public for instruction handlers)
     uint16_t A;      // Accumulator (16-bit or 8-bit based on M flag)
     uint16_t X;      // Index X (16-bit or 8-bit based on X flag)
     uint16_t Y;      // Index Y (16-bit or 8-bit based on X flag)
@@ -313,6 +313,7 @@ private:
     uint8_t DB;      // Data Bank (8-bit)
     CPUFlags P;      // Processor Status (8 flags)
 
+private:
     // Hardware loop counter (LOOP/LPEND)
     uint16_t loopCounter;
     uint16_t loopStart;
@@ -355,6 +356,7 @@ private:
     APU* apuPtr;
     Display* displayPtr;
     DMAController* dmaPtr;
+    class System* systemPtr;
 
     // Memory mapping helpers
     uint8_t readMapped(uint32_t address);

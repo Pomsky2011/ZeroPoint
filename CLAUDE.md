@@ -71,6 +71,26 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$D80010-$D8001F**: APU Control
 - **$D80020-$D8002F**: DMA Control
 - **$D80040-$D80047**: Display Status
+- **$D80048-$D8004F**: System Control
+- **$D80050-$D80057**: Timer Control
+
+### Timer System ($D80050-$D80052)
+8 independent hardware timers with IRQ support (bit pattern: `0bVHSQETAR`):
+- **V (0x80)**: V-blank timer (~16.67ms, 60Hz)
+- **H (0x40)**: H-blank timer (one scanline, ~244μs)
+- **S (0x20)**: 1 second timer
+- **Q (0x10)**: 1/4 second timer (250ms)
+- **E (0x08)**: 1/8 second timer (125ms)
+- **T (0x04)**: 1/1024 second timer (~977μs)
+- **A (0x02)**: 16777/16777216 second timer (~1ms)
+- **R (0x01)**: 60 V-blank timer (~1 second)
+
+**Registers**:
+- **$D80050** (TIMER_CONTROL): Enable/disable timers (write bit=1 to enable)
+- **$D80051** (TIMER_STATUS): Timer status flags (read), write 1 to clear
+- **$D80052** (TIMER_INT_ENABLE): Enable IRQ per timer (write bit=1 to enable interrupt)
+
+**Usage**: Enable timer in CONTROL, enable interrupt in INT_ENABLE. When timer expires, status flag is set and CPU IRQ is triggered (if interrupt enabled). Clear status flags by writing 1s to STATUS register.
 
 ## PPU Instructions
 
@@ -198,10 +218,11 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - Tile system (4 modes), palettes (16/256 colors), translucency
 - VOC (16 control registers)
 - DMA controller (4 modes, 16 channels)
+- **Hardware Timers** (8 independent timers with IRQ support: V-blank, H-blank, 1s, 1/4s, 1/8s, 1/1024s, ~1ms, 60-frame)
 - **C compiler (100% C89 compliant)**, assemblers (ppuasm/apuasm/cpuasm), ROM builder
 - **C89 Porting** (Turbo C 2.0 / MS-DOS 4.01+ compatible)
 - Memory mapping (24-bit), I/O registers (Bank $D8)
-- System integration, interrupt routing (V-Blank/H-Blank)
+- System integration, interrupt routing (V-Blank/H-Blank/Timers)
 - Development tools (5 disassemblers/analyzers)
 - MMP audio (16 stereo channels, SDL output)
 - **PPU JIT Compiler** (x86-64/ARM64, stable - use `--jit` flag)

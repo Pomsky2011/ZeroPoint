@@ -11,7 +11,7 @@
 - **Development Tools**: Assemblers (CPU/PPU/APU), ROM builder, disassemblers ✅
 
 ### 🔧 Remaining Core Work
-- **Boot ROM**: System initialization and program loader (Phase 1)
+- **Boot ROM**: System initialization and program loader (Phase 1) (This can just be a placeholder for now)
 - **System Integration**: CPU ↔ PPU ↔ APU communication (Phase 1)
 - **Debuggers**: Interactive debugging for CPU/PPU/APU (Phase 3)
 - **Documentation**: User manual, tutorials, examples (Phase 5)

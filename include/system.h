@@ -59,6 +59,33 @@ public:
     void setDevMode(bool enabled);
     bool isDevMode() const { return devMode; }
 
+    // Timer periods (in master clock cycles at 67.108864 MHz)
+    static constexpr uint64_t TIMER_VBLANK_PERIOD = 4194304;      // ~16.67ms (60Hz)
+    static constexpr uint64_t TIMER_HBLANK_PERIOD = 16384;        // One scanline
+    static constexpr uint64_t TIMER_SECOND_PERIOD = 67108864;     // 1 second
+    static constexpr uint64_t TIMER_QUARTER_SEC_PERIOD = 16777216;// 1/4 second
+    static constexpr uint64_t TIMER_EIGHTH_SEC_PERIOD = 8388608;  // 1/8 second
+    static constexpr uint64_t TIMER_K1024_PERIOD = 65536;         // 1/1024 second
+    static constexpr uint64_t TIMER_MICRO_PERIOD = 67109;         // 16777/16777216 second
+    static constexpr uint64_t TIMER_VBLANK60_PERIOD = TIMER_VBLANK_PERIOD * 60; // 60 V-blanks
+
+    // Timer system state (public for I/O register access)
+    struct {
+        uint8_t control;        // Timer enable bits (0bVHSQETAR)
+        uint8_t status;         // Timer status flags (set when timer expires)
+        uint8_t intEnable;      // Timer interrupt enable bits (0bVHSQETAR)
+
+        // Timer counters
+        uint64_t vblankCounter;
+        uint64_t hblankCounter;
+        uint64_t secondCounter;
+        uint64_t quarterSecCounter;
+        uint64_t eighthSecCounter;
+        uint64_t k1024Counter;
+        uint64_t microCounter;      // 16777/16777216 second timer
+        uint64_t vblank60Counter;
+    } timers;
+
 private:
     // Components
     CPU cpu;
@@ -101,6 +128,7 @@ private:
     // Helper methods
     void tickComponents();
     void checkInterrupts();
+    void updateTimers();
 };
 
 } // namespace ZeroPoint

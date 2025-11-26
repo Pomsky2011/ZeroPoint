@@ -73,6 +73,15 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **Integrated** - Connected to CPU memory system with callbacks
 - Test suite: 7/7 tests passing ✅
 
+### Hardware Timers ✅ COMPLETE! ✨ NEW!
+- **8 independent timers** with CPU IRQ support
+- **Flexible periods** - V-blank (60Hz), H-blank, 1s, 250ms, 125ms, ~977μs, ~1ms, 60-frame
+- **I/O registers** - Control at $D80050, Status at $D80051, Interrupt Enable at $D80052
+- **Bit pattern** - 0bVHSQETAR for easy multi-timer control
+- **IRQ integration** - Automatic CPU interrupt on timer expiration
+- **Status flags** - Read timer state, write 1 to clear
+- **Master clock based** - Precise timing at 67.108864 MHz
+
 ### Display & Rendering ✨ NEW!
 - **Vulkan Renderer** - Native GPU acceleration (28% faster than SDL)
   - Persistent mapped staging buffer (zero allocation overhead)

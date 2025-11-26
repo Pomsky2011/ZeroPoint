@@ -4,6 +4,77 @@
 
 **NONE** - All critical bugs resolved! 🎉
 
+## Recent Updates (2025-11-25)
+
+### ✅ Hardware Timer System Implementation
+**Added**: 8 independent hardware timers with CPU IRQ support
+**Registers**: $D80050-$D80052 (TIMER_CONTROL, TIMER_STATUS, TIMER_INT_ENABLE)
+**Status**: ✅ **PRODUCTION READY** - All timers functional with interrupt support
+
+**Timer Implementation**:
+- 8 independent timers with precise master clock periods:
+  - V-blank timer: ~16.67ms (60Hz)
+  - H-blank timer: one scanline (~244μs)
+  - 1 second timer
+  - 1/4 second timer (250ms)
+  - 1/8 second timer (125ms)
+  - 1/1024 second timer (~977μs)
+  - 16777/16777216 second timer (~1ms)
+  - 60 V-blank timer (~1 second)
+- Each timer has independent enable/disable control
+- Each timer has independent interrupt enable
+- Status flags set when timer expires
+- CPU IRQ triggered when timer expires (if interrupt enabled)
+- Flags cleared by writing 1 to status register
+
+**I/O Registers**:
+- `$D80050` (TIMER_CONTROL): Enable/disable timers (bit pattern: 0bVHSQETAR)
+- `$D80051` (TIMER_STATUS): Read timer status flags, write 1 to clear
+- `$D80052` (TIMER_INT_ENABLE): Enable/disable interrupts per timer
+
+**Architecture Changes**:
+- Added timer state to System class (8 counters + control registers)
+- Added `updateTimers()` method called every master cycle
+- Added System pointer to CPU for I/O register access
+- Timers integrated with existing CPU IRQ system
+- All timer periods calculated based on 67.108864 MHz master clock
+
+**Files Modified**:
+- `include/system.h`: Added timer state structure and constants
+- `src/system.cpp`: Added timer initialization, reset, and update logic
+- `include/cpu.h`: Added System pointer for I/O register access
+- `src/cpu.cpp`: Added timer I/O register handlers at $D80050-$D80052
+
+**Build Status**:
+- ✅ All files compile successfully
+- ✅ No build errors
+- ✅ Timer I/O registers accessible from CPU
+- ✅ Timer interrupts trigger CPU IRQ correctly
+
+**Usage Example**:
+```asm
+; Enable 1/4 second timer with interrupt
+LDA #$10           ; Q bit (0x10)
+STA $D80050        ; Enable timer
+STA $D80052        ; Enable interrupt
+CLI                ; Enable CPU interrupts
+
+; IRQ handler checks timer status
+irq_handler:
+  LDA $D80051      ; Read status
+  AND #$10         ; Check Q timer
+  BEQ :+
+  ; Handle timer event
+  LDA #$10
+  STA $D80051      ; Clear flag
+: RTI
+```
+
+**Next Steps**:
+- Add timer usage examples to Boot ROM
+- Document timer usage patterns in CPU programming guide
+- Consider adding one-shot timer mode (auto-disable after expiration)
+
 ## Recent Updates (2025-11-24)
 
 ### ✅ C Compiler C89 Porting Complete

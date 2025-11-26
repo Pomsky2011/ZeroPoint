@@ -4,6 +4,7 @@
 #include "apu.h"
 #include "dma.h"
 #include "display.h"
+#include "system.h"
 #include <cstring>
 #include <stdexcept>
 
@@ -14,7 +15,7 @@ CPU::CPU()
       loopCounter(0), loopStart(0),
       useMemoryMap(false),
       memory(nullptr), memorySize(0),
-      ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr),
+      ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr), systemPtr(nullptr),
       state(CPUState::Running),
       cycleCount(0), instructionCount(0)
 {
@@ -1904,6 +1905,46 @@ void CPU::setupIORegisters() {
             switch (offset) {
                 case 0x00: // DEV_MODE flag (set by emulator, read by boot ROM)
                     devModeFlag = (value & 0x01) != 0;
+                    break;
+                default:
+                    break;
+            }
+        }
+    );
+
+    // ========================================================================
+    // 7. TIMER CONTROL ($D80050-$D80057, 8 bytes)
+    // ========================================================================
+    registerIORegion(IO_BANK, 0x0050, 8,
+        // Read handler
+        [this](uint16_t offset) -> uint8_t {
+            if (!systemPtr) return 0xFF;
+
+            switch (offset) {
+                case 0x00: // TIMER_CONTROL - Timer enable bits (0bVHSQETAR)
+                    return systemPtr->timers.control;
+                case 0x01: // TIMER_STATUS - Timer status flags (read/write)
+                    return systemPtr->timers.status;
+                case 0x02: // TIMER_INT_ENABLE - Timer interrupt enable bits (0bVHSQETAR)
+                    return systemPtr->timers.intEnable;
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler
+        [this](uint16_t offset, uint8_t value) {
+            if (!systemPtr) return;
+
+            switch (offset) {
+                case 0x00: // TIMER_CONTROL - Timer enable bits (0bVHSQETAR)
+                    systemPtr->timers.control = value;
+                    break;
+                case 0x01: // TIMER_STATUS - Write to clear status flags
+                    // Writing a 1 to a bit clears that flag
+                    systemPtr->timers.status &= ~value;
+                    break;
+                case 0x02: // TIMER_INT_ENABLE - Timer interrupt enable bits (0bVHSQETAR)
+                    systemPtr->timers.intEnable = value;
                     break;
                 default:
                     break;
