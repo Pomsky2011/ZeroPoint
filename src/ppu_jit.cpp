@@ -104,6 +104,7 @@ void PPUJIT::emit64(std::vector<uint8_t>& code, uint64_t qword) {
 #if defined(__x86_64__) || defined(_M_X64)
 
 void PPUJIT::emitX86_64(std::vector<uint8_t>& code, PPU* ppu, uint16_t startAddr, size_t maxInstructions) {
+    (void)ppu; (void)startAddr; (void)maxInstructions;
     // Very simple JIT: just execute tick() in a tight loop
     // This removes all the debug overhead from run_demo.cpp
 

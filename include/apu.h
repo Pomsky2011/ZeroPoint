@@ -83,16 +83,18 @@ private:
     void execLFN(uint16_t operand);
     void execBRT(uint16_t operand);
     void execBRP(uint16_t operand);
-    void execIBC(uint16_t operand);
-    void execRBC(uint16_t operand);
+    void execADC(uint16_t operand);
+    void execSBC(uint16_t operand);
     void execBEQ(uint16_t operand);
     void execBNE(uint16_t operand);
     void execBLT(uint16_t operand);
     void execBGT(uint16_t operand);
     void execSDB(uint16_t operand);
-    void execWRH(uint16_t operand);
-    void execWRL(uint16_t operand);
-    void execCFN(uint16_t operand);  // Callable Function New (replaces CFS)
+    void execJMS(uint16_t operand);   // Jump (no stack)         opcode 0x15
+    void execINC(uint16_t operand);   // Increment X/Y/DP/SP     opcode 0x16
+    void execWRH(uint16_t operand);   // reserved
+    void execWRL(uint16_t operand);   // reserved
+    void execCFN(uint16_t operand);   // reserved
     void execSTACK(uint16_t operand); // Stack operations (replaces CFE)
     void execCCF(uint16_t operand);
     void execCME(uint16_t operand);
@@ -144,12 +146,19 @@ private:
     std::array<uint8_t, AROM_SIZE> arom;
     std::array<uint8_t, 256> registers;  // Up to 256 general purpose registers
 
+    // Flag bits (0bzglc)
+    static constexpr uint8_t FLAG_Z = 0x08;  // zero
+    static constexpr uint8_t FLAG_G = 0x04;  // greater
+    static constexpr uint8_t FLAG_L = 0x02;  // less than
+    static constexpr uint8_t FLAG_C = 0x01;  // carry
+
     // Special registers
     uint16_t pc;        // Program Counter
     uint16_t sp;        // Stack Pointer (16-bit)
     uint8_t rp;         // ROM Page
     uint8_t dp;         // Data Page
     uint8_t db;         // Data Byte
+    uint8_t flags;      // Flags: 0bzglc
     bool bf;            // Byte Flip (0=low byte, 1=high byte)
 
     // Banking

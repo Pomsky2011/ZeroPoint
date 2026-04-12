@@ -4,6 +4,32 @@
 
 **NONE** - All critical bugs resolved! 🎉
 
+## Recent Updates (2026-04-03)
+
+### ✅ APU Instruction Set Redesign
+**Redesigned**: Complete APU ISA overhaul — cleared old stubs, added new instructions
+**Status**: ✅ **COMPLETE** — all 32 opcodes defined, assembler and emulator in sync
+
+**Changes**:
+- Added 4-bit FLAGS register (Z/G/L/C): set by ADD/SUB/ADC/SBC/compare instructions
+- New instructions: ADC, SBC, MOV, EXC, JZ, CRB, XOR, INC/DEC (all targets), JMS/JSR/JDP/JDPS
+- Flag ops: SFR, CF, SF, STF
+- Hardware stack: BSP, RET, PUX, PUY, POX, POY, PUDP, PODP
+- Removed: WRH, WRL, SBF, IOO, IOI, CCF, CFS, CFE, IBC, RBC
+- Fixed assembler/emulator register field mismatch (rx at bit 10, ry at bit 9)
+- Updated apuasm.c, apu.cpp, apu.h with all new encodings and handlers
+- Updated docs: instruction-set.txt, registers.txt, programming-guide.txt
+
+**Files Modified**:
+- `include/apu.h`: Added FLAGS field, flag constants, new handler declarations
+- `src/apu.cpp`: All new instruction handlers, fixed register field reads
+- `ZPdevtools/apuasm.c`: All new mnemonics, fixed encoding, removed old stubs
+- `ZPdevtools/docs/apu/instruction-set.txt`: Complete rewrite
+- `ZPdevtools/docs/apu/registers.txt`: Complete rewrite
+- `ZPdevtools/docs/apu/programming-guide.txt`: Updated for new ISA
+
+---
+
 ## Recent Updates (2025-11-25)
 
 ### ✅ Hardware Timer System Implementation
@@ -182,8 +208,8 @@ irq_handler:
 **Build Status**:
 - ✅ All files compile successfully
 - ✅ No build errors
-- ⚠️ CPU tests currently fail (opcodes need reimplementation in new handlers)
-- ⚠️ PPU/APU tests not yet run with new system
+- ✅ All CPU tests pass (all 256 handlers implemented)
+- ✅ PPU and DMA tests pass with new system
 
 **Impact**:
 - Instruction implementations now trivial to find and modify
@@ -192,12 +218,7 @@ irq_handler:
 - Perfect for incremental implementation and testing
 - Framework ready for user to implement opcodes themselves
 
-**Next Steps**:
-- Implement CPU instruction handlers (use existing opXXX methods where possible)
-- Implement PPU instruction handlers (most are straightforward register ops)
-- Implement APU instruction handlers (similar to PPU)
-- Test each instruction incrementally
-- Refer to `docs/INSTRUCTION_IMPLEMENTATION_GUIDE.md` for guidance
+**Status**: ✅ All instruction handlers implemented and tested. Header comments in `cpu_instructions.h` corrected to match actual opcode assignments.
 
 ## Recent Updates (2025-10-31)
 

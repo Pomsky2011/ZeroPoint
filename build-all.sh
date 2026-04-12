@@ -19,10 +19,6 @@ echo ""
 # Detect OS
 OS="$(uname -s)"
 case "$OS" in
-    Darwin*)
-        PLATFORM="macOS"
-        NCPU=$(sysctl -n hw.ncpu)
-        ;;
     Linux*)
         PLATFORM="Linux"
         NCPU=$(nproc)
@@ -50,9 +46,7 @@ echo "========================================"
 echo ""
 
 # Use platform-specific build script
-if [ "$PLATFORM" = "macOS" ]; then
-    bash "$SCRIPT_DIR/build-macos.sh"
-elif [ "$PLATFORM" = "Linux" ]; then
+if [ "$PLATFORM" = "Linux" ]; then
     bash "$SCRIPT_DIR/build-linux.sh"
 else
     echo "Building emulator..."

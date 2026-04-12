@@ -11,13 +11,14 @@
 namespace ZeroPoint {
 
 CPU::CPU()
-    : A(0), X(0), Y(0), SP(0x01FF), D(0), PC(0), PB(0), DB(0),
+    : cycleCount(0),
+      A(0), X(0), Y(0), SP(0x01FF), D(0), PC(0), PB(0), DB(0),
       loopCounter(0), loopStart(0),
       useMemoryMap(false),
       memory(nullptr), memorySize(0),
       ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr), systemPtr(nullptr),
       state(CPUState::Running),
-      cycleCount(0), instructionCount(0)
+      instructionCount(0)
 {
     // Initialize with 8-bit mode, interrupts disabled
     P.M = true;
@@ -1774,7 +1775,7 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // Port 1: $D80030-$D80037 (Player 1 controller)
     // Port 2: $D80038-$D8003F (Player 2 / Debug serial interface)
-    static uint8_t p2_tx_buffer[256];
+    static uint8_t p2_tx_buffer[256] __attribute__((unused));  // TX queue; no consumer yet
     static uint8_t p2_rx_buffer[256];
     static uint8_t p2_tx_head = 0;
     static uint8_t p2_tx_tail = 0;
@@ -1882,7 +1883,7 @@ void CPU::setupIORegisters() {
             }
         },
         // Write handler (read-only, writes ignored)
-        [](uint16_t offset, uint8_t value) { /* Read-only block */ }
+        [](uint16_t, uint8_t) { /* Read-only block */ }
     );
 
     // ========================================================================

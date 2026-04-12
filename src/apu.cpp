@@ -1,5 +1,4 @@
 #include "apu.h"
-#include "apu_instructions.h"
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
@@ -7,7 +6,7 @@
 #include <iostream>
 
 APU::APU()
-    : pc(0), sp(0), rp(0), dp(0), db(0), bf(false),
+    : pc(0), sp(0), rp(0), dp(0), db(0), flags(0), bf(false),
       romBank(0), ioBank(0),
       cycleCount(0), instructionCount(0), halted(false),
       reverbFlagsLeft(0), reverbFlagsRight(0),
@@ -32,6 +31,7 @@ void APU::reset() {
     dp = 0x00;
     db = 0x00;
     bf = false;
+    flags = 0;
 
     romBank = 0;
     ioBank = 0;
@@ -100,7 +100,7 @@ void APU::loadROM(const uint8_t* data, size_t size, uint16_t address) {
 
 uint8_t APU::readByte(uint16_t address) {
     // AROM banking
-    if (address >= AROM_BASE && address < 0x10000) {
+    if (address >= AROM_BASE) {
         size_t aromOffset = (romBank * AROM_BANK_SIZE) + (address - AROM_BASE);
         if (aromOffset < AROM_SIZE) {
             return arom[aromOffset];
@@ -120,7 +120,7 @@ uint8_t APU::readByte(uint16_t address) {
 void APU::writeByte(uint16_t address, uint8_t value) {
     // ROM regions are read-only
     if ((address >= BIOS_BASE && address < BIOS_BASE + BIOS_SIZE) ||
-        (address >= AROM_BASE && address < 0x10000)) {
+        (address >= AROM_BASE)) {
         return;
     }
 
@@ -129,7 +129,7 @@ void APU::writeByte(uint16_t address, uint8_t value) {
         memory[address] = value;
 
         // Channel Pitch (LEFT: $0000-$001F, RIGHT: $0080-$009F)
-        if ((address >= 0x0000 && address < 0x0020) ||
+        if ((address < 0x0020) ||
             (address >= 0x0080 && address < 0x00A0)) {
 
             int baseChannel = (address >= 0x0080) ? 16 : 0;
@@ -213,16 +213,11 @@ void APU::writeWord(uint16_t address, uint16_t value) {
 }
 
 uint8_t APU::getRegister(uint8_t reg) {
-    if (reg < 256) {
-        return registers[reg];
-    }
-    return 0;
+    return registers[reg];
 }
 
 void APU::setRegister(uint8_t reg, uint8_t value) {
-    if (reg < 256) {
-        registers[reg] = value;
-    }
+    registers[reg] = value;
 }
 
 void APU::setROMBank(uint16_t bank) {
@@ -293,7 +288,20 @@ void APU::executeInstruction(uint16_t instruction) {
     switch (opcode) {
         case 0x00: execNOP(operand); break;
         case 0x01: execJMP(operand); break;
-        case 0x02: execJNZ(operand); break;
+        case 0x02: {
+            if (operand & 0x100) {
+                // JZ — jump if register == 0
+                uint8_t reg = (operand >> 10) & 1;
+                bool mode   = (operand >> 9)  & 1;
+                uint8_t offset = operand & 0xFF;
+                if (registers[reg ? 1 : 0] == 0) {
+                    pc = mode ? ((uint16_t)rp << 8) | offset : 0x8000 | offset;
+                }
+            } else {
+                execJNZ(operand);
+            }
+            break;
+        }
         case 0x03: {
             // SRP or SDP based on bit 8
             if (operand & 0x400) {  // Bit 10 set = SDP
@@ -316,23 +324,59 @@ void APU::executeInstruction(uint16_t instruction) {
             }
             break;
         }
-        case 0x09: execSBF(operand); break;
+        case 0x09: {
+            // LDA/STA via data pointer — bits 9-8 = subop
+            uint8_t subop = (operand >> 8) & 0x03;
+            bool regSel = (operand >> 10) & 1;  // 0=X, 1=Y
+            uint16_t addr = ((uint16_t)dp << 8) | db;
+            switch (subop) {
+                case 0x00:  // LDA X/Y — load (dp:db) into register
+                    registers[regSel ? 1 : 0] = readByte(addr);
+                    break;
+                case 0x01:  // STA X/Y — store register to (dp:db)
+                    writeByte(addr, registers[regSel ? 1 : 0]);
+                    break;
+                case 0x02:  // STA $XX — store immediate to (dp:db)
+                    writeByte(addr, operand & 0xFF);
+                    break;
+                default:
+                    break;
+            }
+            break;
+        }
         case 0x0A: execSCR(operand); break;
         case 0x0B: {
-            // IOO or IOI based on bit 8
-            if (operand & 0x100) {
-                execIOI(operand);
-            } else {
-                execIOO(operand);
+            uint8_t subop = (operand >> 8) & 0x07;
+            uint8_t mask  = (operand >> 4) & 0x0F;
+            switch (subop) {
+                case 0x1:  // SFR — set flag register to value
+                    flags = mask;
+                    break;
+                case 0x2:  // CF — clear flags by mask
+                    flags &= ~mask;
+                    break;
+                case 0x3:  // SF — set flags by mask
+                    flags |= mask;
+                    break;
+                case 0x4:  // STF — store flags in upper nybble of X/Y
+                case 0x5: {
+                    bool reg = (operand >> 8) & 1;
+                    registers[reg ? 1 : 0] = (registers[reg ? 1 : 0] & 0x0F) | (flags << 4);
+                    break;
+                }
+                default: break;
             }
             break;
         }
         case 0x0C: {
-            // ZOR or ZOA based on pattern
-            if ((operand & 0x7C0) == 0x080) {  // ZOR pattern
-                execZOR(operand);
-            } else {  // ZOA
-                execZOA(operand);
+            uint8_t subop = (operand >> 8) & 0x07;
+            switch (subop) {
+                case 0x0: execZOR(operand); break;  // ZOR: zero register
+                case 0x2: execZOA(operand); break;  // ZOA $XX: zero word at dp:XX
+                case 0x3:                            // ZOA DP: zero byte at (dp:db)
+                    writeByte(((uint16_t)dp << 8) | db, 0);
+                    break;
+                default: break;
             }
             break;
         }
@@ -347,8 +391,8 @@ void APU::executeInstruction(uint16_t instruction) {
         }
         case 0x0E: execBRT(operand); break;
         case 0x0F: execBRP(operand); break;
-        case 0x10: execIBC(operand); break;
-        case 0x11: execRBC(operand); break;
+        case 0x10: execADC(operand); break;
+        case 0x11: execSBC(operand); break;
         case 0x12: {
             // BEQ or BNE based on bit 8
             if (operand & 0x100) {
@@ -368,18 +412,23 @@ void APU::executeInstruction(uint16_t instruction) {
             break;
         }
         case 0x14: execSDB(operand); break;
-        case 0x15: {
-            // WRH or WRL based on bit 8
+        case 0x15: execJMS(operand); break;
+        case 0x16: execINC(operand); break;
+        case 0x17: execSTACK(operand); break;
+        case 0x18: {
             if (operand & 0x100) {
-                execWRL(operand);
+                // EXC — exchange X and Y
+                uint8_t tmp = registers[0];
+                registers[0] = registers[1];
+                registers[1] = tmp;
             } else {
-                execWRH(operand);
+                // MOV src, dst — copy src register to dst register
+                bool src = (operand >> 10) & 1;
+                bool dst = (operand >> 9)  & 1;
+                registers[dst ? 1 : 0] = registers[src ? 1 : 0];
             }
             break;
         }
-        case 0x16: execCFN(operand); break;
-        case 0x17: execSTACK(operand); break;
-        case 0x18: execCCF(operand); break;
         case 0x19: {
             // CME/CMN/CML/CMG based on bits 7-6
             uint8_t subOp = (operand >> 6) & 0x03;
@@ -388,6 +437,42 @@ void APU::executeInstruction(uint16_t instruction) {
                 case 1: execCMN(operand); break;
                 case 2: execCMG(operand); break;
                 case 3: execCML(operand); break;
+            }
+            break;
+        }
+        case 0x1B: {
+            // XOR — same operand layout as CRB
+            bool rx    = (operand >> 10) & 1;
+            bool ry    = (operand >> 9)  & 1;
+            bool toMem = (operand >> 8)  & 1;
+            uint8_t result = registers[rx ? 1 : 0] ^ registers[ry ? 1 : 0];
+            flags = result ? 0 : FLAG_Z;
+            if (!toMem) {
+                bool rz = (operand >> 7) & 1;
+                registers[rz ? 1 : 0] = result;
+            } else {
+                writeByte(((uint16_t)dp << 8) | (operand & 0xFF), result);
+            }
+            break;
+        }
+        case 0x1A: {
+            // CRB — conditional right/left shift via signed nybble
+            bool inputReg = (operand >> 10) & 1;  // 0=X, 1=Y
+            bool shiftReg = (operand >> 9)  & 1;  // 0=X, 1=Y
+            bool toMem    = (operand >> 8)  & 1;  // 0=register, 1=memory
+
+            uint8_t value = registers[inputReg ? 1 : 0];
+            uint8_t raw   = registers[shiftReg ? 1 : 0] & 0x0F;
+            int8_t  shift = (raw & 0x08) ? (int8_t)(raw | 0xF0) : (int8_t)raw;
+
+            uint8_t result = (shift >= 0) ? (value >> shift) : (value << (-shift));
+            flags = result ? 0 : FLAG_Z;
+
+            if (!toMem) {
+                bool outReg = (operand >> 7) & 1;
+                registers[outReg ? 1 : 0] = result;
+            } else {
+                writeByte(((uint16_t)dp << 8) | (operand & 0xFF), result);
             }
             break;
         }
@@ -431,7 +516,7 @@ void APU::execJMP(uint16_t operand) {
 }
 
 void APU::execJNZ(uint16_t operand) {
-    uint8_t reg = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
+    uint8_t reg = (operand >> 10) & 0x01;
     bool mode = (operand >> 8) & 1;
     uint8_t offset = operand & 0xFF;
 
@@ -456,11 +541,12 @@ void APU::execSDP(uint16_t operand) {
 }
 
 void APU::execNOR(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool toMem = !(operand & 0x100);
 
     uint8_t result = ~(registers[regX] | registers[regY]);
+    flags = result ? 0 : FLAG_Z;
 
     if (toMem) {
         uint8_t offset = operand & 0xFF;
@@ -481,11 +567,12 @@ void APU::execNOR(uint16_t operand) {
 }
 
 void APU::execAND(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool toMem = !(operand & 0x100);
 
     uint8_t result = registers[regX] & registers[regY];
+    flags = result ? 0 : FLAG_Z;
 
     if (toMem) {
         uint8_t offset = operand & 0xFF;
@@ -504,11 +591,15 @@ void APU::execAND(uint16_t operand) {
 }
 
 void APU::execADD(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool toMem = !(operand & 0x100);
 
-    uint8_t result = registers[regX] + registers[regY];
+    uint16_t full = (uint16_t)registers[regX] + registers[regY];
+    uint8_t result = full & 0xFF;
+    flags = 0;
+    if (!result)     flags |= FLAG_Z;
+    if (full > 0xFF) flags |= FLAG_C;
 
     if (toMem) {
         uint8_t offset = operand & 0xFF;
@@ -527,11 +618,16 @@ void APU::execADD(uint16_t operand) {
 }
 
 void APU::execSUB(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool toMem = !(operand & 0x100);
 
-    uint8_t result = registers[regX] - registers[regY];
+    uint8_t a = registers[regX], b = registers[regY];
+    uint8_t result = a - b;
+    flags = 0;
+    if (!result) flags |= FLAG_Z;
+    if (a < b)   flags |= FLAG_C | FLAG_L;
+    if (a > b)   flags |= FLAG_G;
 
     if (toMem) {
         uint8_t offset = operand & 0xFF;
@@ -550,7 +646,7 @@ void APU::execSUB(uint16_t operand) {
 }
 
 void APU::execSTA(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
+    uint8_t regX = (operand >> 10) & 0x01;
     uint8_t offset = operand & 0xFF;
     uint16_t address = (dp << 8) | offset;
 
@@ -566,7 +662,7 @@ void APU::execSTA(uint16_t operand) {
 }
 
 void APU::execSTR(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
+    uint8_t regX = (operand >> 10) & 0x01;
     uint8_t offset = operand & 0xFF;
     uint16_t address = (dp << 8) | offset;
 
@@ -580,23 +676,24 @@ void APU::execSTR(uint16_t operand) {
 }
 
 void APU::execSBF(uint16_t operand) {
-    bf = (operand & 0x01) != 0;
+    // reserved - opcode 0x09 available for redesign
+    (void)operand;
 }
 
 void APU::execSCR(uint16_t operand) {
-    uint8_t reg = (operand >> 10) & 0x01;  // FIX: Register is in bit 10, not 8
+    uint8_t reg = (operand >> 10) & 0x01;
     uint8_t value = operand & 0xFF;
     registers[reg] = value;
 }
 
 void APU::execIOO(uint16_t operand) {
-    // I/O output - implementation specific
-    // For now, just a placeholder
+    // reserved - opcode 0x0B available for redesign
+    (void)operand;
 }
 
 void APU::execIOI(uint16_t operand) {
-    // I/O input - implementation specific
-    // For now, just a placeholder
+    // reserved - opcode 0x0B available for redesign
+    (void)operand;
 }
 
 void APU::execZOR(uint16_t operand) {
@@ -656,20 +753,54 @@ void APU::execBRT(uint16_t operand) {
 }
 
 void APU::execBRP(uint16_t operand) {
-    // Break to re-enter - implementation specific
+    (void)operand;  // Break to re-enter - implementation specific
 }
 
-void APU::execIBC(uint16_t operand) {
-    ioBank = operand & 0x7FF;
+void APU::execADC(uint16_t operand) {
+    // ADC — add with carry
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
+    bool toMem   = !(operand & 0x100);
+
+    uint16_t full = (uint16_t)registers[regX] + registers[regY] + ((flags & FLAG_C) ? 1 : 0);
+    uint8_t result = full & 0xFF;
+    flags = 0;
+    if (!result)     flags |= FLAG_Z;
+    if (full > 0xFF) flags |= FLAG_C;
+
+    if (toMem) {
+        uint16_t address = ((uint16_t)dp << 8) | (operand & 0xFF);
+        writeByte(address, result);
+    } else {
+        registers[operand & 0x7F] = result;
+    }
 }
 
-void APU::execRBC(uint16_t operand) {
-    setROMBank(operand & 0x7FF);
+void APU::execSBC(uint16_t operand) {
+    // SBC — subtract with borrow
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
+    bool toMem   = !(operand & 0x100);
+
+    uint8_t a = registers[regX];
+    uint8_t b = registers[regY] + ((flags & FLAG_C) ? 1 : 0);
+    uint8_t result = a - b;
+    flags = 0;
+    if (!result) flags |= FLAG_Z;
+    if (a < b)   flags |= FLAG_C | FLAG_L;
+    if (a > b)   flags |= FLAG_G;
+
+    if (toMem) {
+        uint16_t address = ((uint16_t)dp << 8) | (operand & 0xFF);
+        writeByte(address, result);
+    } else {
+        registers[operand & 0x7F] = result;
+    }
 }
 
 void APU::execBEQ(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     uint8_t offset = operand & 0xFF;
 
     if (registers[regX] == registers[regY]) {
@@ -678,8 +809,8 @@ void APU::execBEQ(uint16_t operand) {
 }
 
 void APU::execBNE(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     uint8_t offset = operand & 0xFF;
 
     if (registers[regX] != registers[regY]) {
@@ -688,8 +819,8 @@ void APU::execBNE(uint16_t operand) {
 }
 
 void APU::execBLT(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     uint8_t offset = operand & 0xFF;
 
     if (registers[regX] < registers[regY]) {
@@ -698,8 +829,8 @@ void APU::execBLT(uint16_t operand) {
 }
 
 void APU::execBGT(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     uint8_t offset = operand & 0xFF;
 
     if (registers[regX] > registers[regY]) {
@@ -711,28 +842,40 @@ void APU::execSDB(uint16_t operand) {
     db = operand & 0xFF;
 }
 
+void APU::execJMS(uint16_t operand) {
+    bool useDP  = (operand >> 10) & 1;
+    bool doCall = (operand >> 9)  & 1;
+    uint16_t target = useDP ? ((uint16_t)dp << 8) | db
+                            : ((uint16_t)rp << 8) | (operand & 0xFF);
+    if (doCall) pushWord(pc);
+    pc = target;
+}
+
+void APU::execINC(uint16_t operand) {
+    // Increment/Decrement: bit 10 = DEC(1)/INC(0), bits 9-8 = X(0)/Y(1)/DP(2)/SP(3)
+    bool dec = (operand >> 10) & 1;
+    uint8_t target = (operand >> 8) & 0x03;
+    switch (target) {
+        case 0: dec ? registers[0]-- : registers[0]++; break;
+        case 1: dec ? registers[1]-- : registers[1]++; break;
+        case 2: dec ? dp-- : dp++; break;
+        case 3: dec ? sp-- : sp++; break;
+    }
+}
+
 void APU::execWRH(uint16_t operand) {
-    uint8_t value = operand & 0xFF;
-    uint16_t address = (dp << 8) | db;
-    uint8_t low = readByte(address);
-    writeWord(address, (value << 8) | low);
+    // reserved
+    (void)operand;
 }
 
 void APU::execWRL(uint16_t operand) {
-    uint8_t value = operand & 0xFF;
-    uint16_t address = (dp << 8) | db;
-    uint8_t high = readByte(address + 1);
-    writeWord(address, (high << 8) | value);
+    // reserved
+    (void)operand;
 }
 
 void APU::execCFN(uint16_t operand) {
-    // CFN - Define callable function at PC + offset
-    uint16_t offset = operand & 0x7FF;
-    uint16_t funcId = offset;  // Use offset as function ID
-    if (funcId < 2048) {
-        functions[funcId].defined = true;
-        functions[funcId].address = pc + offset;
-    }
+    // reserved
+    (void)operand;
 }
 
 void APU::execSTACK(uint16_t operand) {
@@ -742,13 +885,25 @@ void APU::execSTACK(uint16_t operand) {
     uint8_t SS = (operand >> 8) & 3;
 
     if (!D) {
-        // D=0: BSP or RET
-        if ((operand & 0x7F) == 0x40) {
+        if (operand & 0x200) {
+            // sdp b,$XX — set byte b of data pointer (b=0: DB/low, b=1: DP/high)
+            bool b = (operand >> 8) & 1;
+            uint8_t value = operand & 0xFF;
+            if (b) dp = value; else db = value;
+        } else if ((operand & 0xFF) == 0x42) {
+            // PODP: Pop 16-bit dp:db from stack
+            db = popByte();
+            dp = popByte();
+        } else if ((operand & 0xFF) == 0x41) {
+            // PUDP: Push 16-bit dp:db onto stack
+            pushByte(dp);
+            pushByte(db);
+        } else if ((operand & 0xFF) == 0x40) {
             // RET: Pop 16-bit PC from stack
             pc = popWord();
         } else {
             // BSP: Build Stack Pointer from X (LSB) and Y (MSB)
-            sp = registers[0] | (registers[1] << 8);  // X is reg 0, Y is reg 1
+            sp = registers[0] | (registers[1] << 8);
         }
     } else {
         // D=1: Push/Pop operations
@@ -770,21 +925,21 @@ void APU::execSTACK(uint16_t operand) {
 }
 
 void APU::execCCF(uint16_t operand) {
-    // CCF - Call callable function
-    uint16_t funcId = operand & 0x7FF;
-    if (funcId < 2048 && functions[funcId].defined) {
-        // Push return address onto stack
-        pushWord(pc);
-        // Jump to function address
-        pc = functions[funcId].address;
-    }
+    // reserved - opcode 0x18 available for redesign
+    (void)operand;
 }
 
 void APU::execCME(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
+
+    uint8_t cma = registers[regX], cmb = registers[regY];
+    flags = 0;
+    if (cma == cmb) flags |= FLAG_Z;
+    if (cma > cmb)  flags |= FLAG_G;
+    if (cma < cmb)  flags |= FLAG_L;
 
     if (registers[regX] == registers[regY]) {
         if (direction) {
@@ -796,10 +951,16 @@ void APU::execCME(uint16_t operand) {
 }
 
 void APU::execCMN(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
+
+    uint8_t cma = registers[regX], cmb = registers[regY];
+    flags = 0;
+    if (cma == cmb) flags |= FLAG_Z;
+    if (cma > cmb)  flags |= FLAG_G;
+    if (cma < cmb)  flags |= FLAG_L;
 
     if (registers[regX] != registers[regY]) {
         if (direction) {
@@ -811,10 +972,16 @@ void APU::execCMN(uint16_t operand) {
 }
 
 void APU::execCMG(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
+
+    uint8_t cma = registers[regX], cmb = registers[regY];
+    flags = 0;
+    if (cma == cmb) flags |= FLAG_Z;
+    if (cma > cmb)  flags |= FLAG_G;
+    if (cma < cmb)  flags |= FLAG_L;
 
     if (registers[regX] > registers[regY]) {
         if (direction) {
@@ -826,10 +993,16 @@ void APU::execCMG(uint16_t operand) {
 }
 
 void APU::execCML(uint16_t operand) {
-    uint8_t regX = (operand >> 10) & 0x01;  // FIX: Register X is in bit 10
-    uint8_t regY = (operand >> 8) & 0x01;
+    uint8_t regX = (operand >> 10) & 0x01;
+    uint8_t regY = (operand >> 9)  & 0x01;
     bool direction = (operand >> 6) & 1;
     uint8_t offset = operand & 0x3F;
+
+    uint8_t cma = registers[regX], cmb = registers[regY];
+    flags = 0;
+    if (cma == cmb) flags |= FLAG_Z;
+    if (cma > cmb)  flags |= FLAG_G;
+    if (cma < cmb)  flags |= FLAG_L;
 
     if (registers[regX] < registers[regY]) {
         if (direction) {
@@ -980,6 +1153,7 @@ int16_t APU::getMixedSampleRight() {
 }
 
 void APU::processChannel(int channel, bool rightEar) {
+    (void)rightEar;
     // Load sample data from SST if cache is empty
     if (mmpChannels[channel].sampleCache.empty() &&
         mmpChannels[channel].sampleDataAddress >= SST_BASE &&
@@ -991,16 +1165,11 @@ void APU::processChannel(int channel, bool rightEar) {
         // Read first block to determine if there are more
         bool finalBlock = false;
         while (!finalBlock && blockAddr < SST_BASE + SST_SIZE) {
-            // Read header (4 bytes)
-            uint8_t header0 = readByte(blockAddr);
+            // Read header (4 bytes); byte 1 drives loop config
             uint8_t header1 = readByte(blockAddr + 1);
-            uint8_t header2 = readByte(blockAddr + 2);
-            uint8_t header3 = readByte(blockAddr + 3);
 
-            // Parse loop configuration from upper nybble (L)
-            // SST format: Byte 1 = [Y (nybble 2) | L (nybble 3)]
-            // Y is lower nybble (bits 0-3), L is upper nybble (bits 4-7)
-            uint8_t Y = header1 & 0x0F;  // Lower nybble (loop start sample)
+            // SST format: Byte 1 = [L (nybble, bits 4-7) | Y (nybble, bits 0-3)]
+            // Y is lower nybble (loop start sample), L is upper nybble (config bits)
             uint8_t L = (header1 >> 4) & 0x0F;  // Upper nybble contains config bits
             finalBlock = (L & 0x04) != 0;  // W bit (bit 2 of L) marks final block
 
@@ -1026,12 +1195,9 @@ void APU::processChannel(int channel, bool rightEar) {
 }
 
 int16_t APU::resampleSample(uint8_t sample, uint16_t pitch) {
+    (void)pitch;  // Pitch resampling not yet implemented
     // Convert 8-bit unsigned to 16-bit signed
     int16_t signed_sample = static_cast<int16_t>(sample) - 128;
     signed_sample *= 256;  // Scale to 16-bit range
-
-    // Apply pitch (resampling) - simplified
-    // Real implementation would use interpolation
-
     return signed_sample;
 }

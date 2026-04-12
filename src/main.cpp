@@ -1,3 +1,4 @@
+#define SDL_MAIN_HANDLED
 #include "display.h"
 #include "window.h"
 #include <iostream>

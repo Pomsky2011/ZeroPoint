@@ -20,11 +20,6 @@ This will:
 
 ### Build Only Emulator
 
-**macOS:**
-```bash
-./build-macos.sh
-```
-
 **Linux:**
 ```bash
 ./build-linux.sh
@@ -49,33 +44,6 @@ build-dos.bat
 ```
 
 ## Platform-Specific Instructions
-
-### macOS (Intel & Apple Silicon)
-
-**Requirements:**
-- macOS 10.15+ (Catalina or later)
-- Xcode Command Line Tools
-- Homebrew (recommended)
-
-**One-line install:**
-```bash
-xcode-select --install
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-brew install sdl2 qt cmake
-```
-
-**Build:**
-```bash
-./build-macos.sh          # Emulator only
-# OR
-./build-all.sh            # Everything
-```
-
-**Output:**
-- `build/bin/zeropoint_qt.app` - Qt frontend (native .app bundle)
-- `build/bin/zeropoint_sdl.app` - SDL frontend
-- `build/bin/test_*.app` - Test suites
-- `../ZPdevtools/ppuasm`, `apuasm`, `cpuasm`, etc.
 
 ### Linux (x86_64 & ARM64)
 
@@ -172,8 +140,7 @@ This builds **ALL** dev tools as C89-compliant DOS executables:
 
 | Script | Platform | Description |
 |--------|----------|-------------|
-| `build-all.sh` | macOS/Linux | Master script - builds emulator + dev tools |
-| `build-macos.sh` | macOS | Emulator only (Intel & Apple Silicon) |
+| `build-all.sh` | Linux | Master script - builds emulator + dev tools |
 | `build-linux.sh` | Linux | Emulator only (x86_64 & ARM64) |
 | `build-windows.bat` | Windows | Emulator only (x64 & ARM64) |
 
@@ -181,9 +148,9 @@ This builds **ALL** dev tools as C89-compliant DOS executables:
 
 | Script | Platform | Location | Description |
 |--------|----------|----------|-------------|
-| `build-native.sh` | macOS/Linux | `ZPdevtools/` | All dev tools (native) |
+| `build-native.sh` | Linux | `ZPdevtools/` | All dev tools (native) |
 | `build-dos.bat` | MS-DOS | `ZPdevtools/` | All dev tools (DOS) |
-| `Makefile` | macOS/Linux | `ZPdevtools/` | GNU Make (native) |
+| `Makefile` | Linux | `ZPdevtools/` | GNU Make (native) |
 | `Makefile.dos` | MS-DOS | `ZPdevtools/` | Turbo Make / NMAKE |
 
 ## Manual Build (Advanced)
@@ -193,23 +160,17 @@ This builds **ALL** dev tools as C89-compliant DOS executables:
 ```bash
 mkdir build && cd build
 cmake ..
-cmake --build . -j$(nproc)    # Linux
-cmake --build . -j$(sysctl -n hw.ncpu)    # macOS
+cmake --build . -j$(nproc)
 ```
 
 ### Dev Tools
 
 ```bash
 cd ZPdevtools
-make -j$(nproc)    # or make -j$(sysctl -n hw.ncpu) on macOS
+make -j$(nproc)
 ```
 
 ## Troubleshooting
-
-### macOS: "SDL2 not found"
-```bash
-brew install sdl2
-```
 
 ### Linux: "Qt6 not found"
 ```bash

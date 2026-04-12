@@ -112,7 +112,6 @@ int main(int argc, char* argv[]) {
                       << " R62=" << ppu.getRegister(62) << "\n" << std::flush;
         }
     }
-exit_loop:
 
     std::cout << "\nDemo completed after " << cycles << " cycles\n";
     std::cout << "Final state: " << (int)ppu.getState() << "\n";

@@ -18,8 +18,11 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Palettes**: 16-color (16-bit) / 256-color (32-bit)
 
 ### APU (Audio Processing Unit)
-- **4 MHz** (1.0 MIPS), 8-bit RISC, 47 instructions
+- **4 MHz** (1.0 MIPS), 8-bit RISC, 32 opcodes (ISA redesigned)
+- **256 8-bit general-purpose registers** (R0/X, R1/Y, R2-R255)
+- **Special registers**: PC (16-bit), SP (16-bit hardware stack), RP, DP, DB, BF, FLAGS (4-bit: Z/G/L/C)
 - **64 KiB + 448 KiB banked AROM**
+- **Instructions**: NOP, JMP, JNZ/JZ, SRP/SDP/SDB, NOR, AND, ADD, SUB, STA/STR, LDA/SCR, flags (SFR/CF/SF/STF), ZOR/ZOA, LST/LFN/BRT/BRP, ADC, SBC, BEQ/BNE, BLT/BGT, JMS/JSR/JDP/JDPS, INC/DEC, BSP/RET/PUX/PUY/POX/POY/PUDP/PODP, MOV/EXC, CME/CMN/CMG/CML, CRB, XOR
 - **MMP**: 16 stereo channels, **SST**: Sample storage with looping
 
 ### DEF88186 CPU
@@ -37,9 +40,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Frequencies**: PPU/Display (67.108864 MHz / 2^26 Hz), DMA (32 MHz), CPU (16 MHz), APU (4 MHz)
 
 ### Platform Support
-- **macOS**: Native .app bundles with custom icons (Intel & Apple Silicon)
-- **Windows**: x64, ARM64 (MSVC, MinGW-w64)
 - **Linux**: x86_64, ARM64/aarch64
+- **Windows**: x64, ARM64 (MSVC, MinGW-w64)
 - **JIT**: x86-64, ARM64 (stable, use `--jit` flag)
 
 ## Memory Maps
@@ -124,7 +126,6 @@ HLT             ; Infinite loop
 
 **Build Emulator Only:**
 ```bash
-./build-macos.sh            # macOS (Intel & Apple Silicon)
 ./build-linux.sh            # Linux (x86_64 & ARM64)
 build-windows.bat           # Windows (x64 & ARM64)
 ```
@@ -132,7 +133,7 @@ build-windows.bat           # Windows (x64 & ARM64)
 **Build Dev Tools Only:**
 ```bash
 cd ../ZPdevtools
-./build-native.sh           # Native build (macOS/Linux)
+./build-native.sh           # Native build (Linux)
 build-dos.bat               # MS-DOS build (Turbo C/MS C)
 ```
 
@@ -146,7 +147,6 @@ cmake --build . -j
 ```
 
 **Dependencies**:
-- **macOS**: `brew install sdl2 qt cmake`
 - **Linux** (Debian/Ubuntu): `sudo apt install libsdl2-dev qt6-base-dev cmake build-essential`
 - **Linux** (Fedora): `sudo dnf install SDL2-devel qt6-qtbase-devel cmake gcc-c++`
 - **Linux** (Arch): `sudo pacman -S sdl2 qt6-base cmake base-devel`
@@ -156,9 +156,8 @@ cmake --build . -j
 
 ### Platform Support
 
-- **Windows**: x64, ARM64 (MSVC, MinGW-w64)
 - **Linux**: x86_64, ARM64/aarch64
-- **macOS**: Intel (x86_64), Apple Silicon (ARM64)
+- **Windows**: x64, ARM64 (MSVC, MinGW-w64)
 - **JIT**: x86-64, ARM64 (experimental, use `--jit` flag)
 
 ## ZPdevtools
@@ -230,7 +229,6 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - Development tools (5 disassemblers/analyzers)
 - MMP audio (16 stereo channels, SDL output)
 - **PPU JIT Compiler** (x86-64/ARM64, stable - use `--jit` flag)
-- **macOS App Bundles** with custom icon support
 - **Vulkan Renderer** (28% faster than SDL, native GPU acceleration, cross-platform)
 
 ### In Progress ⏳
@@ -241,7 +239,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - Debugger with register inspection
 - Hardware scrolling
 - Window scaling options
-- **JIT for additional architectures**: ARMv8/7/6 (Switch/Apple Silicon/Vita/3DS), PPC32 (Wii/U), PPC64 (Xbox 360/PS3)
+- **JIT for additional architectures**: ARMv8/7/6 (Switch/Vita/3DS), PPC32 (Wii/U), PPC64 (Xbox 360/PS3)
 
 ### Known Issues ⚠️
 - **ARM64 JIT under QEMU**: The ARM64 JIT works on real ARM64 hardware but crashes under QEMU emulation due to instruction cache flush interactions. Use interpreter mode when testing with Docker/QEMU.
