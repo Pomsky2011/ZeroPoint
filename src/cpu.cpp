@@ -18,12 +18,16 @@ CPU::CPU()
       memory(nullptr), memorySize(0),
       ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr), systemPtr(nullptr),
       state(CPUState::Running),
-      instructionCount(0)
+      instructionCount(0),
+      irqPending(false), nmiPending(false)
 {
     // Initialize with 8-bit mode, interrupts disabled
     P.M = true;
     P.X = true;
     P.I = true;
+
+    bankFast.fill(nullptr);
+    bankScan.fill(false);
 }
 
 CPU::~CPU() {
@@ -47,6 +51,8 @@ void CPU::reset() {
     state = CPUState::Running;
     cycleCount = 0;
     instructionCount = 0;
+    irqPending = false;
+    nmiPending = false;
 }
 
 void CPU::setMemory(uint8_t* mem, size_t size) {
@@ -58,6 +64,19 @@ void CPU::setMemory(uint8_t* mem, size_t size) {
 uint8_t CPU::readByte(uint32_t address) {
     // If memory mapping is enabled, use it (optimized flag check)
     if (useMemoryMap) [[likely]] {
+        // Fast path: a bank served by a single full-range ROM/RAM region maps
+        // offset->data linearly (bankFast is prebuilt for exactly these). This
+        // is nearly every access — instruction fetch and RAM/ROM data reads —
+        // and skips the findRegion() call plus the region-type switch that
+        // readMapped() would do. Windows have data==null and IO banks aren't in
+        // bankFast, so both fall through to the full readMapped() path.
+        uint8_t bank = (address >> 16) & 0xFF;
+        MemoryRegion* r = bankFast[bank];
+        if (r && r->data) [[likely]] {
+            size_t dataOffset =
+                static_cast<size_t>(bank - r->startBank) * 65536 + (address & 0xFFFF);
+            return (dataOffset < r->dataSize) ? r->data[dataOffset] : 0xFF;
+        }
         return readMapped(address);
     }
 
@@ -71,6 +90,23 @@ uint8_t CPU::readByte(uint32_t address) {
 void CPU::writeByte(uint32_t address, uint8_t value) {
     // If memory mapping is enabled, use it (optimized flag check)
     if (useMemoryMap) [[likely]] {
+        // Fast path mirrors readByte: RAM writes go straight to the backing
+        // array, ROM writes are dropped. Only windows/IO (side-effecting) need
+        // the full writeMapped() path.
+        uint8_t bank = (address >> 16) & 0xFF;
+        MemoryRegion* r = bankFast[bank];
+        if (r) [[likely]] {
+            if (r->type == MemoryRegion::RAM && r->data) {
+                size_t dataOffset = static_cast<size_t>(bank - r->startBank) * 65536 +
+                                    (address & 0xFFFF);
+                if (dataOffset < r->dataSize) r->data[dataOffset] = value;
+                return;
+            }
+            if (r->type == MemoryRegion::ROM) {
+                return;  // ROM writes ignored
+            }
+            // Full-range window (PPU/APU) region: fall through to writeMapped.
+        }
         writeMapped(address, value);
         return;
     }
@@ -172,6 +208,11 @@ void CPU::step() {
         return;
     }
 
+    // Service any latched interrupt at this instruction boundary. If one
+    // vectors, PC now points at the handler and we execute its first
+    // instruction below.
+    serviceInterrupts();
+
     executeInstruction();
     instructionCount++;
 }
@@ -203,12 +244,16 @@ uint32_t CPU::addrAbsoluteLong() {
 uint32_t CPU::addrAbsoluteIndexedX() {
     uint16_t offset = fetch16();
     uint16_t effectiveOffset = offset + (P.X ? (X & 0xFF) : X);
+    // 65C816 read penalty: +1 cycle when indexing crosses a page boundary.
+    // (Approximation: also applied to stores, which are always slow on real HW.)
+    if ((offset & 0xFF00) != (effectiveOffset & 0xFF00)) cycleCount += 1;
     return (DB << 16) | effectiveOffset;
 }
 
 uint32_t CPU::addrAbsoluteIndexedY() {
     uint16_t offset = fetch16();
     uint16_t effectiveOffset = offset + (P.X ? (Y & 0xFF) : Y);
+    if ((offset & 0xFF00) != (effectiveOffset & 0xFF00)) cycleCount += 1;  // page cross
     return (DB << 16) | effectiveOffset;
 }
 
@@ -261,6 +306,8 @@ uint32_t CPU::addrDirectPageIndirectIndexedY() {
     uint16_t dpAddr = (D + offset) & 0xFFFF;
     uint16_t pointer = readWord(dpAddr);
     uint16_t effectiveAddr = pointer + (P.X ? (Y & 0xFF) : Y);
+    // 65C816 read penalty: +1 cycle when the (dp),Y index crosses a page.
+    if ((pointer & 0xFF00) != (effectiveAddr & 0xFF00)) cycleCount += 1;
     return (DB << 16) | effectiveAddr;
 }
 
@@ -283,6 +330,32 @@ uint32_t CPU::addrStackRelativeIndirectIndexedY() {
     uint16_t pointer = readWord(spAddr);
     uint16_t effectiveAddr = pointer + (P.X ? (Y & 0xFF) : Y);
     return (DB << 16) | effectiveAddr;
+}
+
+uint32_t CPU::addrAbsoluteLongIndexedY() {
+    uint32_t addr = fetch24();
+    addr += (P.X ? (Y & 0xFF) : Y);
+    return addr & 0xFFFFFF;
+}
+
+// JMP (addr): 16-bit pointer read from bank 0; target stays in the current PB.
+uint32_t CPU::addrAbsoluteIndirect() {
+    uint16_t ptr = fetch16();
+    uint16_t target = readWord(ptr);
+    return (PB << 16) | target;
+}
+
+// JMP [addr]: 24-bit pointer read from bank 0; full 24-bit target.
+uint32_t CPU::addrAbsoluteIndirectLong() {
+    uint16_t ptr = fetch16();
+    return readLong(ptr);
+}
+
+// JMP (addr,X): pointer = (addr + X) in the program bank; target stays in PB.
+uint32_t CPU::addrAbsoluteIndexedIndirect() {
+    uint16_t ptr = fetch16() + (P.X ? (X & 0xFF) : X);
+    uint16_t target = readWord((PB << 16) | ptr);
+    return (PB << 16) | target;
 }
 
 // Instruction implementations
@@ -442,31 +515,66 @@ void CPU::opSBC(uint32_t addr) {
     }
 }
 
-// Arithmetic - MUL (Hardware multiply)
+// Arithmetic - MUL (hardware multiply).  Produces a double-width product:
+//   8-bit mode : AL * mem -> A (AL = low byte, AH = high byte)
+//   16-bit mode: A  * mem -> A (low word) : X (high word)   [see docs' 32-bit
+//                 return convention "A = low word, X = high word"]
+// Flags NV--ZC: Z = product == 0, N = MSB of product, C = V = product did not
+// fit in the operand width (i.e. the high half is non-zero).
 void CPU::opMUL(uint32_t addr) {
     if (P.M) {
-        // 8-bit mode
         uint8_t value = readByte(addr);
-        uint8_t acc = A & 0xFF;
-        uint16_t result = acc * value;
-        A = result;  // Store full 16-bit result
-        setNZ16(result);
-        P.C = (result > 0xFF);  // Carry if overflow
-        cycleCount += 8;
+        uint16_t result = (uint16_t)(A & 0xFF) * value;
+        A = result;                       // AL:AH hold the 16-bit product
+        P.Z = (result == 0);
+        P.N = (result & 0x8000) != 0;
+        P.C = P.V = (result > 0xFF);
     } else {
-        // 16-bit mode
         uint16_t value = readWord(addr);
-        uint32_t result = A * value;
-        A = result & 0xFFFF;  // Store low 16 bits
-        setNZ16(A);
-        P.C = (result > 0xFFFF);  // Carry if overflow
-        cycleCount += 8;
+        uint32_t result = (uint32_t)A * value;
+        A = result & 0xFFFF;              // low word
+        X = (result >> 16) & 0xFFFF;      // high word (full 32-bit product)
+        P.Z = (result == 0);
+        P.N = (result & 0x80000000UL) != 0;
+        P.C = P.V = (result > 0xFFFF);
     }
+    cycleCount += 8;
 }
 
-// Arithmetic - DIV (Hardware divide)
+// Arithmetic - DIV X,Y (hardware divide).  Quotient -> A, remainder -> X.
+// Flag C is the divide-by-zero error flag (set on divide by zero, otherwise
+// cleared); A/X are left unchanged on a divide-by-zero.
 void CPU::opDIV() {
-    // DIV has special addressing - will be implemented in executeInstruction
+    uint16_t dividend = P.X ? (X & 0xFF) : X;
+    uint16_t divisor  = P.X ? (Y & 0xFF) : Y;
+    if (divisor == 0) {
+        P.C = true;                       // divide-by-zero: error, no result
+        cycleCount += 8;
+        return;
+    }
+    uint16_t quot = dividend / divisor;
+    uint16_t rem  = dividend % divisor;
+    if (P.M) A = (A & 0xFF00) | (quot & 0xFF); else A = quot;
+    if (P.X) X = (X & 0xFF00) | (rem & 0xFF);  else X = rem;
+    P.C = false;
+    cycleCount += 8;
+}
+
+// DIV long,X / DIV long,Y - divide the accumulator by a memory operand.
+// Quotient -> A, remainder -> X.  C is the divide-by-zero error flag.
+void CPU::opDIVmem(uint32_t addr) {
+    uint16_t dividend = P.M ? (A & 0xFF) : A;
+    uint16_t divisor  = P.M ? readByte(addr) : readWord(addr);
+    if (divisor == 0) {
+        P.C = true;
+        cycleCount += 8;
+        return;
+    }
+    uint16_t quot = dividend / divisor;
+    uint16_t rem  = dividend % divisor;
+    if (P.M) { A = (A & 0xFF00) | (quot & 0xFF); X = (X & 0xFF00) | (rem & 0xFF); }
+    else     { A = quot; X = rem; }
+    P.C = false;
     cycleCount += 8;
 }
 
@@ -498,6 +606,16 @@ void CPU::opDEC(uint32_t addr) {
         writeWord(addr, value);
         setNZ16(value);
     }
+}
+
+// INC A / DEC A - accumulator increment/decrement (respects the M width flag).
+void CPU::opINCA() {
+    if (P.M) { A = (A & 0xFF00) | ((A + 1) & 0xFF); setNZ8(A & 0xFF); }
+    else     { A = (A + 1) & 0xFFFF; setNZ16(A); }
+}
+void CPU::opDECA() {
+    if (P.M) { A = (A & 0xFF00) | ((A - 1) & 0xFF); setNZ8(A & 0xFF); }
+    else     { A = (A - 1) & 0xFFFF; setNZ16(A); }
 }
 
 void CPU::opINX() {
@@ -812,51 +930,63 @@ void CPU::opRCL() {
 
 // === BRANCH OPERATIONS ===
 
+// Conditional/unconditional branch timing (65C816-style):
+//   base cost when not taken; +1 when taken; +1 more when the target lands in
+//   a different page than the fall-through address (PC after operand fetch).
 void CPU::opBMI() {
     uint32_t addr = fetch24();
+    cycleCount += 2;
     if (P.N) {
+        cycleCount += 1;                                        // branch taken
+        if ((PC & 0xFF00) != (addr & 0xFF00)) cycleCount += 1; // page crossed
         PC = addr & 0xFFFF;
         PB = (addr >> 16) & 0xFF;
     }
-    cycleCount += 2;
 }
 
 void CPU::opBRA() {
     uint16_t addr = fetch16();
+    cycleCount += 3;  // always taken
+    if ((PC & 0xFF00) != (addr & 0xFF00)) cycleCount += 1;  // page crossed
     PC = addr;
-    cycleCount += 3;
 }
 
 void CPU::opBRL() {
     int16_t offset = (int16_t)fetch16();
     PC = (PC + offset) & 0xFFFF;
-    cycleCount += 4;
+    cycleCount += 4;  // 16-bit relative branch: fixed 4 cycles, no page penalty
 }
 
 void CPU::opBVS() {
     uint16_t addr = fetch16();
+    cycleCount += 2;
     if (P.V) {
+        cycleCount += 1;                                        // branch taken
+        if ((PC & 0xFF00) != (addr & 0xFF00)) cycleCount += 1; // page crossed
         PC = addr;
     }
-    cycleCount += 2;
 }
 
 void CPU::opBCS() {
     uint32_t addr = fetch24();
+    cycleCount += 2;
     if (P.C) {
+        cycleCount += 1;                                        // branch taken
+        if ((PC & 0xFF00) != (addr & 0xFF00)) cycleCount += 1; // page crossed
         PC = addr & 0xFFFF;
         PB = (addr >> 16) & 0xFF;
     }
-    cycleCount += 2;
 }
 
 void CPU::opBEQ() {
     uint32_t addr = fetch24();
+    cycleCount += 2;
     if (P.Z) {
+        cycleCount += 1;                                        // branch taken
+        if ((PC & 0xFF00) != (addr & 0xFF00)) cycleCount += 1; // page crossed
         PC = addr & 0xFFFF;
         PB = (addr >> 16) & 0xFF;
     }
-    cycleCount += 2;
 }
 
 // === JUMP AND SUBROUTINE OPERATIONS ===
@@ -1246,22 +1376,19 @@ void CPU::opBRK() {
     push8(P.toByte());
     P.I = true;
     P.D = false;
-    // Load BRK vector (would be from $00:FFFE/FFFF in real hardware)
-    // For now, just halt
-    state = CPUState::Halted;
+    // Vector through the BRK handler at $00:FFE6-FFE7 (native 65C816). The
+    // handler returns to the pushed state with RTI, just like real hardware.
+    PC = readWord(0x00FFE6);
+    PB = 0x00;
     cycleCount += 7;
 }
 
 void CPU::opCOP() {
-    fetch();  // Skip signature byte
-    push8(PB);
-    push16(PC);
-    push8(P.toByte());
-    P.I = true;
-    P.D = false;
-    // Load COP vector (would be from $00:FFF4/FFF5 in real hardware)
-    // For now, just halt
-    state = CPUState::Halted;
+    uint8_t copValue = fetch();  // Signature byte = COP operand
+    // COP pokes an interrupt device at $D880XX, where XX is the COP operand.
+    // TODO: map $D88000-$D880FF to a real interrupt controller device; for now
+    //       the poke lands in the I/O bank as a stub so the value is observable.
+    writeByte(0xD88000 | copValue, copValue);
     cycleCount += 7;
 }
 
@@ -1318,17 +1445,54 @@ void CPU::opMVP() {
 
 // === MEMORY MAPPING IMPLEMENTATION ===
 
-CPU::MemoryRegion* CPU::findRegion(uint32_t address) {
-    uint8_t bank = (address >> 16) & 0xFF;
-    uint16_t offset = address & 0xFFFF;
+void CPU::rebuildBankTable() {
+    bankFast.fill(nullptr);
+    bankScan.fill(false);
+
+    // Count regions per bank and remember any full-offset-range region, so a
+    // bank served by exactly one full region gets the direct fast path and
+    // everything else (partial or overlapping regions) is flagged for a scan.
+    std::array<int, 256> count{};              // regions covering each bank
+    std::array<MemoryRegion*, 256> fullRegion{};
+    fullRegion.fill(nullptr);
 
     for (auto& region : memoryMap) {
-        // Check if address falls within this region's bank range
-        if (bank >= region.startBank && bank <= region.endBank) {
-            // Check if offset falls within this region's offset range
-            if (offset >= region.startOffset && offset <= region.endOffset) {
-                return &region;
-            }
+        bool full = (region.startOffset == 0x0000 && region.endOffset == 0xFFFF);
+        for (int b = region.startBank; b <= region.endBank; ++b) {
+            count[b]++;
+            if (full) fullRegion[b] = &region;
+        }
+    }
+
+    for (int b = 0; b < 256; ++b) {
+        if (count[b] == 1 && fullRegion[b]) {
+            bankFast[b] = fullRegion[b];       // single whole-bank region
+        } else if (count[b] >= 1) {
+            bankScan[b] = true;                // partial/multiple: needs scan
+        }
+        // count[b] == 0 -> unmapped: both stay null/false (open bus)
+    }
+}
+
+CPU::MemoryRegion* CPU::findRegion(uint32_t address) {
+    uint8_t bank = (address >> 16) & 0xFF;
+
+    // Fast path: bank covered by a single full-range region (ROM/RAM/windows).
+    if (MemoryRegion* r = bankFast[bank]) [[likely]] {
+        return r;
+    }
+    // Unmapped bank: no region at all.
+    if (!bankScan[bank]) {
+        return nullptr;
+    }
+
+    // Slow path: only banks with partial/multiple regions (I/O bank $D8).
+    // Scan is naturally limited — that bank holds a handful of regions.
+    uint16_t offset = address & 0xFFFF;
+    for (auto& region : memoryMap) {
+        if (bank >= region.startBank && bank <= region.endBank &&
+            offset >= region.startOffset && offset <= region.endOffset) {
+            return &region;
         }
     }
 
@@ -1454,6 +1618,7 @@ void CPU::loadROM(const uint8_t* data, size_t size, uint8_t startBank) {
 
     memoryMap.push_back(region);
     useMemoryMap = true;  // Enable memory mapping
+    rebuildBankTable();   // refresh bank index (push_back may have realloc'd)
 }
 
 void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
@@ -1472,6 +1637,7 @@ void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
 
     memoryMap.push_back(region);
     useMemoryMap = true;  // Enable memory mapping
+    rebuildBankTable();   // refresh bank index (push_back may have realloc'd)
 }
 
 void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
@@ -1487,6 +1653,7 @@ void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
 
     memoryMap.push_back(region);
     useMemoryMap = true;  // Enable memory mapping
+    rebuildBankTable();   // refresh bank index (push_back may have realloc'd)
 }
 
 void CPU::mapPPUWindow(uint8_t bank) {
@@ -1499,6 +1666,7 @@ void CPU::mapPPUWindow(uint8_t bank) {
 
     memoryMap.push_back(region);
     useMemoryMap = true;  // Enable memory mapping
+    rebuildBankTable();   // refresh bank index (push_back may have realloc'd)
 }
 
 void CPU::mapAPUWindow(uint8_t bank) {
@@ -1511,6 +1679,7 @@ void CPU::mapAPUWindow(uint8_t bank) {
 
     memoryMap.push_back(region);
     useMemoryMap = true;  // Enable memory mapping
+    rebuildBankTable();   // refresh bank index (push_back may have realloc'd)
 }
 
 // Setup all I/O registers at Bank $D8
@@ -1521,6 +1690,9 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // 1. PPU CONTROL BLOCK ($D80000-$D8000F, 16 bytes)
     // ========================================================================
+    // Latch holding which PPU register (R0-R63) PPUREG_DATA reads/writes target.
+    // Set by writing PPUREG_ADDR ($D80008); persists across accesses.
+    static uint8_t ppuRegSelect = 0;
     registerIORegion(IO_BANK, 0x0000, 16,
         // Read handler
         [this](uint16_t offset) -> uint8_t {
@@ -1553,18 +1725,14 @@ void CPU::setupIORegisters() {
                 case 0x07: // PPUDP high byte
                     return (ppuPtr->getRegister(63) >> 8) & 0xFF;
 
-                case 0x08: // PPUREG_ADDR (write-only, returns 0)
-                    return 0x00;
+                case 0x08: // PPUREG_ADDR - returns the currently selected register
+                    return ppuRegSelect;
 
-                case 0x09: { // PPUREG_DATA low byte
-                    // Would need to track which register was selected
-                    // For now, return 0
-                    return 0x00;
-                }
+                case 0x09: // PPUREG_DATA low byte (selected register)
+                    return ppuPtr->getRegister(ppuRegSelect) & 0xFF;
 
-                case 0x0A: { // PPUREG_DATA high byte
-                    return 0x00;
-                }
+                case 0x0A: // PPUREG_DATA high byte (selected register)
+                    return (ppuPtr->getRegister(ppuRegSelect) >> 8) & 0xFF;
 
                 case 0x0B: // PPU_VBLANK_INT low byte (R59)
                     return ppuPtr->getRegister(59) & 0xFF;
@@ -1586,14 +1754,45 @@ void CPU::setupIORegisters() {
         [this](uint16_t offset, uint8_t value) {
             if (!ppuPtr) return;
 
+            // Helpers to write one byte of a 16-bit PPU register without
+            // disturbing the other byte (writes arrive a byte at a time).
+            auto writeRegLow = [this](uint8_t reg, uint8_t v) {
+                ppuPtr->setRegister(reg, (ppuPtr->getRegister(reg) & 0xFF00) | v);
+            };
+            auto writeRegHigh = [this](uint8_t reg, uint8_t v) {
+                ppuPtr->setRegister(reg, (ppuPtr->getRegister(reg) & 0x00FF) | (v << 8));
+            };
+
             switch (offset) {
                 case 0x00: // PPUCTRL
                     if (value & 0x01) ppuPtr->start();
                     if (value & 0x02) ppuPtr->reset();
                     break;
 
-                // Note: Writing to PC, SP, DP, registers requires additional PPU methods
-                // For now, these are read-only until we add write support to PPU
+                case 0x02: // PPUPC low byte (live execution pointer)
+                    ppuPtr->setExecutionPointer(
+                        (ppuPtr->getExecutionPointer() & 0xFF00) | value);
+                    break;
+                case 0x03: // PPUPC high byte
+                    ppuPtr->setExecutionPointer(
+                        (ppuPtr->getExecutionPointer() & 0x00FF) | (value << 8));
+                    break;
+
+                case 0x04: writeRegLow(61, value); break;   // PPUSP low
+                case 0x05: writeRegHigh(61, value); break;  // PPUSP high
+                case 0x06: writeRegLow(63, value); break;   // PPUDP low
+                case 0x07: writeRegHigh(63, value); break;  // PPUDP high
+
+                case 0x08: // PPUREG_ADDR - select register R0-R63 for PPUREG_DATA
+                    ppuRegSelect = value & 0x3F;
+                    break;
+                case 0x09: writeRegLow(ppuRegSelect, value); break;   // PPUREG_DATA low
+                case 0x0A: writeRegHigh(ppuRegSelect, value); break;  // PPUREG_DATA high
+
+                case 0x0B: writeRegLow(59, value); break;   // PPU_VBLANK_INT low  (R59)
+                case 0x0C: writeRegHigh(59, value); break;  // PPU_VBLANK_INT high (R59)
+                case 0x0D: writeRegLow(60, value); break;   // PPU_HBLANK_INT low  (R60)
+                case 0x0E: writeRegHigh(60, value); break;  // PPU_HBLANK_INT high (R60)
 
                 default:
                     break;
@@ -1938,14 +2137,62 @@ void CPU::setupIORegisters() {
 
             switch (offset) {
                 case 0x00: // TIMER_CONTROL - Timer enable bits (0bVHSQETAR)
-                    systemPtr->timers.control = value;
+                    // Go through setTimerControl so the next-fire schedule is
+                    // rebuilt (don't write timers.control directly).
+                    systemPtr->setTimerControl(value);
                     break;
                 case 0x01: // TIMER_STATUS - Write to clear status flags
                     // Writing a 1 to a bit clears that flag
                     systemPtr->timers.status &= ~value;
+                    // Once every timer flag is cleared, drop the aggregate
+                    // Timer request in the interrupt controller too, so an ISR
+                    // that only knows about TIMER_STATUS still deasserts it.
+                    if (systemPtr->timers.status == 0) {
+                        systemPtr->intc.acknowledge(
+                            static_cast<uint8_t>(IRQSource::Timer));
+                    }
                     break;
                 case 0x02: // TIMER_INT_ENABLE - Timer interrupt enable bits (0bVHSQETAR)
                     systemPtr->timers.intEnable = value;
+                    break;
+                default:
+                    break;
+            }
+        }
+    );
+
+    // ========================================================================
+    // 8. INTERRUPT CONTROLLER ($D80058-$D8005F, 8 bytes)
+    // ========================================================================
+    // Aggregates every IRQ source onto the CPU's single maskable line and lets
+    // the ISR discover which source fired.
+    //   $D80058 IRQ_STATUS  - read: pending sources (bit0 V-blank, bit1 H-blank,
+    //                         bit2 Timer, bit3 DMA); write: 1 clears (ack)
+    //   $D80059 IRQ_ENABLE  - top-level per-source mask (read/write)
+    registerIORegion(IO_BANK, 0x0058, 8,
+        // Read handler
+        [this](uint16_t offset) -> uint8_t {
+            if (!systemPtr) return 0xFF;
+
+            switch (offset) {
+                case 0x00: // IRQ_STATUS - which sources are latched pending
+                    return systemPtr->intc.pending();
+                case 0x01: // IRQ_ENABLE - top-level source mask
+                    return systemPtr->intc.enable();
+                default:
+                    return 0x00;
+            }
+        },
+        // Write handler
+        [this](uint16_t offset, uint8_t value) {
+            if (!systemPtr) return;
+
+            switch (offset) {
+                case 0x00: // IRQ_STATUS - write 1 to acknowledge/clear a source
+                    systemPtr->intc.acknowledge(value);
+                    break;
+                case 0x01: // IRQ_ENABLE - top-level source mask
+                    systemPtr->intc.setEnable(value);
                     break;
                 default:
                     break;
@@ -1957,14 +2204,49 @@ void CPU::setupIORegisters() {
 // === INTERRUPT HANDLING ===
 
 void CPU::triggerIRQ() {
-    // IRQ (Interrupt Request) - Maskable interrupt
-    // Vector: $00:FFFE-FFFF (16-bit address, PB set to 0)
+    // Assert (latch) the maskable IRQ line. The request is held pending
+    // until it can be serviced, so an IRQ raised while interrupts are
+    // disabled (I=1) is NOT lost — it fires as soon as the program clears
+    // I. Actual servicing happens at an instruction boundary in
+    // serviceInterrupts().
+    irqPending = true;
 
-    // Check if interrupts are disabled
-    if (P.I) {
-        // IRQ is masked, ignore
+    // WAI resumes on any interrupt assertion, regardless of the I flag.
+    if (state == CPUState::Waiting) {
+        state = CPUState::Running;
+    }
+}
+
+void CPU::triggerNMI() {
+    // Assert (latch) the non-maskable NMI line. Serviced unconditionally at
+    // the next instruction boundary.
+    nmiPending = true;
+
+    // WAI resumes on any interrupt assertion.
+    if (state == CPUState::Waiting) {
+        state = CPUState::Running;
+    }
+}
+
+void CPU::serviceInterrupts() {
+    // NMI has priority and cannot be masked.
+    if (nmiPending) [[unlikely]] {
+        nmiPending = false;
+        serviceNMI();
         return;
     }
+
+    // Maskable IRQ: serviced only when the I flag is clear. Otherwise the
+    // latch stays set and it will fire once the program clears I.
+    if (irqPending && !P.I) [[unlikely]] {
+        irqPending = false;
+        serviceIRQ();
+    }
+}
+
+void CPU::serviceIRQ() {
+    // IRQ (Interrupt Request) - Maskable interrupt
+    // Vector: $00:FFFE-FFFF (16-bit address, PB set to 0)
 
     // 1. Push PB to stack
     writeByte(SP, PB);
@@ -2009,7 +2291,7 @@ void CPU::triggerIRQ() {
     cycleCount += 7;  // Interrupt acknowledge + stack ops + vector fetch
 }
 
-void CPU::triggerNMI() {
+void CPU::serviceNMI() {
     // NMI (Non-Maskable Interrupt) - Cannot be masked
     // Vector: $00:FFFA-FFFB (16-bit address, PB set to 0)
 

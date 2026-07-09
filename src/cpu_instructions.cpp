@@ -1,129 +1,105 @@
 #include "cpu_instructions.h"
 #include "cpu.h"
 
+// ============================================================================
+// DEF88186 CPU instruction handlers.
+//
+// GENERATED from ZPdevtools/docs/cpu/DEF88186.csv (the authoritative opcode
+// spec that cpuasm and the C compilers target).  Do not hand-edit opcode
+// assignments here - change the CSV and regenerate so the emulator, the
+// assembler, and the docs stay in lock-step.  Each handler resolves the
+// addressing mode and calls the matching CPU::opXXX() method.
+// ============================================================================
+
 namespace ZeroPoint {
-
-// ============================================================================
-// CPU INSTRUCTION IMPLEMENTATION TEMPLATE
-// ============================================================================
-//
-// Each instruction handler follows this pattern:
-//
-// void cpu_inst_0xXX(CPU* cpu) {
-//     // 1. Fetch operands (if any) using cpu->fetch(), cpu->fetch16(), etc.
-//     // 2. Calculate effective addresses using cpu->addrXXX() methods
-//     // 3. Implement instruction logic
-//     // 4. Update cpu->cycleCount
-// }
-//
-// EXAMPLE:
-// void cpu_inst_0x40(CPU* cpu) {  // LDA #const
-//     uint32_t addr = cpu->addrImmediate();
-//     cpu->opLDA(addr);
-//     cpu->cycleCount += 2;
-// }
-//
-// You can access CPU internals via the public interface or use the existing
-// opXXX() methods for common operations (opLDA, opADC, etc.)
-//
-// ============================================================================
-
-// ============================================================================
-// Instruction Handlers (0x00-0xFF)
-// ============================================================================
-// TODO: Implement each instruction below.
-// Many can delegate to existing CPU::opXXX() methods.
 
 void cpu_inst_0x00(CPU* cpu) {  // NOP
     cpu->opNOP();
 }
 
 void cpu_inst_0x01(CPU* cpu) {  // BIT #const
-    // TODO: IMPLEMENT ME
-    // Hint: Use addrImmediate() and check A register against immediate value
+    cpu->opBIT(cpu->addrImmediate());
     cpu->cycleCount += 2;
 }
 
 void cpu_inst_0x02(CPU* cpu) {  // BIT addr
-    // TODO: IMPLEMENT ME
+    cpu->opBIT(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
 void cpu_inst_0x03(CPU* cpu) {  // BIT addr,X
-    // TODO: IMPLEMENT ME
+    cpu->opBIT(cpu->addrAbsoluteIndexedX());
     cpu->cycleCount += 3;
 }
 
 void cpu_inst_0x04(CPU* cpu) {  // BIT dp
-    // TODO: IMPLEMENT ME
+    cpu->opBIT(cpu->addrDirectPage());
     cpu->cycleCount += 3;
 }
 
 void cpu_inst_0x05(CPU* cpu) {  // BIT dp,X
-    // TODO: IMPLEMENT ME
+    cpu->opBIT(cpu->addrDirectPageIndexedX());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0x06(CPU* cpu) {  // BMI
+void cpu_inst_0x06(CPU* cpu) {  // BMI long
     cpu->opBMI();
 }
 
-void cpu_inst_0x07(CPU* cpu) {  // BRA
+void cpu_inst_0x07(CPU* cpu) {  // BRA long
     cpu->opBRA();
 }
 
-void cpu_inst_0x08(CPU* cpu) {  // BRL
+void cpu_inst_0x08(CPU* cpu) {  // BRL label
     cpu->opBRL();
 }
 
-void cpu_inst_0x09(CPU* cpu) {  // BVS
+void cpu_inst_0x09(CPU* cpu) {  // BVS long
     cpu->opBVS();
 }
 
-void cpu_inst_0x0A(CPU* cpu) {  // BCS/BGE
+void cpu_inst_0x0A(CPU* cpu) {  // BCS long
     cpu->opBCS();
 }
 
-void cpu_inst_0x0B(CPU* cpu) {  // BEQ
+void cpu_inst_0x0B(CPU* cpu) {  // BEQ long
     cpu->opBEQ();
 }
 
 void cpu_inst_0x0C(CPU* cpu) {  // JMP (addr,X)
-    // TODO: IMPLEMENT ME
+    cpu->opJMP(cpu->addrAbsoluteIndexedIndirect());
     cpu->cycleCount += 4;
 }
 
 void cpu_inst_0x0D(CPU* cpu) {  // JMP (addr)
-    // TODO: IMPLEMENT ME
+    cpu->opJMP(cpu->addrAbsoluteIndirect());
     cpu->cycleCount += 4;
 }
 
 void cpu_inst_0x0E(CPU* cpu) {  // JMP [addr]
-    // TODO: IMPLEMENT ME
+    cpu->opJMP(cpu->addrAbsoluteIndirectLong());
     cpu->cycleCount += 4;
 }
 
 void cpu_inst_0x0F(CPU* cpu) {  // JMP addr
-    // TODO: IMPLEMENT ME
+    cpu->opJMP(cpu->addrAbsolute());
     cpu->cycleCount += 4;
 }
 
 void cpu_inst_0x10(CPU* cpu) {  // JMP long
-    // TODO: IMPLEMENT ME
+    cpu->opJMP(cpu->addrAbsoluteLong());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0x11(CPU* cpu) {  // JSR (addr,X)
-    // TODO: IMPLEMENT ME
-    cpu->cycleCount += 4;
+void cpu_inst_0x11(CPU* cpu) {  // JSR (addr,X))
+    cpu->opJSR(cpu->addrAbsoluteIndexedIndirect());
 }
 
 void cpu_inst_0x12(CPU* cpu) {  // JSR addr
-    // TODO: IMPLEMENT ME
-    // Hint: Use cpu->opJSR()
+    cpu->opJSR(cpu->addrAbsolute());
 }
 
-void cpu_inst_0x13(CPU* cpu) {  // LOOP
+void cpu_inst_0x13(CPU* cpu) {  // LOOP word
     cpu->opLOOP();
 }
 
@@ -131,7 +107,7 @@ void cpu_inst_0x14(CPU* cpu) {  // LPEND
     cpu->opLPEND();
 }
 
-void cpu_inst_0x15(CPU* cpu) {  // CALL
+void cpu_inst_0x15(CPU* cpu) {  // CALL long
     cpu->opCALL();
 }
 
@@ -151,11 +127,11 @@ void cpu_inst_0x19(CPU* cpu) {  // RTS
     cpu->opRTS();
 }
 
-void cpu_inst_0x1A(CPU* cpu) {  // SEP
+void cpu_inst_0x1A(CPU* cpu) {  // SEP #const
     cpu->opSEP();
 }
 
-void cpu_inst_0x1B(CPU* cpu) {  // SDB
+void cpu_inst_0x1B(CPU* cpu) {  // SDB byte
     cpu->opSDB();
 }
 
@@ -203,195 +179,206 @@ void cpu_inst_0x26(CPU* cpu) {  // TYX
     cpu->opTYX();
 }
 
-void cpu_inst_0x27(CPU* cpu) {  // REP
-    cpu->opREP();
-}
-
-void cpu_inst_0x28(CPU* cpu) {  // CLC
-    cpu->opCLC();
-}
-
-void cpu_inst_0x29(CPU* cpu) {  // SEC
-    cpu->opSEC();
-}
-
-void cpu_inst_0x2A(CPU* cpu) {  // CLI
-    cpu->opCLI();
-}
-
-void cpu_inst_0x2B(CPU* cpu) {  // SEI
-    cpu->opSEI();
-}
-
-void cpu_inst_0x2C(CPU* cpu) {  // CLD
-    cpu->opCLD();
-}
-
-void cpu_inst_0x2D(CPU* cpu) {  // SED
-    cpu->opSED();
-}
-
-void cpu_inst_0x2E(CPU* cpu) {  // CLV
-    cpu->opCLV();
-}
-
-void cpu_inst_0x2F(CPU* cpu) {  // PHA
-    cpu->opPHA();
-}
-
-void cpu_inst_0x30(CPU* cpu) {  // PLA
-    cpu->opPLA();
-}
-
-void cpu_inst_0x31(CPU* cpu) {  // POPF
-    cpu->opPOPF();
-}
-
-void cpu_inst_0x32(CPU* cpu) {  // PHX
-    cpu->opPHX();
-}
-
-void cpu_inst_0x33(CPU* cpu) {  // PHY
-    cpu->opPHY();
-}
-
-void cpu_inst_0x34(CPU* cpu) {  // PHP
-    cpu->opPHP();
-}
-
-void cpu_inst_0x35(CPU* cpu) {  // PHB
-    cpu->opPHB();
-}
-
-void cpu_inst_0x36(CPU* cpu) {  // PHD
-    cpu->opPHD();
-}
-
-void cpu_inst_0x37(CPU* cpu) {  // PHK
-    cpu->opPHK();
-}
-
-void cpu_inst_0x38(CPU* cpu) {  // PUSH
+void cpu_inst_0x27(CPU* cpu) {  // PUSH word
     cpu->opPUSH();
 }
 
-void cpu_inst_0x39(CPU* cpu) {  // PEA
+void cpu_inst_0x28(CPU* cpu) {  // PEA addr
     cpu->opPEA();
 }
 
-void cpu_inst_0x3A(CPU* cpu) {  // PEI
+void cpu_inst_0x29(CPU* cpu) {  // PEI (dp)
     cpu->opPEI();
 }
 
-void cpu_inst_0x3B(CPU* cpu) {  // PER
+void cpu_inst_0x2A(CPU* cpu) {  // PER label
     cpu->opPER();
 }
 
-void cpu_inst_0x3C(CPU* cpu) {  // BRK
-    cpu->opBRK();
+void cpu_inst_0x2B(CPU* cpu) {  // PHA
+    cpu->opPHA();
 }
 
-void cpu_inst_0x3D(CPU* cpu) {  // COP
-    cpu->opCOP();
+void cpu_inst_0x2C(CPU* cpu) {  // PHB
+    cpu->opPHB();
 }
 
-void cpu_inst_0x3E(CPU* cpu) {  // HLT
-    cpu->opHLT();
+void cpu_inst_0x2D(CPU* cpu) {  // PHD
+    cpu->opPHD();
 }
 
-void cpu_inst_0x3F(CPU* cpu) {  // Reserved
-    cpu->cycleCount += 1;
+void cpu_inst_0x2E(CPU* cpu) {  // PHK
+    cpu->opPHK();
 }
 
-// LDA variants (0x40-0x4F)
-void cpu_inst_0x40(CPU* cpu) {  // LDA #const
+void cpu_inst_0x2F(CPU* cpu) {  // PHP
+    cpu->opPHP();
+}
+
+void cpu_inst_0x30(CPU* cpu) {  // PHX
+    cpu->opPHX();
+}
+
+void cpu_inst_0x31(CPU* cpu) {  // PHY
+    cpu->opPHY();
+}
+
+void cpu_inst_0x32(CPU* cpu) {  // PLA
+    cpu->opPLA();
+}
+
+void cpu_inst_0x33(CPU* cpu) {  // POPF
+    cpu->opPOPF();
+}
+
+void cpu_inst_0x34(CPU* cpu) {  // LDA (sr,S),Y
+    cpu->opLDA(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
+}
+
+void cpu_inst_0x35(CPU* cpu) {  // LDA [dp]
+    cpu->opLDA(cpu->addrDirectPageIndirectLong());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x36(CPU* cpu) {  // LDA [dp],Y
+    cpu->opLDA(cpu->addrDirectPageIndirectLongIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x37(CPU* cpu) {  // LDA #const
     cpu->opLDA(cpu->addrImmediate());
     cpu->cycleCount += 2;
 }
 
-void cpu_inst_0x41(CPU* cpu) {  // LDA addr
+void cpu_inst_0x38(CPU* cpu) {  // LDA addr
     cpu->opLDA(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x42(CPU* cpu) {  // LDA long
-    cpu->opLDA(cpu->addrAbsoluteLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x43(CPU* cpu) {  // LDA addr,X
+void cpu_inst_0x39(CPU* cpu) {  // LDA addr,X
     cpu->opLDA(cpu->addrAbsoluteIndexedX());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x44(CPU* cpu) {  // LDA addr,Y
+void cpu_inst_0x3A(CPU* cpu) {  // LDA addr,Y
     cpu->opLDA(cpu->addrAbsoluteIndexedY());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x45(CPU* cpu) {  // LDA long,X
-    cpu->opLDA(cpu->addrAbsoluteLongIndexedX());
+void cpu_inst_0x3B(CPU* cpu) {  // LDA dp
+    cpu->opLDA(cpu->addrDirectPage());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x3C(CPU* cpu) {  // LDA dp,X
+    cpu->opLDA(cpu->addrDirectPageIndexedX());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0x46(CPU* cpu) {  // LDA dp
-    cpu->opLDA(cpu->addrDirectPage());
+void cpu_inst_0x3D(CPU* cpu) {  // LDA long
+    cpu->opLDA(cpu->addrAbsoluteLong());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x3E(CPU* cpu) {  // LDA long,X
+    cpu->opLDA(cpu->addrAbsoluteLongIndexedX());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x3F(CPU* cpu) {  // LDA sr,S
+    cpu->opLDA(cpu->addrStackRelative());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0x40(CPU* cpu) {  // LDX #const
+    cpu->opLDX(cpu->addrImmediate());
     cpu->cycleCount += 2;
 }
 
-void cpu_inst_0x47(CPU* cpu) {  // LDA dp,X
-    cpu->opLDA(cpu->addrDirectPageIndexedX());
+void cpu_inst_0x41(CPU* cpu) {  // LDX addr
+    cpu->opLDX(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x48(CPU* cpu) {  // LDA (dp)
-    cpu->opLDA(cpu->addrDirectPageIndirect());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x49(CPU* cpu) {  // LDA [dp]
-    cpu->opLDA(cpu->addrDirectPageIndirectLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x4A(CPU* cpu) {  // LDA (dp,X)
-    cpu->opLDA(cpu->addrDirectPageIndexedIndirectX());
-    cpu->cycleCount += 5;
-}
-
-void cpu_inst_0x4B(CPU* cpu) {  // LDA (dp),Y
-    cpu->opLDA(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x4C(CPU* cpu) {  // LDA [dp],Y
-    cpu->opLDA(cpu->addrDirectPageIndirectLongIndexedY());
-    cpu->cycleCount += 5;
-}
-
-void cpu_inst_0x4D(CPU* cpu) {  // LDA sr,S
-    cpu->opLDA(cpu->addrStackRelative());
+void cpu_inst_0x42(CPU* cpu) {  // LDX addr,Y
+    cpu->opLDX(cpu->addrAbsoluteIndexedY());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x4E(CPU* cpu) {  // LDA (sr,S),Y
-    cpu->opLDA(cpu->addrStackRelativeIndirectIndexedY());
+void cpu_inst_0x43(CPU* cpu) {  // LDX dp
+    cpu->opLDX(cpu->addrDirectPage());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x44(CPU* cpu) {  // LDX dp,Y
+    cpu->opLDX(cpu->addrDirectPageIndexedY());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0x45(CPU* cpu) {  // LDY #const
+    cpu->opLDY(cpu->addrImmediate());
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x46(CPU* cpu) {  // LDY addr
+    cpu->opLDY(cpu->addrAbsolute());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x47(CPU* cpu) {  // LDY addr,X
+    cpu->opLDY(cpu->addrAbsoluteIndexedX());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x48(CPU* cpu) {  // LDY dp
+    cpu->opLDY(cpu->addrDirectPage());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x49(CPU* cpu) {  // LDY dp,X
+    cpu->opLDY(cpu->addrDirectPageIndexedX());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0x4A(CPU* cpu) {  // STA _dp_X
+    cpu->opSTA(cpu->addrDirectPageIndexedX());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0x4B(CPU* cpu) {  // STA (dp,X)
+    cpu->opSTA(cpu->addrDirectPageIndexedIndirectX());
     cpu->cycleCount += 6;
 }
 
-void cpu_inst_0x4F(CPU* cpu) {  // Reserved
-    cpu->cycleCount += 1;
+void cpu_inst_0x4C(CPU* cpu) {  // STA (dp)
+    cpu->opSTA(cpu->addrDirectPageIndirect());
+    cpu->cycleCount += 5;
 }
 
-// STA variants (0x50-0x5F)
-void cpu_inst_0x50(CPU* cpu) {  // STA addr
+void cpu_inst_0x4D(CPU* cpu) {  // STA (dp),Y
+    cpu->opSTA(cpu->addrDirectPageIndirectIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x4E(CPU* cpu) {  // STA (sr,S),Y
+    cpu->opSTA(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
+}
+
+void cpu_inst_0x4F(CPU* cpu) {  // STA [dp]
+    cpu->opSTA(cpu->addrDirectPageIndirectLong());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x50(CPU* cpu) {  // STA [dp],Y
+    cpu->opSTA(cpu->addrDirectPageIndirectLongIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x51(CPU* cpu) {  // STA addr
     cpu->opSTA(cpu->addrAbsolute());
     cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x51(CPU* cpu) {  // STA long
-    cpu->opSTA(cpu->addrAbsoluteLong());
-    cpu->cycleCount += 4;
 }
 
 void cpu_inst_0x52(CPU* cpu) {  // STA addr,X
@@ -404,873 +391,832 @@ void cpu_inst_0x53(CPU* cpu) {  // STA addr,Y
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x54(CPU* cpu) {  // STA long,X
-    cpu->opSTA(cpu->addrAbsoluteLongIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x55(CPU* cpu) {  // STA dp
+void cpu_inst_0x54(CPU* cpu) {  // STA dp
     cpu->opSTA(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x56(CPU* cpu) {  // STA dp,X
-    cpu->opSTA(cpu->addrDirectPageIndexedX());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x57(CPU* cpu) {  // STA (dp)
-    cpu->opSTA(cpu->addrDirectPageIndirect());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x58(CPU* cpu) {  // STA [dp]
-    cpu->opSTA(cpu->addrDirectPageIndirectLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x59(CPU* cpu) {  // STA (dp,X)
-    cpu->opSTA(cpu->addrDirectPageIndexedIndirectX());
+void cpu_inst_0x55(CPU* cpu) {  // STA long
+    cpu->opSTA(cpu->addrAbsoluteLong());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0x5A(CPU* cpu) {  // STA (dp),Y
-    cpu->opSTA(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x5B(CPU* cpu) {  // STA [dp],Y
-    cpu->opSTA(cpu->addrDirectPageIndirectLongIndexedY());
+void cpu_inst_0x56(CPU* cpu) {  // STA long,X
+    cpu->opSTA(cpu->addrAbsoluteLongIndexedX());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0x5C(CPU* cpu) {  // STA sr,S
+void cpu_inst_0x57(CPU* cpu) {  // STA sr,S
     cpu->opSTA(cpu->addrStackRelative());
-    cpu->cycleCount += 3;
+    cpu->cycleCount += 4;
 }
 
-void cpu_inst_0x5D(CPU* cpu) {  // STA (sr,S),Y
-    cpu->opSTA(cpu->addrStackRelativeIndirectIndexedY());
-    cpu->cycleCount += 6;
-}
-
-void cpu_inst_0x5E(CPU* cpu) {  // Reserved
-    cpu->cycleCount += 1;
-}
-
-void cpu_inst_0x5F(CPU* cpu) {  // Reserved
-    cpu->cycleCount += 1;
-}
-
-// LDX/STX variants (0x60-0x67)
-void cpu_inst_0x60(CPU* cpu) {  // LDX #const
-    cpu->opLDX(cpu->addrImmediate());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x61(CPU* cpu) {  // LDX addr
-    cpu->opLDX(cpu->addrAbsolute());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x62(CPU* cpu) {  // LDX addr,Y
-    cpu->opLDX(cpu->addrAbsoluteIndexedY());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x63(CPU* cpu) {  // LDX dp
-    cpu->opLDX(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x64(CPU* cpu) {  // LDX dp,Y
-    cpu->opLDX(cpu->addrDirectPageIndexedY());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x65(CPU* cpu) {  // STX addr
+void cpu_inst_0x58(CPU* cpu) {  // STX addr
     cpu->opSTX(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x66(CPU* cpu) {  // STX dp
+void cpu_inst_0x59(CPU* cpu) {  // STX dp
     cpu->opSTX(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
+    cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x67(CPU* cpu) {  // STX dp,Y
+void cpu_inst_0x5A(CPU* cpu) {  // STX dp,Y
     cpu->opSTX(cpu->addrDirectPageIndexedY());
-    cpu->cycleCount += 3;
+    cpu->cycleCount += 4;
 }
 
-// LDY/STY variants (0x68-0x6F)
-void cpu_inst_0x68(CPU* cpu) {  // LDY #const
-    cpu->opLDY(cpu->addrImmediate());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x69(CPU* cpu) {  // LDY addr
-    cpu->opLDY(cpu->addrAbsolute());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x6A(CPU* cpu) {  // LDY addr,X
-    cpu->opLDY(cpu->addrAbsoluteIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x6B(CPU* cpu) {  // LDY dp
-    cpu->opLDY(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x6C(CPU* cpu) {  // LDY dp,X
-    cpu->opLDY(cpu->addrDirectPageIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x6D(CPU* cpu) {  // STY addr
+void cpu_inst_0x5B(CPU* cpu) {  // STY addr
     cpu->opSTY(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x6E(CPU* cpu) {  // STY dp
+void cpu_inst_0x5C(CPU* cpu) {  // STY dp
     cpu->opSTY(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x6F(CPU* cpu) {  // STY dp,X
-    cpu->opSTY(cpu->addrDirectPageIndexedX());
     cpu->cycleCount += 3;
 }
 
-// STZ variants (0x70-0x73)
-void cpu_inst_0x70(CPU* cpu) {  // STZ addr
+void cpu_inst_0x5D(CPU* cpu) {  // STY dp,X
+    cpu->opSTY(cpu->addrDirectPageIndexedX());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0x5E(CPU* cpu) {  // STZ addr
     cpu->opSTZ(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x71(CPU* cpu) {  // STZ addr,X
+void cpu_inst_0x5F(CPU* cpu) {  // STZ addr,X
     cpu->opSTZ(cpu->addrAbsoluteIndexedX());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x72(CPU* cpu) {  // STZ dp
+void cpu_inst_0x60(CPU* cpu) {  // STZ dp
     cpu->opSTZ(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
+    cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x73(CPU* cpu) {  // STZ dp,X
+void cpu_inst_0x61(CPU* cpu) {  // STZ dp,X
     cpu->opSTZ(cpu->addrDirectPageIndexedX());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0x62(CPU* cpu) {  // BRK
+    cpu->opBRK();
+}
+
+void cpu_inst_0x63(CPU* cpu) {  // SEC
+    cpu->opSEC();
+}
+
+void cpu_inst_0x64(CPU* cpu) {  // SED
+    cpu->opSED();
+}
+
+void cpu_inst_0x65(CPU* cpu) {  // SEI
+    cpu->opSEI();
+}
+
+void cpu_inst_0x66(CPU* cpu) {  // ADC dp
+    cpu->opADC(cpu->addrDirectPage());
     cpu->cycleCount += 3;
 }
 
-// CMP variants (0x74-0x82)
-void cpu_inst_0x74(CPU* cpu) {  // CMP #const
-    cpu->opCMP(cpu->addrImmediate());
+void cpu_inst_0x67(CPU* cpu) {  // MVN srcbk,destbk
+    cpu->opMVN();
+}
+
+void cpu_inst_0x68(CPU* cpu) {  // MVP srcbk,destbk
+    cpu->opMVP();
+}
+
+void cpu_inst_0x69(CPU* cpu) {  // INC A
+    cpu->opINCA();
     cpu->cycleCount += 2;
 }
 
-void cpu_inst_0x75(CPU* cpu) {  // CMP addr
-    cpu->opCMP(cpu->addrAbsolute());
+void cpu_inst_0x6A(CPU* cpu) {  // INC addr
+    cpu->opINC(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x76(CPU* cpu) {  // CMP long
-    cpu->opCMP(cpu->addrAbsoluteLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x77(CPU* cpu) {  // CMP addr,X
-    cpu->opCMP(cpu->addrAbsoluteIndexedX());
+void cpu_inst_0x6B(CPU* cpu) {  // INC addr,X
+    cpu->opINC(cpu->addrAbsoluteIndexedX());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x78(CPU* cpu) {  // CMP addr,Y
-    cpu->opCMP(cpu->addrAbsoluteIndexedY());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x79(CPU* cpu) {  // CMP long,X
-    cpu->opCMP(cpu->addrAbsoluteLongIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x7A(CPU* cpu) {  // CMP dp
-    cpu->opCMP(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x7B(CPU* cpu) {  // CMP dp,X
-    cpu->opCMP(cpu->addrDirectPageIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x7C(CPU* cpu) {  // CMP (dp)
-    cpu->opCMP(cpu->addrDirectPageIndirect());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x7D(CPU* cpu) {  // CMP [dp]
-    cpu->opCMP(cpu->addrDirectPageIndirectLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x7E(CPU* cpu) {  // CMP (dp,X)
-    cpu->opCMP(cpu->addrDirectPageIndexedIndirectX());
+void cpu_inst_0x6C(CPU* cpu) {  // INC dp
+    cpu->opINC(cpu->addrDirectPage());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0x7F(CPU* cpu) {  // CMP (dp),Y
-    cpu->opCMP(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x80(CPU* cpu) {  // CMP [dp],Y
-    cpu->opCMP(cpu->addrDirectPageIndirectLongIndexedY());
-    cpu->cycleCount += 5;
-}
-
-void cpu_inst_0x81(CPU* cpu) {  // CMP sr,S
-    cpu->opCMP(cpu->addrStackRelative());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x82(CPU* cpu) {  // CMP (sr,S),Y
-    cpu->opCMP(cpu->addrStackRelativeIndirectIndexedY());
+void cpu_inst_0x6D(CPU* cpu) {  // INC dp,X
+    cpu->opINC(cpu->addrDirectPageIndexedX());
     cpu->cycleCount += 6;
 }
 
-// CPX/CPY variants (0x83-0x88)
-void cpu_inst_0x83(CPU* cpu) {  // CPX #const
-    cpu->opCPX(cpu->addrImmediate());
+void cpu_inst_0x6E(CPU* cpu) {  // INC long
+    cpu->opINC(cpu->addrAbsolute());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x6F(CPU* cpu) {  // INX
+    cpu->opINX();
     cpu->cycleCount += 2;
 }
 
-void cpu_inst_0x84(CPU* cpu) {  // CPX addr
+void cpu_inst_0x70(CPU* cpu) {  // INY
+    cpu->opINY();
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x71(CPU* cpu) {  // DEC A
+    cpu->opDECA();
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x72(CPU* cpu) {  // DEC addr
+    cpu->opDEC(cpu->addrAbsolute());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x73(CPU* cpu) {  // DEC addr,X
+    cpu->opDEC(cpu->addrAbsoluteIndexedX());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x74(CPU* cpu) {  // DEC dp
+    cpu->opDEC(cpu->addrDirectPage());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x75(CPU* cpu) {  // DEC dp,X
+    cpu->opDEC(cpu->addrDirectPageIndexedX());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x76(CPU* cpu) {  // DEC long
+    cpu->opDEC(cpu->addrAbsolute());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x77(CPU* cpu) {  // DEX
+    cpu->opDEX();
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x78(CPU* cpu) {  // DEY
+    cpu->opDEY();
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x79(CPU* cpu) {  // CPX addr
     cpu->opCPX(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x85(CPU* cpu) {  // CPX dp
-    cpu->opCPX(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x86(CPU* cpu) {  // CPY #const
-    cpu->opCPY(cpu->addrImmediate());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x87(CPU* cpu) {  // CPY addr
+void cpu_inst_0x7A(CPU* cpu) {  // CPY addr
     cpu->opCPY(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x88(CPU* cpu) {  // CPY dp
-    cpu->opCPY(cpu->addrDirectPage());
+void cpu_inst_0x7B(CPU* cpu) {  // CLD
+    cpu->opCLD();
+}
+
+void cpu_inst_0x7C(CPU* cpu) {  // CLI
+    cpu->opCLI();
+}
+
+void cpu_inst_0x7D(CPU* cpu) {  // CLV
+    cpu->opCLV();
+}
+
+void cpu_inst_0x7E(CPU* cpu) {  // CLC
+    cpu->opCLC();
+}
+
+void cpu_inst_0x7F(CPU* cpu) {  // REP #const
+    cpu->opREP();
+}
+
+void cpu_inst_0x80(CPU* cpu) {  // ROL A
+    cpu->opROL(0, true);
     cpu->cycleCount += 2;
 }
 
-// INC/DEC variants (0x89-0x96)
-void cpu_inst_0x89(CPU* cpu) {  // INC
-    cpu->opINC(0);  // Accumulator mode
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x8A(CPU* cpu) {  // DEC
-    cpu->opDEC(0);  // Accumulator mode
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x8B(CPU* cpu) {  // INC addr
-    cpu->opINC(cpu->addrAbsolute());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x8C(CPU* cpu) {  // INC addr,X
-    cpu->opINC(cpu->addrAbsoluteIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x8D(CPU* cpu) {  // INC dp
-    cpu->opINC(cpu->addrDirectPage());
+void cpu_inst_0x81(CPU* cpu) {  // ROL addr
+    cpu->opROL(cpu->addrAbsolute(), false);
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x8E(CPU* cpu) {  // INC dp,X
-    cpu->opINC(cpu->addrDirectPageIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x8F(CPU* cpu) {  // DEC addr
-    cpu->opDEC(cpu->addrAbsolute());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x90(CPU* cpu) {  // DEC addr,X
-    cpu->opDEC(cpu->addrAbsoluteIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x91(CPU* cpu) {  // DEC dp
-    cpu->opDEC(cpu->addrDirectPage());
+void cpu_inst_0x82(CPU* cpu) {  // ROL addr,X
+    cpu->opROL(cpu->addrAbsoluteIndexedX(), false);
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x92(CPU* cpu) {  // DEC dp,X
-    cpu->opDEC(cpu->addrDirectPageIndexedX());
+void cpu_inst_0x83(CPU* cpu) {  // ROL dp
+    cpu->opROL(cpu->addrDirectPage(), false);
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x84(CPU* cpu) {  // ROR A
+    cpu->opROR(0, true);
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x85(CPU* cpu) {  // ROR addr
+    cpu->opROR(cpu->addrAbsolute(), false);
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x86(CPU* cpu) {  // ROR addr,X
+    cpu->opROR(cpu->addrAbsoluteIndexedX(), false);
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x87(CPU* cpu) {  // ROR dp
+    cpu->opROR(cpu->addrDirectPage(), false);
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x88(CPU* cpu) {  // SHL X
+    cpu->opSHL(false);
+}
+
+void cpu_inst_0x89(CPU* cpu) {  // SHL Y
+    cpu->opSHL(true);
+}
+
+void cpu_inst_0x8A(CPU* cpu) {  // SHR X
+    cpu->opSHR(false);
+}
+
+void cpu_inst_0x8B(CPU* cpu) {  // SHR Y
+    cpu->opSHR(true);
+}
+
+void cpu_inst_0x8C(CPU* cpu) {  // RCL A
+    cpu->opRCL();
+}
+
+void cpu_inst_0x8D(CPU* cpu) {  // LSR A
+    cpu->opLSR(0, true);
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x8E(CPU* cpu) {  // LSR addr
+    cpu->opLSR(cpu->addrAbsolute(), false);
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x8F(CPU* cpu) {  // LSR addr,X
+    cpu->opLSR(cpu->addrAbsoluteIndexedX(), false);
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x90(CPU* cpu) {  // LSR dp
+    cpu->opLSR(cpu->addrDirectPage(), false);
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x91(CPU* cpu) {  // LSR dp,X
+    cpu->opLSR(cpu->addrDirectPageIndexedX(), false);
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x92(CPU* cpu) {  // DIV X,Y
+    cpu->opDIV();
+}
+
+void cpu_inst_0x93(CPU* cpu) {  // DIV long,X
+    cpu->opDIVmem(cpu->addrAbsoluteLongIndexedX());
+}
+
+void cpu_inst_0x94(CPU* cpu) {  // DIV long,Y
+    cpu->opDIVmem(cpu->addrAbsoluteLongIndexedY());
+}
+
+void cpu_inst_0x95(CPU* cpu) {  // EOR addr
+    cpu->opXOR(cpu->addrAbsolute());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x96(CPU* cpu) {  // EOR addr,X
+    cpu->opXOR(cpu->addrAbsoluteIndexedX());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x97(CPU* cpu) {  // EOR addr,Y
+    cpu->opXOR(cpu->addrAbsoluteIndexedY());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x98(CPU* cpu) {  // ASL A
+    cpu->opASL(0, true);
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0x99(CPU* cpu) {  // ASL addr
+    cpu->opASL(cpu->addrAbsolute(), false);
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x9A(CPU* cpu) {  // ASL addr,X
+    cpu->opASL(cpu->addrAbsoluteIndexedX(), false);
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0x9B(CPU* cpu) {  // ASL dp
+    cpu->opASL(cpu->addrDirectPage(), false);
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x9C(CPU* cpu) {  // ASL dp,X
+    cpu->opASL(cpu->addrDirectPageIndexedX(), false);
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x9D(CPU* cpu) {  // XOR (dp,X)
+    cpu->opXOR(cpu->addrDirectPageIndexedIndirectX());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0x9E(CPU* cpu) {  // XOR (dp)
+    cpu->opXOR(cpu->addrDirectPageIndirect());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0x9F(CPU* cpu) {  // XOR (dp),Y
+    cpu->opXOR(cpu->addrDirectPageIndirectIndexedY());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xA0(CPU* cpu) {  // CMP (dp,X)
+    cpu->opCMP(cpu->addrDirectPageIndexedIndirectX());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xA1(CPU* cpu) {  // CMP (dp)
+    cpu->opCMP(cpu->addrDirectPageIndirect());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xA2(CPU* cpu) {  // CMP (dp),Y
+    cpu->opCMP(cpu->addrDirectPageIndirectIndexedY());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xA3(CPU* cpu) {  // CMP (sr,S),Y
+    cpu->opCMP(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
+}
+
+void cpu_inst_0xA4(CPU* cpu) {  // CMP [dp]
+    cpu->opCMP(cpu->addrDirectPageIndirectLong());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xA5(CPU* cpu) {  // CMP [dp],Y
+    cpu->opCMP(cpu->addrDirectPageIndirectLongIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xA6(CPU* cpu) {  // CMP #const
+    cpu->opCMP(cpu->addrImmediate());
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0xA7(CPU* cpu) {  // CMP addr
+    cpu->opCMP(cpu->addrAbsolute());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xA8(CPU* cpu) {  // CMP addr,X
+    cpu->opCMP(cpu->addrAbsoluteIndexedX());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xA9(CPU* cpu) {  // CMP addr,Y
+    cpu->opCMP(cpu->addrAbsoluteIndexedY());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xAA(CPU* cpu) {  // CMP dp
+    cpu->opCMP(cpu->addrDirectPage());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xAB(CPU* cpu) {  // CMP dp,X
+    cpu->opCMP(cpu->addrDirectPageIndexedX());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0x93(CPU* cpu) {  // INX
-    cpu->opINX();
+void cpu_inst_0xAC(CPU* cpu) {  // CMP long
+    cpu->opCMP(cpu->addrAbsoluteLong());
+    cpu->cycleCount += 5;
 }
 
-void cpu_inst_0x94(CPU* cpu) {  // DEX
-    cpu->opDEX();
+void cpu_inst_0xAD(CPU* cpu) {  // CMP long,X
+    cpu->opCMP(cpu->addrAbsoluteLongIndexedX());
+    cpu->cycleCount += 5;
 }
 
-void cpu_inst_0x95(CPU* cpu) {  // INY
-    cpu->opINY();
+void cpu_inst_0xAE(CPU* cpu) {  // CMP sr,S
+    cpu->opCMP(cpu->addrStackRelative());
+    cpu->cycleCount += 4;
 }
 
-void cpu_inst_0x96(CPU* cpu) {  // DEY
-    cpu->opDEY();
+void cpu_inst_0xAF(CPU* cpu) {  // COP #const
+    cpu->opCOP();
 }
 
-// ADC variants (0x97-0xA5)
-void cpu_inst_0x97(CPU* cpu) {  // ADC #const
+void cpu_inst_0xB0(CPU* cpu) {  // ADC ( dp),Y
+    cpu->opADC(cpu->addrDirectPageIndirectIndexedY());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xB1(CPU* cpu) {  // ADC (dp,X)
+    cpu->opADC(cpu->addrDirectPageIndexedIndirectX());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xB2(CPU* cpu) {  // ADC (dp)
+    cpu->opADC(cpu->addrDirectPageIndirect());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xB3(CPU* cpu) {  // ADC (sr,S),Y
+    cpu->opADC(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
+}
+
+void cpu_inst_0xB4(CPU* cpu) {  // ADC [dp]
+    cpu->opADC(cpu->addrDirectPageIndirectLong());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xB5(CPU* cpu) {  // ADC [dp],Y
+    cpu->opADC(cpu->addrDirectPageIndirectLongIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xB6(CPU* cpu) {  // ADC #const
     cpu->opADC(cpu->addrImmediate());
     cpu->cycleCount += 2;
 }
 
-void cpu_inst_0x98(CPU* cpu) {  // ADC addr
+void cpu_inst_0xB7(CPU* cpu) {  // ADC addr
     cpu->opADC(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x99(CPU* cpu) {  // ADC long
-    cpu->opADC(cpu->addrAbsoluteLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x9A(CPU* cpu) {  // ADC addr,X
+void cpu_inst_0xB8(CPU* cpu) {  // ADC addr,X
     cpu->opADC(cpu->addrAbsoluteIndexedX());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x9B(CPU* cpu) {  // ADC addr,Y
+void cpu_inst_0xB9(CPU* cpu) {  // ADC addr,Y
     cpu->opADC(cpu->addrAbsoluteIndexedY());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0x9C(CPU* cpu) {  // ADC long,X
-    cpu->opADC(cpu->addrAbsoluteLongIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0x9D(CPU* cpu) {  // ADC dp
-    cpu->opADC(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0x9E(CPU* cpu) {  // ADC dp,X
+void cpu_inst_0xBA(CPU* cpu) {  // ADC dp,X
     cpu->opADC(cpu->addrDirectPageIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0x9F(CPU* cpu) {  // ADC (dp)
-    cpu->opADC(cpu->addrDirectPageIndirect());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0xA0(CPU* cpu) {  // ADC [dp]
-    cpu->opADC(cpu->addrDirectPageIndirectLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xA1(CPU* cpu) {  // ADC (dp,X)
-    cpu->opADC(cpu->addrDirectPageIndexedIndirectX());
+void cpu_inst_0xBB(CPU* cpu) {  // ADC long
+    cpu->opADC(cpu->addrAbsoluteLong());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0xA2(CPU* cpu) {  // ADC (dp),Y
-    cpu->opADC(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xA3(CPU* cpu) {  // ADC [dp],Y
-    cpu->opADC(cpu->addrDirectPageIndirectLongIndexedY());
+void cpu_inst_0xBC(CPU* cpu) {  // ADC long,X
+    cpu->opADC(cpu->addrAbsoluteLongIndexedX());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0xA4(CPU* cpu) {  // ADC sr,S
+void cpu_inst_0xBD(CPU* cpu) {  // ADC sr,S
     cpu->opADC(cpu->addrStackRelative());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xA5(CPU* cpu) {  // ADC (sr,S),Y
-    cpu->opADC(cpu->addrStackRelativeIndirectIndexedY());
-    cpu->cycleCount += 6;
-}
-
-// SBC variants (0xA6-0xB4)
-void cpu_inst_0xA6(CPU* cpu) {  // SBC #const
-    cpu->opSBC(cpu->addrImmediate());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xA7(CPU* cpu) {  // SBC addr
-    cpu->opSBC(cpu->addrAbsolute());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xA8(CPU* cpu) {  // SBC long
-    cpu->opSBC(cpu->addrAbsoluteLong());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0xA9(CPU* cpu) {  // SBC addr,X
-    cpu->opSBC(cpu->addrAbsoluteIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xAA(CPU* cpu) {  // SBC addr,Y
-    cpu->opSBC(cpu->addrAbsoluteIndexedY());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xAB(CPU* cpu) {  // SBC long,X
-    cpu->opSBC(cpu->addrAbsoluteLongIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xAC(CPU* cpu) {  // SBC dp
-    cpu->opSBC(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xAD(CPU* cpu) {  // SBC dp,X
-    cpu->opSBC(cpu->addrDirectPageIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xAE(CPU* cpu) {  // SBC (dp)
-    cpu->opSBC(cpu->addrDirectPageIndirect());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xAF(CPU* cpu) {  // SBC [dp]
-    cpu->opSBC(cpu->addrDirectPageIndirectLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xB0(CPU* cpu) {  // SBC (dp,X)
-    cpu->opSBC(cpu->addrDirectPageIndexedIndirectX());
-    cpu->cycleCount += 5;
-}
-
-void cpu_inst_0xB1(CPU* cpu) {  // SBC (dp),Y
-    cpu->opSBC(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xB2(CPU* cpu) {  // SBC [dp],Y
-    cpu->opSBC(cpu->addrDirectPageIndirectLongIndexedY());
-    cpu->cycleCount += 5;
-}
-
-void cpu_inst_0xB3(CPU* cpu) {  // SBC sr,S
-    cpu->opSBC(cpu->addrStackRelative());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xB4(CPU* cpu) {  // SBC (sr,S),Y
-    cpu->opSBC(cpu->addrStackRelativeIndirectIndexedY());
-    cpu->cycleCount += 6;
-}
-
-// AND variants (0xB5-0xC3)
-void cpu_inst_0xB5(CPU* cpu) {  // AND #const
-    cpu->opAND(cpu->addrImmediate());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xB6(CPU* cpu) {  // AND addr
-    cpu->opAND(cpu->addrAbsolute());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xB7(CPU* cpu) {  // AND long
-    cpu->opAND(cpu->addrAbsoluteLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xB8(CPU* cpu) {  // AND addr,X
-    cpu->opAND(cpu->addrAbsoluteIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xB9(CPU* cpu) {  // AND addr,Y
-    cpu->opAND(cpu->addrAbsoluteIndexedY());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xBA(CPU* cpu) {  // AND long,X
-    cpu->opAND(cpu->addrAbsoluteLongIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xBB(CPU* cpu) {  // AND dp
-    cpu->opAND(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xBC(CPU* cpu) {  // AND dp,X
-    cpu->opAND(cpu->addrDirectPageIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xBD(CPU* cpu) {  // AND (dp)
-    cpu->opAND(cpu->addrDirectPageIndirect());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xBE(CPU* cpu) {  // AND [dp]
-    cpu->opAND(cpu->addrDirectPageIndirectLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xBF(CPU* cpu) {  // AND (dp,X)
+void cpu_inst_0xBE(CPU* cpu) {  // AND (dp,X)
     cpu->opAND(cpu->addrDirectPageIndexedIndirectX());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xBF(CPU* cpu) {  // AND (dp)
+    cpu->opAND(cpu->addrDirectPageIndirect());
     cpu->cycleCount += 5;
 }
 
 void cpu_inst_0xC0(CPU* cpu) {  // AND (dp),Y
     cpu->opAND(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xC1(CPU* cpu) {  // AND [dp],Y
-    cpu->opAND(cpu->addrDirectPageIndirectLongIndexedY());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0xC2(CPU* cpu) {  // AND sr,S
-    cpu->opAND(cpu->addrStackRelative());
-    cpu->cycleCount += 3;
+void cpu_inst_0xC1(CPU* cpu) {  // AND (sr,S),Y
+    cpu->opAND(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
 }
 
-void cpu_inst_0xC3(CPU* cpu) {  // AND (sr,S),Y
-    cpu->opAND(cpu->addrStackRelativeIndirectIndexedY());
+void cpu_inst_0xC2(CPU* cpu) {  // AND [dp]
+    cpu->opAND(cpu->addrDirectPageIndirectLong());
     cpu->cycleCount += 6;
 }
 
-// ORA variants (0xC4-0xD2)
-void cpu_inst_0xC4(CPU* cpu) {  // ORA #const
-    cpu->opORA(cpu->addrImmediate());
+void cpu_inst_0xC3(CPU* cpu) {  // AND [dp],Y
+    cpu->opAND(cpu->addrDirectPageIndirectLongIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xC4(CPU* cpu) {  // AND #const
+    cpu->opAND(cpu->addrImmediate());
     cpu->cycleCount += 2;
 }
 
-void cpu_inst_0xC5(CPU* cpu) {  // ORA addr
-    cpu->opORA(cpu->addrAbsolute());
+void cpu_inst_0xC5(CPU* cpu) {  // AND addr
+    cpu->opAND(cpu->addrAbsolute());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0xC6(CPU* cpu) {  // ORA long
-    cpu->opORA(cpu->addrAbsoluteLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xC7(CPU* cpu) {  // ORA addr,X
-    cpu->opORA(cpu->addrAbsoluteIndexedX());
+void cpu_inst_0xC6(CPU* cpu) {  // AND addr,X
+    cpu->opAND(cpu->addrAbsoluteIndexedX());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0xC8(CPU* cpu) {  // ORA addr,Y
-    cpu->opORA(cpu->addrAbsoluteIndexedY());
+void cpu_inst_0xC7(CPU* cpu) {  // AND addr,Y
+    cpu->opAND(cpu->addrAbsoluteIndexedY());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0xC9(CPU* cpu) {  // ORA long,X
-    cpu->opORA(cpu->addrAbsoluteLongIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xCA(CPU* cpu) {  // ORA dp
-    cpu->opORA(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xCB(CPU* cpu) {  // ORA dp,X
-    cpu->opORA(cpu->addrDirectPageIndexedX());
+void cpu_inst_0xC8(CPU* cpu) {  // AND dp
+    cpu->opAND(cpu->addrDirectPage());
     cpu->cycleCount += 3;
 }
 
-void cpu_inst_0xCC(CPU* cpu) {  // ORA (dp)
-    cpu->opORA(cpu->addrDirectPageIndirect());
+void cpu_inst_0xC9(CPU* cpu) {  // AND dp,X
+    cpu->opAND(cpu->addrDirectPageIndexedX());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0xCD(CPU* cpu) {  // ORA [dp]
-    cpu->opORA(cpu->addrDirectPageIndirectLong());
+void cpu_inst_0xCA(CPU* cpu) {  // AND long
+    cpu->opAND(cpu->addrAbsoluteLong());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xCB(CPU* cpu) {  // AND long,X
+    cpu->opAND(cpu->addrAbsoluteLongIndexedX());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xCC(CPU* cpu) {  // AND sr,S
+    cpu->opAND(cpu->addrStackRelative());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0xCE(CPU* cpu) {  // ORA (dp,X)
+void cpu_inst_0xCD(CPU* cpu) {  // ORA (dp,X)
     cpu->opORA(cpu->addrDirectPageIndexedIndirectX());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xCE(CPU* cpu) {  // ORA (dp)
+    cpu->opORA(cpu->addrDirectPageIndirect());
     cpu->cycleCount += 5;
 }
 
 void cpu_inst_0xCF(CPU* cpu) {  // ORA (dp),Y
     cpu->opORA(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xD0(CPU* cpu) {  // ORA [dp],Y
-    cpu->opORA(cpu->addrDirectPageIndirectLongIndexedY());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0xD1(CPU* cpu) {  // ORA sr,S
-    cpu->opORA(cpu->addrStackRelative());
-    cpu->cycleCount += 3;
+void cpu_inst_0xD0(CPU* cpu) {  // ORA (sr,S),Y
+    cpu->opORA(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
 }
 
-void cpu_inst_0xD2(CPU* cpu) {  // ORA (sr,S),Y
-    cpu->opORA(cpu->addrStackRelativeIndirectIndexedY());
+void cpu_inst_0xD1(CPU* cpu) {  // ORA [dp]
+    cpu->opORA(cpu->addrDirectPageIndirectLong());
     cpu->cycleCount += 6;
 }
 
-// XOR variants (0xD3-0xE1)
-void cpu_inst_0xD3(CPU* cpu) {  // XOR #const
+void cpu_inst_0xD2(CPU* cpu) {  // ORA [dp],Y
+    cpu->opORA(cpu->addrDirectPageIndirectLongIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xD3(CPU* cpu) {  // ORA #const
+    cpu->opORA(cpu->addrImmediate());
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0xD4(CPU* cpu) {  // ORA addr
+    cpu->opORA(cpu->addrAbsolute());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xD5(CPU* cpu) {  // ORA addr,X
+    cpu->opORA(cpu->addrAbsoluteIndexedX());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xD6(CPU* cpu) {  // ORA addr,Y
+    cpu->opORA(cpu->addrAbsoluteIndexedY());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xD7(CPU* cpu) {  // ORA dp
+    cpu->opORA(cpu->addrDirectPage());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xD8(CPU* cpu) {  // ORA dp,X
+    cpu->opORA(cpu->addrDirectPageIndexedX());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0xD9(CPU* cpu) {  // ORA long
+    cpu->opORA(cpu->addrAbsoluteLong());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xDA(CPU* cpu) {  // ORA long,X
+    cpu->opORA(cpu->addrAbsoluteLongIndexedX());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xDB(CPU* cpu) {  // ORA sr,S
+    cpu->opORA(cpu->addrStackRelative());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0xDC(CPU* cpu) {  // SBC (dp,X)
+    cpu->opSBC(cpu->addrDirectPageIndexedIndirectX());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xDD(CPU* cpu) {  // SBC (dp),Y
+    cpu->opSBC(cpu->addrDirectPageIndirectIndexedY());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xDE(CPU* cpu) {  // SBC (sr,S),Y
+    cpu->opSBC(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
+}
+
+void cpu_inst_0xDF(CPU* cpu) {  // SBC [dp]
+    cpu->opSBC(cpu->addrDirectPageIndirectLong());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xE0(CPU* cpu) {  // SBC [dp],Y
+    cpu->opSBC(cpu->addrDirectPageIndirectLongIndexedY());
+    cpu->cycleCount += 6;
+}
+
+void cpu_inst_0xE1(CPU* cpu) {  // SBC #const
+    cpu->opSBC(cpu->addrImmediate());
+    cpu->cycleCount += 2;
+}
+
+void cpu_inst_0xE2(CPU* cpu) {  // SBC addr
+    cpu->opSBC(cpu->addrAbsolute());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xE3(CPU* cpu) {  // SBC addr,X
+    cpu->opSBC(cpu->addrAbsoluteIndexedX());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xE4(CPU* cpu) {  // SBC addr,Y
+    cpu->opSBC(cpu->addrAbsoluteIndexedY());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xE5(CPU* cpu) {  // SBC dp
+    cpu->opSBC(cpu->addrDirectPage());
+    cpu->cycleCount += 3;
+}
+
+void cpu_inst_0xE6(CPU* cpu) {  // SBC dp,X
+    cpu->opSBC(cpu->addrDirectPageIndexedX());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0xE7(CPU* cpu) {  // SBC long
+    cpu->opSBC(cpu->addrAbsoluteLong());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xE8(CPU* cpu) {  // SBC long,X
+    cpu->opSBC(cpu->addrAbsoluteLongIndexedX());
+    cpu->cycleCount += 5;
+}
+
+void cpu_inst_0xE9(CPU* cpu) {  // SBC sr,S
+    cpu->opSBC(cpu->addrStackRelative());
+    cpu->cycleCount += 4;
+}
+
+void cpu_inst_0xEA(CPU* cpu) {  // MUL (dp,X)
+    cpu->opMUL(cpu->addrDirectPageIndexedIndirectX());
+}
+
+void cpu_inst_0xEB(CPU* cpu) {  // MUL (dp),Y
+    cpu->opMUL(cpu->addrDirectPageIndirectIndexedY());
+}
+
+void cpu_inst_0xEC(CPU* cpu) {  // MUL (sr,S),Y
+    cpu->opMUL(cpu->addrStackRelativeIndirectIndexedY());
+}
+
+void cpu_inst_0xED(CPU* cpu) {  // MUL [dp]
+    cpu->opMUL(cpu->addrDirectPageIndirectLong());
+}
+
+void cpu_inst_0xEE(CPU* cpu) {  // MUL [dp],Y
+    cpu->opMUL(cpu->addrDirectPageIndirectLongIndexedY());
+}
+
+void cpu_inst_0xEF(CPU* cpu) {  // MUL #const
+    cpu->opMUL(cpu->addrImmediate());
+}
+
+void cpu_inst_0xF0(CPU* cpu) {  // MUL addr
+    cpu->opMUL(cpu->addrAbsolute());
+}
+
+void cpu_inst_0xF1(CPU* cpu) {  // MUL addr,X
+    cpu->opMUL(cpu->addrAbsoluteIndexedX());
+}
+
+void cpu_inst_0xF2(CPU* cpu) {  // MUL addr,Y
+    cpu->opMUL(cpu->addrAbsoluteIndexedY());
+}
+
+void cpu_inst_0xF3(CPU* cpu) {  // MUL dp
+    cpu->opMUL(cpu->addrDirectPage());
+}
+
+void cpu_inst_0xF4(CPU* cpu) {  // MUL dp,X
+    cpu->opMUL(cpu->addrDirectPageIndexedX());
+}
+
+void cpu_inst_0xF5(CPU* cpu) {  // MUL long
+    cpu->opMUL(cpu->addrAbsoluteLong());
+}
+
+void cpu_inst_0xF6(CPU* cpu) {  // MUL long,X
+    cpu->opMUL(cpu->addrAbsoluteLongIndexedX());
+}
+
+void cpu_inst_0xF7(CPU* cpu) {  // MUL sr,S
+    cpu->opMUL(cpu->addrStackRelative());
+}
+
+void cpu_inst_0xF8(CPU* cpu) {  // XOR (sr,S),Y
+    cpu->opXOR(cpu->addrStackRelativeIndirectIndexedY());
+    cpu->cycleCount += 7;
+}
+
+void cpu_inst_0xF9(CPU* cpu) {  // XOR #const
     cpu->opXOR(cpu->addrImmediate());
     cpu->cycleCount += 2;
 }
 
-void cpu_inst_0xD4(CPU* cpu) {  // XOR addr
-    cpu->opXOR(cpu->addrAbsolute());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xD5(CPU* cpu) {  // XOR long
-    cpu->opXOR(cpu->addrAbsoluteLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xD6(CPU* cpu) {  // XOR addr,X
-    cpu->opXOR(cpu->addrAbsoluteIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xD7(CPU* cpu) {  // XOR addr,Y
-    cpu->opXOR(cpu->addrAbsoluteIndexedY());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xD8(CPU* cpu) {  // XOR long,X
-    cpu->opXOR(cpu->addrAbsoluteLongIndexedX());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xD9(CPU* cpu) {  // XOR dp
+void cpu_inst_0xFA(CPU* cpu) {  // XOR dp
     cpu->opXOR(cpu->addrDirectPage());
-    cpu->cycleCount += 2;
+    cpu->cycleCount += 3;
 }
 
-void cpu_inst_0xDA(CPU* cpu) {  // XOR dp,X
+void cpu_inst_0xFB(CPU* cpu) {  // XOR dp,X
     cpu->opXOR(cpu->addrDirectPageIndexedX());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xDB(CPU* cpu) {  // XOR (dp)
-    cpu->opXOR(cpu->addrDirectPageIndirect());
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0xDC(CPU* cpu) {  // XOR [dp]
-    cpu->opXOR(cpu->addrDirectPageIndirectLong());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xDD(CPU* cpu) {  // XOR (dp,X)
-    cpu->opXOR(cpu->addrDirectPageIndexedIndirectX());
+void cpu_inst_0xFC(CPU* cpu) {  // XOR long
+    cpu->opXOR(cpu->addrAbsoluteLong());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0xDE(CPU* cpu) {  // XOR (dp),Y
-    cpu->opXOR(cpu->addrDirectPageIndirectIndexedY());
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xDF(CPU* cpu) {  // XOR [dp],Y
-    cpu->opXOR(cpu->addrDirectPageIndirectLongIndexedY());
+void cpu_inst_0xFD(CPU* cpu) {  // XOR long,X
+    cpu->opXOR(cpu->addrAbsoluteLongIndexedX());
     cpu->cycleCount += 5;
 }
 
-void cpu_inst_0xE0(CPU* cpu) {  // XOR sr,S
+void cpu_inst_0xFE(CPU* cpu) {  // XOR sr,S
     cpu->opXOR(cpu->addrStackRelative());
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xE1(CPU* cpu) {  // XOR (sr,S),Y
-    cpu->opXOR(cpu->addrStackRelativeIndirectIndexedY());
-    cpu->cycleCount += 6;
-}
-
-// Shift/Rotate operations (0xE2-0xFA)
-void cpu_inst_0xE2(CPU* cpu) {  // ASL
-    cpu->opASL(0, true);  // Accumulator mode
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xE3(CPU* cpu) {  // ASL addr
-    cpu->opASL(cpu->addrAbsolute(), false);
     cpu->cycleCount += 4;
 }
 
-void cpu_inst_0xE4(CPU* cpu) {  // ASL addr,X
-    cpu->opASL(cpu->addrAbsoluteIndexedX(), false);
-    cpu->cycleCount += 4;
+void cpu_inst_0xFF(CPU* cpu) {  // HLT
+    cpu->opHLT();
 }
 
-void cpu_inst_0xE5(CPU* cpu) {  // ASL dp
-    cpu->opASL(cpu->addrDirectPage(), false);
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xE6(CPU* cpu) {  // ASL dp,X
-    cpu->opASL(cpu->addrDirectPageIndexedX(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xE7(CPU* cpu) {  // LSR
-    cpu->opLSR(0, true);  // Accumulator mode
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xE8(CPU* cpu) {  // LSR addr
-    cpu->opLSR(cpu->addrAbsolute(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xE9(CPU* cpu) {  // LSR addr,X
-    cpu->opLSR(cpu->addrAbsoluteIndexedX(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xEA(CPU* cpu) {  // LSR dp
-    cpu->opLSR(cpu->addrDirectPage(), false);
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xEB(CPU* cpu) {  // LSR dp,X
-    cpu->opLSR(cpu->addrDirectPageIndexedX(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xEC(CPU* cpu) {  // ROL
-    cpu->opROL(0, true);  // Accumulator mode
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xED(CPU* cpu) {  // ROL addr
-    cpu->opROL(cpu->addrAbsolute(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xEE(CPU* cpu) {  // ROL addr,X
-    cpu->opROL(cpu->addrAbsoluteIndexedX(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xEF(CPU* cpu) {  // ROL dp
-    cpu->opROL(cpu->addrDirectPage(), false);
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xF0(CPU* cpu) {  // ROL dp,X
-    cpu->opROL(cpu->addrDirectPageIndexedX(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xF1(CPU* cpu) {  // ROR
-    cpu->opROR(0, true);  // Accumulator mode
-    cpu->cycleCount += 2;
-}
-
-void cpu_inst_0xF2(CPU* cpu) {  // ROR addr
-    cpu->opROR(cpu->addrAbsolute(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xF3(CPU* cpu) {  // ROR addr,X
-    cpu->opROR(cpu->addrAbsoluteIndexedX(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xF4(CPU* cpu) {  // ROR dp
-    cpu->opROR(cpu->addrDirectPage(), false);
-    cpu->cycleCount += 3;
-}
-
-void cpu_inst_0xF5(CPU* cpu) {  // ROR dp,X
-    cpu->opROR(cpu->addrDirectPageIndexedX(), false);
-    cpu->cycleCount += 4;
-}
-
-void cpu_inst_0xF6(CPU* cpu) {  // SHL
-    cpu->opSHL(false);  // X register
-    cpu->cycleCount += 1;
-}
-
-void cpu_inst_0xF7(CPU* cpu) {  // SHLY
-    cpu->opSHL(true);  // Y register
-    cpu->cycleCount += 1;
-}
-
-void cpu_inst_0xF8(CPU* cpu) {  // SHR
-    cpu->opSHR(false);  // X register
-    cpu->cycleCount += 1;
-}
-
-void cpu_inst_0xF9(CPU* cpu) {  // SHRY
-    cpu->opSHR(true);  // Y register
-    cpu->cycleCount += 1;
-}
-
-void cpu_inst_0xFA(CPU* cpu) {  // RCL
-    cpu->opRCL();
-}
-
-// Multiply/Divide/Block Move (0xFB-0xFF)
-void cpu_inst_0xFB(CPU* cpu) {  // MUL
-    cpu->opMUL(cpu->addrImmediate());
-    cpu->cycleCount += 8;
-}
-
-void cpu_inst_0xFC(CPU* cpu) {  // DIV
-    cpu->opDIV();
-    cpu->cycleCount += 12;
-}
-
-void cpu_inst_0xFD(CPU* cpu) {  // MVN
-    cpu->opMVN();
-}
-
-void cpu_inst_0xFE(CPU* cpu) {  // MVP
-    cpu->opMVP();
-}
-
-void cpu_inst_0xFF(CPU* cpu) {  // Reserved
-    cpu->cycleCount += 1;
-}
-
-// ============================================================================
-// Dispatch Table - Maps opcode to handler function
-// ============================================================================
-
+// Dispatch table: opcode -> handler.
 const CPUInstructionHandler CPU_INSTRUCTION_TABLE[256] = {
     cpu_inst_0x00, cpu_inst_0x01, cpu_inst_0x02, cpu_inst_0x03,  // 0x00-0x03
     cpu_inst_0x04, cpu_inst_0x05, cpu_inst_0x06, cpu_inst_0x07,  // 0x04-0x07
@@ -1335,7 +1281,7 @@ const CPUInstructionHandler CPU_INSTRUCTION_TABLE[256] = {
     cpu_inst_0xF0, cpu_inst_0xF1, cpu_inst_0xF2, cpu_inst_0xF3,  // 0xF0-0xF3
     cpu_inst_0xF4, cpu_inst_0xF5, cpu_inst_0xF6, cpu_inst_0xF7,  // 0xF4-0xF7
     cpu_inst_0xF8, cpu_inst_0xF9, cpu_inst_0xFA, cpu_inst_0xFB,  // 0xF8-0xFB
-    cpu_inst_0xFC, cpu_inst_0xFD, cpu_inst_0xFE, cpu_inst_0xFF   // 0xFC-0xFF
+    cpu_inst_0xFC, cpu_inst_0xFD, cpu_inst_0xFE, cpu_inst_0xFF,  // 0xFC-0xFF
 };
 
 } // namespace ZeroPoint

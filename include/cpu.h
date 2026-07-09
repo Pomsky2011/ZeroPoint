@@ -71,8 +71,11 @@ public:
     void run(uint64_t cycles);          // Run for N cycles
 
     // Interrupt handling
-    void triggerIRQ();                  // Trigger maskable interrupt
-    void triggerNMI();                  // Trigger non-maskable interrupt
+    void triggerIRQ();                  // Assert maskable interrupt line (latched)
+    void triggerNMI();                  // Assert non-maskable interrupt line (latched)
+    void serviceInterrupts();          // Service any pending interrupts (at instruction boundary)
+    bool isIRQPending() const { return irqPending; }
+    bool isNMIPending() const { return nmiPending; }
 
     // Memory interface
     void setMemory(uint8_t* mem, size_t size);  // Legacy interface
@@ -159,6 +162,10 @@ public:
     uint32_t addrDirectPageIndirectLongIndexedY();
     uint32_t addrStackRelative();
     uint32_t addrStackRelativeIndirectIndexedY();
+    uint32_t addrAbsoluteLongIndexedY();
+    uint32_t addrAbsoluteIndirect();          // JMP (addr)
+    uint32_t addrAbsoluteIndirectLong();      // JMP [addr]
+    uint32_t addrAbsoluteIndexedIndirect();   // JMP (addr,X)
 
     // Stack operations
     void push8(uint8_t value);
@@ -202,9 +209,12 @@ public:
     void opADC(uint32_t addr);
     void opSBC(uint32_t addr);
     void opMUL(uint32_t addr);
-    void opDIV();
+    void opDIV();                    // DIV X,Y  (X/Y -> A, remainder -> X)
+    void opDIVmem(uint32_t addr);    // DIV A by memory (A/[addr] -> A, rem -> X)
     void opINC(uint32_t addr);
     void opDEC(uint32_t addr);
+    void opINCA();  // INC A (accumulator)
+    void opDECA();  // DEC A (accumulator)
     void opINX();
     void opINY();
     void opDEX();
@@ -347,6 +357,20 @@ private:
     std::vector<MemoryRegion> memoryMap;
     bool useMemoryMap;  // Optimization: avoid checking vector size every access
 
+    // Bank-indexed acceleration for findRegion(). Every access derives its
+    // bank from address>>16, so instead of scanning memoryMap linearly per
+    // byte we index by bank:
+    //   bankFast[bank]  - the region if this bank is covered by a single
+    //                     full-offset-range region (ROM/RAM/PPU/APU window);
+    //                     hit directly with no scan. nullptr otherwise.
+    //   bankScan[bank]  - true only for banks with partial/multiple regions
+    //                     (the I/O bank $D8); these fall back to a scan
+    //                     restricted to that bank. false = bank is unmapped.
+    // Rebuilt whenever the memory map changes.
+    std::array<MemoryRegion*, 256> bankFast;
+    std::array<bool, 256> bankScan;
+    void rebuildBankTable();
+
     // Legacy memory interface
     uint8_t* memory;
     size_t memorySize;
@@ -366,6 +390,17 @@ private:
     // State
     CPUState state;
     uint64_t instructionCount;
+
+    // Interrupt line latches. Assertions are held pending until serviced,
+    // so a maskable IRQ raised while I=1 is not lost — it fires once the
+    // program clears I. NMI is edge-latched and always serviced.
+    bool irqPending;
+    bool nmiPending;
+
+    // Actual interrupt sequences (push state + vector). Invoked by
+    // serviceInterrupts() once the interrupt is eligible to run.
+    void serviceIRQ();
+    void serviceNMI();
 
     // Execution
     void executeInstruction();
