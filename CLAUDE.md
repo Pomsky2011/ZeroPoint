@@ -23,7 +23,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Special registers**: PC (16-bit), SP (16-bit hardware stack), RP, DP, DB, BF, FLAGS (4-bit: Z/G/L/C)
 - **64 KiB + 448 KiB banked AROM**
 - **Instructions**: NOP, JMP, JNZ/JZ, SRP/SDP/SDB, NOR, AND, ADD, SUB, STA/STR, LDA/SCR, flags (SFR/CF/SF/STF), ZOR/ZOA, LST/LFN/BRT/BRP, ADC, SBC, BEQ/BNE, BLT/BGT, JMS/JSR/JDP/JDPS, INC/DEC, BSP/RET/PUX/PUY/POX/POY/PUDP/PODP, MOV/EXC, CME/CMN/CMG/CML, CRB, XOR
-- **MMP**: 16 stereo channels, **SST**: Sample storage with looping
+- **MMP**: 16 channels with pan (pitch/volume/pan per-channel), **SST**: Sample storage with looping
 
 ### DEF88186 CPU
 - **16 MHz**, Hybrid 65C816/8086, 256 opcodes
@@ -75,6 +75,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$D80040-$D80047**: Display Status
 - **$D80048-$D8004F**: System Control
 - **$D80050-$D80057**: Timer Control
+- **$D80058-$D8005F**: Interrupt Controller
 
 ### Timer System ($D80050-$D80052)
 8 independent hardware timers with IRQ support (bit pattern: `0bVHSQETAR`):
@@ -93,6 +94,17 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$D80052** (TIMER_INT_ENABLE): Enable IRQ per timer (write bit=1 to enable interrupt)
 
 **Usage**: Enable timer in CONTROL, enable interrupt in INT_ENABLE. When timer expires, status flag is set and CPU IRQ is triggered (if interrupt enabled). Clear status flags by writing 1s to STATUS register.
+
+### Interrupt Controller ($D80058-$D80059)
+All IRQ sources share the CPU's single maskable line. The controller latches which source fired so the ISR can discriminate them, and provides a top-level per-source mask (in addition to each peripheral's own enable).
+
+**Sources** (bit): `V (0x01)` V-blank, `H (0x02)` H-blank, `T (0x04)` any Timer (read TIMER_STATUS for which), `D (0x08)` DMA-complete (reserved).
+
+**Registers**:
+- **$D80058** (IRQ_STATUS): Read = latched pending sources. Write 1 to a bit to acknowledge/clear it. Clearing all TIMER_STATUS bits also clears the aggregate Timer bit.
+- **$D80059** (IRQ_ENABLE): Top-level per-source mask (default 0xFF = transparent). A source must be enabled here *and* at its peripheral to assert the CPU line; pending bits are recorded regardless.
+
+**Usage**: In the ISR, read IRQ_STATUS to find the source, dispatch, then write it back to acknowledge before RTI.
 
 ## PPU Instructions
 
@@ -227,8 +239,9 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - Memory mapping (24-bit), I/O registers (Bank $D8)
 - System integration, interrupt routing (V-Blank/H-Blank/Timers)
 - Development tools (5 disassemblers/analyzers)
-- MMP audio (16 stereo channels, SDL output)
-- **PPU JIT Compiler** (x86-64/ARM64, stable - use `--jit` flag)
+- MMP audio (16 channels with pan, SDL output)
+- **PPU instruction timing model**: multi-cycle cost per instruction (branches, MUL/DIV, palette loads, the TILEDRAW blitter). Costs are tunable constants at the top of `src/ppu.cpp`; `PPU::tick()` stalls for `cost-1` cycles after issuing.
+- **PPU batched executor** (`PPU::runBatch`): fast interpreter path that runs whole instructions and collapses stalls (1.2x-4x faster than per-cycle ticking, provably state-identical). The `--jit` flag drives this. NOTE: the "JIT" is this batched executor, **not** a native compiler — the `emit*` codegen only ever wrapped `tick()` in a native loop; real per-opcode codegen was scoped and deliberately not built.
 - **Vulkan Renderer** (28% faster than SDL, native GPU acceleration, cross-platform)
 
 ### In Progress ⏳
@@ -248,7 +261,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 
 ```
 ZeroPoint/          - Emulator core
-├── include/        - Headers (display, ppu, apu, cpu, dma, rom, window, vulkan_window, ppu_jit)
+├── include/        - Headers (display, ppu, apu, cpu, dma, rom, window, vulkan_window, ppu_jit, interrupt_controller)
 │   ├── cpu_instructions.h, ppu_instructions.h, apu_instructions.h - Instruction dispatch headers
 ├── src/            - Implementation (including vulkan_window.cpp)
 │   ├── cpu_instructions.cpp, ppu_instructions.cpp, apu_instructions.cpp - Instruction handlers

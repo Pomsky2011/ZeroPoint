@@ -49,6 +49,15 @@ public:
     int16_t getMixedSampleLeft();   // Get left channel output
     int16_t getMixedSampleRight();  // Get right channel output
 
+    // MMP register map ($0000-$00FF):
+    //   $0000-$001F  Pitch       ch0-15, 2 bytes each (little-endian, 0x1000 = 1.0x)
+    //   $0020-$002F  Volume      ch0-15, 1 byte each  (0 = silent, 255 = max)
+    //   $0030-$003F  Pan         ch0-15, 1 byte each  (0 = full L, 128 = center, 255 = full R)
+    //   $0040-$004F  Reserved0   ch0-15, 1 byte each  (reserved for future per-channel flags)
+    //   $0050-$006F  STL address ch0-15, 2 bytes each (0 = channel off)
+    //   $0070-$007F  Reserved1   16 bytes             (reserved for future global flags)
+    //   $0080-$00FF  Reserved2   128 bytes            (reserved)
+
     // Statistics
     uint64_t getCycleCount() const { return cycleCount; }
     uint64_t getInstructionCount() const { return instructionCount; }
@@ -60,6 +69,9 @@ public:
 private:
     // Instruction execution
     void executeInstruction(uint16_t instruction);
+
+    // MMP mixer helper
+    int16_t mixChannels(bool right);
 
     // Instruction handlers
     void execNOP(uint16_t operand);
@@ -110,7 +122,7 @@ private:
 
     // MMP helper functions
     void resetMMP();
-    void processChannel(int channel, bool rightEar);
+    void processChannel(int channel);
     int16_t resampleSample(uint8_t sample, uint16_t pitch);
 
     // Memory regions
@@ -188,37 +200,27 @@ private:
     uint64_t instructionCount;
     bool halted;
 
-    // MMP State (16 stereo channels = 32 total)
+    // MMP State (16 channels with pan)
     struct MMPChannel {
-        uint16_t pitch;           // Playback rate
-        uint8_t volume;           // Volume/dynamic range
-        uint16_t stlAddress;      // Pointer to STL entry
-        uint16_t samplePosition;  // Current position in sample
+        uint16_t pitch;           // Playback rate (0x1000 = 1.0×)
+        uint8_t volume;           // 0 = silent, 255 = max
+        uint8_t pan;              // 0 = full L, 128 = center, 255 = full R
+        uint8_t reserved0;        // Reserved for future per-channel flags
+        uint16_t stlAddress;      // Pointer to STL entry (0 = off)
+        uint32_t samplePosition;  // Fixed-point position (upper bits = index, lower 12 = fraction)
         bool active;
 
         // Sample data (loaded from STL/SST)
-        uint16_t sampleDataAddress;  // Where sample data is
-        uint16_t loopAddress;        // Where to loop back to
-        std::vector<uint8_t> sampleCache; // Cached sample data
+        uint16_t sampleDataAddress;
+        uint16_t loopAddress;
+        std::vector<uint8_t> sampleCache;
     };
 
-    std::array<MMPChannel, 32> mmpChannels; // 0-15 left, 16-31 right
+    std::array<MMPChannel, 16> mmpChannels;
 
-    // MMP control flags
-    uint16_t reverbFlagsLeft;
-    uint16_t reverbFlagsRight;
-    uint16_t echoFlagsLeft;
-    uint16_t echoFlagsRight;
-    bool gaussianInterpolationLeft;
-    bool gaussianInterpolationRight;
-
-    // Echo delays per channel
-    std::array<uint16_t, 32> echoDelays;
-
-    // Audio output buffers (for reverb/echo)
-    std::vector<int16_t> leftEchoBuffer;
-    std::vector<int16_t> rightEchoBuffer;
-    size_t echoBufferPosition;
+    // Reserved for future global MMP flags
+    uint16_t reserved1;
+    uint8_t  reserved2[128];
 };
 
 #endif // APU_H

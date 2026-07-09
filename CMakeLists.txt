@@ -5,6 +5,31 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Default to an optimized build. Without this a plain `cmake ..` produces an
+# unoptimized (-O0) binary, which runs the cycle-accurate master clock several
+# times slower than real time. Callers can still override with
+# -DCMAKE_BUILD_TYPE=Debug.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+    message(STATUS "No build type specified; defaulting to Release")
+endif()
+
+# Enable link-time optimization for optimized builds. The master clock crosses
+# translation units every cycle (System -> PPU/Display/DMA); LTO lets those hot
+# calls inline, which roughly halves per-cycle overhead. Skipped if the
+# toolchain doesn't support it (e.g. some cross builds).
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ZP_IPO_SUPPORTED OUTPUT ZP_IPO_ERROR)
+    if(ZP_IPO_SUPPORTED)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+        message(STATUS "Link-time optimization (IPO/LTO) enabled")
+    else()
+        message(STATUS "LTO not supported by toolchain: ${ZP_IPO_ERROR}")
+    endif()
+endif()
+
 # Platform detection
 # CMAKE_SYSTEM_NAME is "Windows" when cross-compiling via toolchain file
 if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -93,6 +118,7 @@ set(CORE_SOURCES
     src/apu.cpp
     src/cpu.cpp
     src/cpu_instructions.cpp
+    src/system.cpp
     src/window.cpp
     src/vulkan_window.cpp
 )

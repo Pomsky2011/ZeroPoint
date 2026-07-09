@@ -5,14 +5,53 @@
 
 namespace ZeroPoint {
 
+// --- PPU instruction cycle-cost model ---------------------------------------
+// The PPU issues one instruction at a time, but instructions are not all
+// single-cycle on real silicon. These costs model that: a register/ALU datapath
+// op is 1 cycle, multi-step arithmetic and pipeline-flushing branches cost a
+// few, and memory-streaming ops (palette loads, the TILEDRAW blitter) cost
+// roughly one bus cycle per element they touch. After issuing, tick() stalls
+// the PPU for (cost - 1) cycles so the rest of the system sees realistic pacing.
+// All values are tunable knobs for the fantasy hardware, not measured silicon.
+namespace {
+constexpr uint16_t CYC_BASE          = 1;   // register/ALU datapath op
+constexpr uint16_t CYC_MUL           = 4;   // 16-bit multiply
+constexpr uint16_t CYC_DIV           = 16;  // 16-bit integer divide (iterative)
+constexpr uint16_t CYC_BRANCH_TAKEN  = 3;   // taken branch: instruction refetch
+constexpr uint16_t CYC_BRANCH_NOT    = 1;   // untaken branch: no penalty
+constexpr uint16_t CYC_MEM           = 3;   // single word load/store (MOV/MOVDP)
+constexpr uint16_t CYC_PRESET_E      = 2;   // preset-E: extra decode stage
+constexpr uint16_t CYC_PRESET_F      = 2;   // preset-F default: extra decode stage
+constexpr uint16_t CYC_INT_ENTRY     = 4;   // interrupt entry: push PC + vector
+
+// Memory-streaming ops: base + one bus cycle per element touched.
+constexpr uint16_t CYC_PAL_BASE      = 2;
+constexpr uint16_t CYC_PAL_PER_ENTRY = 1;   // per palette word streamed from DP
+constexpr uint16_t CYC_CLRTILE       = 8;   // bulk tile-RAM clear (fixed-function)
+constexpr uint16_t CYC_CLRPAL        = 8;   // bulk palette reset
+
+// TILEDRAW blitter: setup + per-pixel bus cost over the 8x8 (64 px) tile.
+// Opaque pixel = read src + write dst; blended = read src + read dst + write dst.
+constexpr uint16_t CYC_TILE_BASE     = 8;
+constexpr uint16_t CYC_TILE_PX       = 4;   // opaque pixel
+constexpr uint16_t CYC_TILE_PX_BLEND = 6;   // blended pixel (extra dst read)
+constexpr uint16_t TILE_PIXELS       = 64;
+} // namespace
+
 PPU::PPU()
     : executionPointer(0)
     , state(PPUState::WaitingForStart)
     , vblank(false)
     , hblank(false)
+    , prevVblank(false)
+    , prevHblank(false)
+    , cpuIrqPending(false)
+    , cpuIrqVector(0)
     , regBankX(0)
     , regBankY(0)
     , cycleCounter(0)
+    , stallCycles(0)
+    , instrCycles(CYC_BASE)
     , display(nullptr)
     , currentTileId(0)
     , currentTileMode(0)
@@ -39,9 +78,15 @@ void PPU::reset() {
     state = PPUState::WaitingForStart;
     flags = PPUFlags();
     cycleCounter = 0;
+    stallCycles = 0;
+    instrCycles = CYC_BASE;
 
     vblank = false;
     hblank = false;
+    prevVblank = false;
+    prevHblank = false;
+    cpuIrqPending = false;
+    cpuIrqVector = 0;
     regBankX = 0;
     regBankY = 0;
 
@@ -90,47 +135,120 @@ void PPU::start() {
     }
 }
 
-void PPU::tick() {
-    if (state != PPUState::Running) [[unlikely]] {
-        return;
+bool PPU::serviceInterrupts() {
+    // Edge-detect the blank lines: only the 0->1 transition arms an interrupt.
+    // prev* is updated every instruction boundary so a blank that stays asserted
+    // for its whole ~1000-cycle span fires exactly once, letting the ISR run to
+    // completion without re-entering itself.
+    bool vblankEdge = vblank && !prevVblank;
+    bool hblankEdge = hblank && !prevHblank;
+    prevVblank = vblank;
+    prevHblank = hblank;
+
+    // Highest priority: a CPU/host-raised interrupt (e.g. "your code is about to
+    // be swapped"). One-shot, fires regardless of blanking. Same upward-growing
+    // push convention as the blank interrupts so RET stays balanced.
+    if (cpuIrqPending) [[unlikely]] {
+        cpuIrqPending = false;
+        uint16_t returnAddr = executionPointer;
+        registers[REG_SP] += 2;
+        memory[registers[REG_SP]] = returnAddr & 0xFF;
+        memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
+        executionPointer = cpuIrqVector;
+        stallCycles = CYC_INT_ENTRY - 1;
+        return true;
     }
 
     // Check for VBlank interrupt (R59 + VOC bit 4) - optimized with branch hints
-    if (vblank) [[unlikely]] {
+    if (vblankEdge) [[unlikely]] {
         bool vblankIntEnabled = (vocRegisters.renderModeControl & VOC_VBLANK_INT) != 0;
         if (vblankIntEnabled && registers[REG_VBLANK_INT] != 0) [[likely]] {
-            // Push return address onto stack (little-endian)
-            // Stack grows downward, so decrement BEFORE writing
+            // Push return address (little-endian). The stack grows UPWARD to
+            // match the ppuasm PUSH/RET shorthands (PUSH does INC SP; RET pops
+            // with DEC SP). Incrementing before the write keeps interrupt entry
+            // balanced with RET, so an ISR that ends in RET doesn't leak SP.
             uint16_t returnAddr = executionPointer;
-            registers[REG_SP] -= 2;
+            registers[REG_SP] += 2;
             memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
             memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
 
             // Jump to interrupt handler
             executionPointer = registers[REG_VBLANK_INT];
-            return;
+            stallCycles = CYC_INT_ENTRY - 1;
+            return true;
         }
     }
 
     // Check for HBlank interrupt (R60 + VOC bit 5) - optimized with branch hints
-    if (hblank) [[unlikely]] {
+    if (hblankEdge) [[unlikely]] {
         bool hblankIntEnabled = (vocRegisters.renderModeControl & VOC_HBLANK_INT) != 0;
         if (hblankIntEnabled && registers[REG_HBLANK_INT] != 0) [[likely]] {
-            // Push return address onto stack (little-endian)
-            // Stack grows downward, so decrement BEFORE writing
+            // Push return address (little-endian). Stack grows UPWARD to match
+            // the ppuasm PUSH/RET shorthands, so an ISR ending in RET stays
+            // balanced and doesn't leak SP (see V-blank push above).
             uint16_t returnAddr = executionPointer;
-            registers[REG_SP] -= 2;
+            registers[REG_SP] += 2;
             memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
             memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
 
             // Jump to interrupt handler
             executionPointer = registers[REG_HBLANK_INT];
-            return;
+            stallCycles = CYC_INT_ENTRY - 1;
+            return true;
         }
     }
 
-    // Execute 1 instruction per cycle
+    return false;
+}
+
+void PPU::tick() {
+    if (state != PPUState::Running) [[unlikely]] {
+        return;
+    }
+
+    // Busy finishing a multi-cycle instruction: burn one cycle and wait. This
+    // is what makes MUL/DIV, branches, palette loads and the TILEDRAW blitter
+    // actually occupy the PPU for their full duration. Interrupts are only
+    // recognized at instruction boundaries, so they wait too.
+    if (stallCycles > 0) {
+        stallCycles--;
+        return;
+    }
+
+    // At an instruction boundary: an interrupt may pre-empt the next instruction.
+    if (serviceInterrupts()) {
+        return;
+    }
+
+    // Issue one instruction: apply its effect now, then stall for the rest of
+    // its cycle cost. executeInstruction() sets instrCycles for the op it ran.
     executeInstruction();
+    stallCycles = instrCycles - 1;
+}
+
+uint32_t PPU::runBatch(uint32_t cycles) {
+    uint32_t remaining = cycles;
+    while (remaining > 0 && state == PPUState::Running) {
+        // Collapse a multi-cycle stall in one step instead of spinning one
+        // iteration per cycle (a TILEDRAW's 263 idle cycles become a subtract).
+        if (stallCycles > 0) {
+            uint32_t consumed = stallCycles < remaining ? stallCycles : remaining;
+            stallCycles -= consumed;
+            remaining -= consumed;
+            continue;
+        }
+
+        // Instruction boundary: same interrupt/issue logic as tick(), one cycle.
+        if (serviceInterrupts()) {
+            remaining--;
+            continue;
+        }
+
+        executeInstruction();
+        stallCycles = instrCycles - 1;
+        remaining--;
+    }
+    return cycles - remaining;
 }
 
 uint16_t PPU::fetchInstruction() {
@@ -154,6 +272,10 @@ void PPU::executeInstruction() {
     // This avoids re-extracting in each case
     uint8_t regX = (operand >> 6) & 0x3F;
     uint8_t regY = operand & 0x3F;
+
+    // Default cost: a single-cycle datapath op. Multi-cycle ops (MUL/DIV,
+    // branches, presets) override this below; tick() reads it after we return.
+    instrCycles = CYC_BASE;
 
     switch (static_cast<PPUOpcode>(opcode)) {
         case PPUOpcode::DEFCALL: {
@@ -205,34 +327,23 @@ void PPU::executeInstruction() {
         case PPUOpcode::JUMP_ZG: {
             // Bit 11: 0 = jmz, 1 = jmg
             bool isGreater = (operand & 0x800) != 0;
-            if (isGreater) {
-                // jmg (pc) - jump if greater
-                if (flags.greater) {
-                    executionPointer = registers[REG_PC];
-                }
-            } else {
-                // jmz (pc) - jump if zero
-                if (flags.zero) {
-                    executionPointer = registers[REG_PC];
-                }
+            bool taken = isGreater ? flags.greater : flags.zero;
+            if (taken) {
+                executionPointer = registers[REG_PC];
             }
+            instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
             break;
         }
 
         case PPUOpcode::JUMP_NZG: {
             // Bit 11: 0 = jnz, 1 = jng (jml)
             bool isNotGreater = (operand & 0x800) != 0;
-            if (isNotGreater) {
-                // jng (pc) / jml (pc) - jump if not greater (less or equal)
-                if (!flags.greater) {
-                    executionPointer = registers[REG_PC];
-                }
-            } else {
-                // jnz (pc) - jump if not zero
-                if (!flags.zero) {
-                    executionPointer = registers[REG_PC];
-                }
+            // jng/jml: taken if not greater (<=); jnz: taken if not zero.
+            bool taken = isNotGreater ? !flags.greater : !flags.zero;
+            if (taken) {
+                executionPointer = registers[REG_PC];
             }
+            instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
             break;
         }
 
@@ -263,6 +374,7 @@ void PPU::executeInstruction() {
         case PPUOpcode::MUL: {
             // mul X Y - X = X * Y (regX, regY pre-extracted)
             registers[regX] *= registers[regY];
+            instrCycles = CYC_MUL;
             break;
         }
 
@@ -271,6 +383,7 @@ void PPU::executeInstruction() {
             if (__builtin_expect(registers[regY] != 0, 1)) {  // Division by zero is unlikely
                 registers[regX] /= registers[regY];
             }
+            instrCycles = CYC_DIV;
             break;
         }
 
@@ -278,6 +391,7 @@ void PPU::executeInstruction() {
             // preset E Z W - immediate/byte operations
             uint8_t subopcode = (operand >> 10) & 0x03;  // 2 bits for sub-opcode (bits 11-10)
             uint16_t suboperand = operand & 0x3FF;        // 10 bits for operand (bits 9-0)
+            instrCycles = CYC_PRESET_E;  // extra decode stage; handler may override
             executePresetE(subopcode, suboperand);
             break;
         }
@@ -286,6 +400,7 @@ void PPU::executeInstruction() {
             // preset F Z W - extended instructions
             uint8_t subopcode = (operand >> 8) & 0x0F;  // 4 bits for sub-opcode
             uint8_t suboperand = operand & 0xFF;
+            instrCycles = CYC_PRESET_F;  // extra decode stage; handler may override
             executePresetF(subopcode, suboperand);
             break;
         }
@@ -399,6 +514,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                 handleMemoryWrite(addr, memory[addr]);
                 handleMemoryWrite(addr + 1, memory[addr + 1]);
             }
+            instrCycles = CYC_MEM;  // word store to (DP)
             break;
         }
 
@@ -414,18 +530,21 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
         case PresetFOpcode::PALETTE16_LOAD: {
             // 16cpaletteload(dp) - load 16-color palette from DP
             loadPalette16();
+            instrCycles = CYC_PAL_BASE + 16 * CYC_PAL_PER_ENTRY;  // stream 16 words
             break;
         }
 
         case PresetFOpcode::PALETTE256_LOAD: {
             // 256cpaletteload(dp) - load 256-color palette from DP
             loadPalette256();
+            instrCycles = CYC_PAL_BASE + 256 * CYC_PAL_PER_ENTRY;  // stream 256 words
             break;
         }
 
         case PresetFOpcode::JMR: {
             // jmr (pc) - jump relative to PC
             executionPointer = registers[REG_PC];
+            instrCycles = CYC_BRANCH_TAKEN;  // unconditional jump: always taken
             break;
         }
 
@@ -438,6 +557,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                 uint8_t high = handleMemoryRead(addr + 1);
                 registers[regX] = low | (high << 8);
             }
+            instrCycles = CYC_MEM;  // word load from (DP)
             break;
         }
 
@@ -453,6 +573,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
             for (auto& tile : tileStorage) {
                 tile.fill(0);
             }
+            instrCycles = CYC_CLRTILE;  // bulk fixed-function clear
             break;
         }
 
@@ -465,6 +586,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
             for (int i = 0; i < 256; i++) {
                 palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;
             }
+            instrCycles = CYC_CLRPAL;  // bulk fixed-function reset
             break;
         }
 
@@ -573,9 +695,11 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                             uint32_t dstColor = 0;
 
                             if (display->getRenderMode() == RenderMode::RGBA32) {
-                                // 32-bit mode: 4 bytes per pixel, 1024 bytes per scanline
-                                uint16_t fbOffset = (pixelY * 1024) + (pixelX * 4);
-                                uint16_t fbAddr = 0xE000 + fbOffset;
+                                // 32-bit: 4 bytes/pixel. The rolling buffer only
+                                // holds 8 scanlines, so index by (pixelY % 8) to
+                                // stay within the $E000-$FFFF window.
+                                uint16_t row = pixelY % FB_SCANLINES_32BIT;
+                                uint16_t fbAddr = 0xE000 + (row * 1024) + (pixelX * 4);
 
                                 // Read 4 bytes (RGBA) from framebuffer
                                 if (fbAddr + 3 <= 0xFFFF) {
@@ -586,12 +710,13 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                                     dstColor = (r << 24) | (g << 16) | (b << 8) | a;
                                 }
                             } else {
-                                // 16-bit mode: 2 bytes per pixel, 512 bytes per scanline
-                                uint16_t fbOffset = (pixelY * 512) + (pixelX * 2);
-                                uint16_t fbAddr = 0xE000 + fbOffset;
+                                // 16-bit: 2 bytes/pixel, 16-scanline rolling window;
+                                // index by (pixelY % 16) within the 8 KiB buffer.
+                                uint16_t row = pixelY % FB_SCANLINES_16BIT;
+                                uint16_t fbAddr = 0xE000 + (row * 512) + (pixelX * 2);
 
                                 // Read 2 bytes (16-bit BGR) from framebuffer
-                                if (fbAddr + 1 <= 0xEFFF) {  // 16-bit mode only uses 0xE000-0xEFFF
+                                if (fbAddr + 1 <= 0xFFFF) {
                                     uint8_t low = handleMemoryRead(fbAddr);
                                     uint8_t high = handleMemoryRead(fbAddr + 1);
                                     uint16_t rgb16 = (high << 8) | low;
@@ -624,6 +749,11 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                     }
                 }
             }
+            // Blitter cost: setup + per-pixel bus traffic over the 8x8 tile.
+            // Blended pixels pay an extra destination read.
+            instrCycles = CYC_TILE_BASE +
+                          TILE_PIXELS * (tileBlendMode != 0 ? CYC_TILE_PX_BLEND
+                                                            : CYC_TILE_PX);
             break;
         }
 
@@ -657,6 +787,15 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
 // updateFlags and clearFlags are now inline in ppu.h
 
 uint8_t PPU::handleMemoryRead(uint16_t address) const {
+    // Current scanline (read-only), 16-bit little-endian at $00E0-$00E1. Lets
+    // beam-synced firmware (e.g. an H-blank ISR) know which line the display is
+    // on, so it can pick the correct rolling-buffer slot to paint. Without this
+    // the PPU only exposes blank/active status (GBLS), which isn't enough.
+    if ((address == 0x00E0 || address == 0x00E1) && display != nullptr) {
+        int sl = display->getCurrentScanline();
+        return (address == 0x00E0) ? (sl & 0xFF) : ((sl >> 8) & 0xFF);
+    }
+
     // VOC registers: 0x00F0-0x00FF
     if (address >= 0x00F0 && address <= 0x00FF) {
         return handleVOCRead(address);
@@ -666,18 +805,10 @@ uint8_t PPU::handleMemoryRead(uint16_t address) const {
     if (address >= 0xE000 && display != nullptr) {
         uint16_t offset = address - 0xE000;
 
-        if (display->getRenderMode() == RenderMode::RGBA16) {
-            // 4 KiB framebuffer (0xE000-0xEFFF)
-            if (offset < 0x1000) {
-                const uint8_t* fbBytes = reinterpret_cast<const uint8_t*>(display->getFramebuffer16());
-                return fbBytes[offset];
-            }
-        } else {
-            // 8 KiB framebuffer (0xE000-0xFFFF)
-            if (offset < 0x2000) {
-                const uint8_t* fbBytes = reinterpret_cast<const uint8_t*>(display->getFramebuffer32());
-                return fbBytes[offset];
-            }
+        // Rolling buffer is always 8 KiB ($E000-$FFFF) in both modes.
+        if (offset < 0x2000) {
+            const uint8_t* fbBytes = reinterpret_cast<const uint8_t*>(display->getFramebuffer16());
+            return fbBytes[offset];
         }
         return 0; // Out of bounds
     }
@@ -697,18 +828,10 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
     if (address >= 0xE000 && display != nullptr) {
         uint16_t offset = address - 0xE000;
 
-        if (display->getRenderMode() == RenderMode::RGBA16) {
-            // 4 KiB framebuffer (0xE000-0xEFFF)
-            if (offset < 0x1000) {
-                uint8_t* fbBytes = reinterpret_cast<uint8_t*>(display->getFramebuffer16());
-                fbBytes[offset] = value;
-            }
-        } else {
-            // 8 KiB framebuffer (0xE000-0xFFFF)
-            if (offset < 0x2000) {
-                uint8_t* fbBytes = reinterpret_cast<uint8_t*>(display->getFramebuffer32());
-                fbBytes[offset] = value;
-            }
+        // Rolling buffer is always 8 KiB ($E000-$FFFF) in both modes.
+        if (offset < 0x2000) {
+            uint8_t* fbBytes = reinterpret_cast<uint8_t*>(display->getFramebuffer16());
+            fbBytes[offset] = value;
         }
         return; // Don't also write to regular memory
     }
@@ -889,6 +1012,8 @@ void PPU::applyVOCReset() {
     state = PPUState::WaitingForStart;
     flags = PPUFlags();
     cycleCounter = 0;
+    stallCycles = 0;
+    instrCycles = CYC_BASE;
     regBankX = 0;
     regBankY = 0;
 

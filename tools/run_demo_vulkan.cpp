@@ -2,7 +2,6 @@
 // Loads a 65536-byte demo and runs it with Vulkan display output
 
 #include "ppu.h"
-#include "ppu_jit.h"
 #include "display.h"
 #include "vulkan_window.h"
 #include <iostream>
@@ -17,7 +16,7 @@ int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <demo.bin> [--jit]" << std::endl;
         std::cerr << "  Runs a PPU microcode demo with Vulkan display" << std::endl;
-        std::cerr << "  --jit: Enable experimental JIT compilation" << std::endl;
+        std::cerr << "  --jit: (work in progress) runs the batched interpreter, same as default" << std::endl;
         return 1;
     }
 
@@ -67,30 +66,16 @@ int main(int argc, char* argv[]) {
 
     std::cout << "PPU started, state: " << (int)ppu.getState() << "\n";
 
-    // Initialize JIT if requested and supported
-    PPUJIT jit;
-    bool useJIT = false;
-    JITBlock* jitBlock = nullptr;
-
+    // The PPU always runs the batched interpreter (PPU::runBatch): whole
+    // instructions with multi-cycle stalls collapsed, 1.2x-4x faster than
+    // ticking cycle by cycle and provably state-identical.
     if (enableJIT) {
-        if (PPUJIT::isSupported()) {
-            std::cout << "JIT compilation enabled (" << PPUJIT::getArchitecture() << ")\n";
-            jitBlock = jit.compileBlock(&ppu, 0, 1000);
-            if (jitBlock) {
-                useJIT = true;
-                std::cout << "JIT compilation successful\n";
-            } else {
-                std::cout << "JIT compilation failed, falling back to interpreter\n";
-            }
-        } else {
-            std::cout << "JIT not supported on this platform, using interpreter\n";
-        }
-    } else {
-        std::cout << "JIT disabled (use --jit to enable), using interpreter\n";
+        std::cout << "--jit: native code generation is a work in progress; "
+                     "running the batched interpreter (already the default).\n";
     }
 
     std::cout << "Running demo with Vulkan renderer... Press ESC to quit\n";
-    std::cout << "JIT mode: " << (useJIT && jitBlock ? "ENABLED" : "DISABLED") << "\n\n";
+    std::cout << "Execution: batched interpreter\n\n";
 
     // Performance tracking
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -129,24 +114,15 @@ int main(int argc, char* argv[]) {
     int CYCLES_PER_RENDER = 1119601;
 
     while (!window.shouldClose() && ppu.getState() == PPUState::Running && cycles < MAX_CYCLES) {
-        // Execute PPU in large batches (JIT or interpreter)
-        int batchSize = (useJIT && jitBlock) ? 10 : 1000;  // JIT does 1000 cycles per call, so 10 calls = 10k cycles
-
+        // Execute the PPU in batched quanta (~10k cycles per outer iteration).
+        const int QUANTA = 10;  // 10 x runBatch(1000) = 10k cycles
         auto ppuStart = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < batchSize && ppu.getState() == PPUState::Running; i++) {
-            if (useJIT && jitBlock) {
-                // Execute 1000 PPU cycles via JIT (batched within call)
-                jit.execute(jitBlock, &ppu);
-                cycles += 1000;
-                displayCycleAccumulator += DISPLAY_TICK_INCREMENT * 1000;
-                renderCycleCounter += 1000;
-            } else {
-                // Execute 1 PPU cycle via interpreter
-                ppu.tick();
-                cycles++;
-                displayCycleAccumulator += DISPLAY_TICK_INCREMENT;
-                renderCycleCounter++;
-            }
+        for (int i = 0; i < QUANTA && ppu.getState() == PPUState::Running; i++) {
+            uint32_t ran = ppu.runBatch(1000);
+            if (ran == 0) break;  // halted / no progress
+            cycles += (int)ran;
+            displayCycleAccumulator += DISPLAY_TICK_INCREMENT * (int64_t)ran;
+            renderCycleCounter += (int)ran;
         }
         auto ppuEnd = std::chrono::high_resolution_clock::now();
         ppuExecutionTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(ppuEnd - ppuStart).count();

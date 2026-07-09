@@ -4,28 +4,16 @@
 namespace ZeroPoint {
 
 // Static lookup table for color conversion
-uint32_t Display::color16ToSDL_LUT[65536];
+uint32_t Display::color16To32_LUT[65536];
 bool Display::lutInitialized = false;
 
 void Display::initializeLUT() {
     if (lutInitialized) return;
 
-    // Pre-compute all 65536 RGBA16 to SDL ARGB conversions
+    // Pre-compute all 65536 RGBA16 -> RGBA32 conversions in the same packing as
+    // color16To32() / outputFrame: (R<<24)|(G<<16)|(B<<8)|A.
     for (uint32_t color16 = 0; color16 < 65536; color16++) {
-        // Extract 5-bit RGB and 1-bit alpha
-        uint8_t r5 = (color16 >> 1) & 0x1F;
-        uint8_t g5 = (color16 >> 6) & 0x1F;
-        uint8_t b5 = (color16 >> 11) & 0x1F;
-        uint8_t a1 = color16 & 0x01;
-
-        // Expand 5-bit to 8-bit
-        uint8_t r8 = (r5 << 3) | (r5 >> 2);
-        uint8_t g8 = (g5 << 3) | (g5 >> 2);
-        uint8_t b8 = (b5 << 3) | (b5 >> 2);
-        uint8_t a8 = a1 ? 0xFF : 0x00;
-
-        // Pack as SDL ARGB8888
-        color16ToSDL_LUT[color16] = (a8 << 24) | (r8 << 16) | (g8 << 8) | b8;
+        color16To32_LUT[color16] = color16To32(static_cast<Color16>(color16));
     }
 
     lutInitialized = true;
@@ -35,14 +23,14 @@ Display::Display()
     : renderMode(RenderMode::RGBA16)
     , currentScanline(0)
     , currentPixel(0)
-    , bufferStartBank(0)
-    , scanlinesInCurrentBank(0)
+    , windowStart(0)
 {
     // Initialize lookup table on first Display creation
     initializeLUT();
 
-    // Initialize 8 KiB framebuffer to black
+    // Initialize rolling buffer and latched output frame to black
     framebuffer.fill(0);
+    outputFrame.fill(0);
 }
 
 Display::~Display() {
@@ -53,38 +41,32 @@ void Display::tick() {
     currentPixel++;
 
     if (currentPixel >= TOTAL_PIXELS_PER_LINE) [[unlikely]] {
-        // H-Blank: Move to next scanline
+        // End of scanline (H-Blank). Latch the scanline we just displayed into
+        // the full-frame output before the rolling window slides past it.
+        if (currentScanline >= 1 && currentScanline <= VISIBLE_SCANLINES) [[likely]] {
+            latchScanline(currentScanline - 1);
+        }
+
         currentPixel = 0;
         currentScanline++;
 
         if (currentScanline >= TOTAL_SCANLINES) [[unlikely]] {
-            // Wrap back to scanline 0 (start of new frame)
+            // Wrap back to scanline 0 (start of new frame): reset the window
+            // and clear the rolling buffer so stale slots don't bleed through.
             currentScanline = 0;
-            bufferStartBank = 0;
-            scanlinesInCurrentBank = 0;
+            windowStart = 0;
+            framebuffer.fill(0);
             return;
         }
 
-        // H-Blank bank rolling logic (only during visible scanlines)
-        if (currentScanline > 0 && currentScanline < VISIBLE_SCANLINES) [[likely]] {
-            if (renderMode == RenderMode::RGBA32) [[unlikely]] {
-                // 32-bit mode: Roll 2 banks per H-Blank
-                // Each scanline takes 1 bank, so roll 2 banks (= 2 scanlines)
-                clearBank(bufferStartBank);
-                bufferStartBank = (bufferStartBank + 1) & 0x7;  // Optimize modulo 8
-                clearBank(bufferStartBank);
-                bufferStartBank = (bufferStartBank + 1) & 0x7;  // Optimize modulo 8
-                scanlinesInCurrentBank = 0;
-            } else {
-                // 16-bit mode: Roll 1 bank per H-Blank
-                // Each bank holds 2 scanlines, so increment counter
-                scanlinesInCurrentBank++;
-                if (scanlinesInCurrentBank >= 2) [[unlikely]] {
-                    // Bank is full, roll to next bank
-                    clearBank(bufferStartBank);
-                    bufferStartBank = (bufferStartBank + 1) & 0x7;  // Optimize modulo 8
-                    scanlinesInCurrentBank = 0;
-                }
+        // Slide the rolling window forward to track the beam. Each scanline that
+        // leaves the top of the window frees its slot for a future scanline.
+        if (currentScanline >= 1 && currentScanline <= VISIBLE_SCANLINES) [[likely]] {
+            int target = currentScanline - 1;
+            int window = windowScanlines();
+            while (windowStart < target) {
+                clearSlot(windowStart % window);
+                windowStart++;
             }
         }
     }
@@ -99,8 +81,7 @@ void Display::setRenderMode(RenderMode mode) {
     // 16-bit mode: 2 scanlines per bank
     // 32-bit mode: 1 scanline per bank
     framebuffer.fill(0);
-    bufferStartBank = 0;
-    scanlinesInCurrentBank = 0;
+    windowStart = 0;
 
     renderMode = mode;
 }
@@ -110,42 +91,67 @@ size_t Display::getFramebufferSize() const {
 }
 
 int Display::getBufferBank(int y, int& offsetInBank) const {
-    // Map absolute scanline Y to bank index and offset within bank
-    int maxScanlines = (renderMode == RenderMode::RGBA16) ? FB_SCANLINES_16BIT : FB_SCANLINES_32BIT;
-
-    // Calculate relative position from bufferStartBank
-    // The buffer contains the NEXT N scanlines to be displayed
-    int relativeY = (y - currentScanline + maxScanlines) % maxScanlines;
-
-    if (relativeY < 0 || relativeY >= maxScanlines) {
-        return -1;  // Outside buffer window
+    // Map an absolute scanline Y to its slot in the rolling window. Scanline y
+    // lives in slot (y % window); only scanlines currently inside the window
+    // [windowStart, windowStart + window) are addressable — everything else is
+    // "forgotten" (writes dropped, reads return -1), matching the hardware.
+    int window = windowScanlines();
+    int relativeY = y - windowStart;
+    if (relativeY < 0 || relativeY >= window) {
+        return -1;  // Outside the rolling window
     }
 
+    int slot = y % window;
     if (renderMode == RenderMode::RGBA16) {
-        // 16-bit mode: 2 scanlines per bank
-        int bankOffset = relativeY / 2;
-        int scanlineInBank = relativeY % 2;
-        int bank = (bufferStartBank + bankOffset) % FB_BANKS;
-        offsetInBank = scanlineInBank * FB_WIDTH * sizeof(Color16);  // 512 bytes per scanline
-        return bank;
+        // 2 scanlines per bank, 512 bytes each
+        offsetInBank = (slot & 1) * FB_WIDTH * sizeof(Color16);
+        return slot >> 1;
     } else {
-        // 32-bit mode: 1 scanline per bank
-        int bank = (bufferStartBank + relativeY) % FB_BANKS;
+        // 1 scanline per bank
         offsetInBank = 0;
-        return bank;
+        return slot;
     }
 }
 
-void Display::clearBank(int bankIndex) {
-    if (bankIndex < 0 || bankIndex >= FB_BANKS) {
+void Display::clearSlot(int slot) {
+    // Zero one scanline's worth of bytes at the given slot (byte base is
+    // slot * bytesPerScanline, which equals bank*1KiB + within-bank offset).
+    int bytesPerScanline = (renderMode == RenderMode::RGBA16)
+                               ? FB_WIDTH * static_cast<int>(sizeof(Color16))
+                               : FB_WIDTH * static_cast<int>(sizeof(Color32));
+    size_t base = static_cast<size_t>(slot) * bytesPerScanline;
+    if (base + bytesPerScanline <= framebuffer.size()) {
+        std::memset(&framebuffer[base], 0, bytesPerScanline);
+    }
+}
+
+void Display::latchScanline(int fbY) {
+    if (fbY < 0 || fbY >= FULL_HEIGHT) return;
+
+    int offsetInBank;
+    int bank = getBufferBank(fbY, offsetInBank);
+    Color32* out = &outputFrame[static_cast<size_t>(fbY) * FB_WIDTH];
+
+    if (bank < 0) {
+        // Scanline not in the window (never written) - leave it black.
+        std::memset(out, 0, FB_WIDTH * sizeof(Color32));
         return;
     }
 
-    // Clear 1 KiB bank as part of rolling buffer
-    // In 16-bit mode: 1 KiB = 512 pixels = 2 scanlines
-    // In 32-bit mode: 1 KiB = 256 pixels = 1 scanline
-    // The rolling buffer clears old scanlines to make room for new ones
-    std::memset(&framebuffer[bankIndex * FB_BANK_SIZE], 0, FB_BANK_SIZE);
+    size_t base = static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank;
+    if (renderMode == RenderMode::RGBA16) {
+        for (int x = 0; x < FB_WIDTH; x++) {
+            uint8_t low  = framebuffer[base + x * 2];
+            uint8_t high = framebuffer[base + x * 2 + 1];
+            out[x] = color16To32_LUT[(high << 8) | low];
+        }
+    } else {
+        for (int x = 0; x < FB_WIDTH; x++) {
+            size_t o = base + x * 4;
+            out[x] = (framebuffer[o] << 24) | (framebuffer[o + 1] << 16) |
+                     (framebuffer[o + 2] << 8) | framebuffer[o + 3];
+        }
+    }
 }
 
 Color32 Display::getCurrentColor() const {
@@ -309,95 +315,38 @@ Color32 Display::getPixel(int x, int y) const {
         return 0x00000000; // Out of bounds
     }
 
-    // Use rolling bank system
+    // Live read from the rolling buffer: valid only for scanlines currently in
+    // the window; returns 0 (black) outside it, per the hardware's no-random-
+    // access rule. (Full-frame output for the frontend goes through getScanline*.)
     int offsetInBank;
     int bank = getBufferBank(y, offsetInBank);
-
     if (bank < 0) {
-        return 0x00000000; // Outside buffer window
+        return 0x00000000; // Outside the rolling window
     }
 
+    size_t base = static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank;
     if (renderMode == RenderMode::RGBA16) {
-        // 2 bytes per pixel
-        size_t pixelOffset = x * 2;
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank + pixelOffset;
-        if (offset + 1 < framebuffer.size()) {
-            uint8_t low = framebuffer[offset];
-            uint8_t high = framebuffer[offset + 1];
-            Color16 color16 = (high << 8) | low;
-            return color16To32(color16);
-        }
+        size_t offset = base + x * 2;
+        uint8_t low  = framebuffer[offset];
+        uint8_t high = framebuffer[offset + 1];
+        return color16To32((high << 8) | low);
     } else {
-        // 4 bytes per pixel
-        size_t pixelOffset = x * 4;
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank + pixelOffset;
-        if (offset + 3 < framebuffer.size()) {
-            uint8_t r = framebuffer[offset];
-            uint8_t g = framebuffer[offset + 1];
-            uint8_t b = framebuffer[offset + 2];
-            uint8_t a = framebuffer[offset + 3];
-            return (r << 24) | (g << 16) | (b << 8) | a;
-        }
+        size_t offset = base + x * 4;
+        uint8_t r = framebuffer[offset];
+        uint8_t g = framebuffer[offset + 1];
+        uint8_t b = framebuffer[offset + 2];
+        uint8_t a = framebuffer[offset + 3];
+        return (r << 24) | (g << 16) | (b << 8) | a;
     }
-
-    return 0x00000000;
 }
 
 bool Display::getScanline(int y, Color32* buffer) const {
     if (y < 0 || y >= FULL_HEIGHT || !buffer) {
         return false;
     }
-
-    // Get bank and offset for this scanline
-    int offsetInBank;
-    int bank = getBufferBank(y, offsetInBank);
-
-    if (bank < 0) {
-        // Outside buffer window - fill with black
-        for (int x = 0; x < FB_WIDTH; x++) {
-            buffer[x] = 0x00000000;
-        }
-        return false;
-    }
-
-    // Read entire scanline at once
-    if (renderMode == RenderMode::RGBA16) {
-        // 16-bit mode: 2 bytes per pixel, need to convert to 32-bit
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank;
-        for (int x = 0; x < FB_WIDTH; x++) {
-            size_t pixelOffset = offset + x * 2;
-            if (pixelOffset + 1 < framebuffer.size()) {
-                uint8_t low = framebuffer[pixelOffset];
-                uint8_t high = framebuffer[pixelOffset + 1];
-                Color16 color16 = (high << 8) | low;
-                buffer[x] = color16To32(color16);
-            } else {
-                buffer[x] = 0x00000000;
-            }
-        }
-    } else {
-        // 32-bit mode: 4 bytes per pixel, can use memcpy
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank;
-        if (offset + FB_WIDTH * 4 <= framebuffer.size()) {
-            // Fast path: direct memory copy
-            std::memcpy(buffer, &framebuffer[offset], FB_WIDTH * sizeof(Color32));
-        } else {
-            // Slow path: bounds-checked copy
-            for (int x = 0; x < FB_WIDTH; x++) {
-                size_t pixelOffset = offset + x * 4;
-                if (pixelOffset + 3 < framebuffer.size()) {
-                    uint8_t r = framebuffer[pixelOffset];
-                    uint8_t g = framebuffer[pixelOffset + 1];
-                    uint8_t b = framebuffer[pixelOffset + 2];
-                    uint8_t a = framebuffer[pixelOffset + 3];
-                    buffer[x] = (r << 24) | (g << 16) | (b << 8) | a;
-                } else {
-                    buffer[x] = 0x00000000;
-                }
-            }
-        }
-    }
-
+    // The latched output frame always holds a complete scanline.
+    std::memcpy(buffer, &outputFrame[static_cast<size_t>(y) * FB_WIDTH],
+                FB_WIDTH * sizeof(Color32));
     return true;
 }
 
@@ -405,74 +354,16 @@ bool Display::getScanlineSDL(int y, uint32_t* buffer) const {
     if (y < 0 || y >= FULL_HEIGHT || !buffer) {
         return false;
     }
-
-    // Get bank and offset for this scanline
-    int offsetInBank;
-    int bank = getBufferBank(y, offsetInBank);
-
-    if (bank < 0) {
-        // Outside buffer window - fill with black
-        std::memset(buffer, 0, FB_WIDTH * sizeof(uint32_t));
-        return false;
+    // Convert the latched RGBA output row to SDL ARGB8888.
+    const Color32* src = &outputFrame[static_cast<size_t>(y) * FB_WIDTH];
+    for (int x = 0; x < FB_WIDTH; x++) {
+        Color32 c = src[x];  // packed as (R<<24)|(G<<16)|(B<<8)|A
+        uint8_t r = (c >> 24) & 0xFF;
+        uint8_t g = (c >> 16) & 0xFF;
+        uint8_t b = (c >> 8) & 0xFF;
+        uint8_t a = c & 0xFF;
+        buffer[x] = (a << 24) | (r << 16) | (g << 8) | b;
     }
-
-    size_t offset = bank * FB_BANK_SIZE + offsetInBank;
-
-    // Single-pass conversion to SDL ARGB format
-    if (renderMode == RenderMode::RGBA16) {
-        // 16-bit mode: Use lookup table for instant conversion
-        // Bounds check once for entire scanline (not per pixel!)
-        size_t scanlineEnd = offset + FB_WIDTH * 2;
-        if (scanlineEnd <= framebuffer.size()) {
-            // Fast path: entire scanline is in bounds (no per-pixel bounds check!)
-            const uint16_t* src = reinterpret_cast<const uint16_t*>(&framebuffer[offset]);
-            for (int x = 0; x < FB_WIDTH; x++) {
-                buffer[x] = color16ToSDL_LUT[src[x]];
-            }
-        } else {
-            // Slow path: partial scanline (rare, only at buffer edges)
-            for (int x = 0; x < FB_WIDTH; x++) {
-                size_t pixelOffset = offset + x * 2;
-                if (pixelOffset + 1 < framebuffer.size()) {
-                    uint8_t low = framebuffer[pixelOffset];
-                    uint8_t high = framebuffer[pixelOffset + 1];
-                    Color16 color16 = (high << 8) | low;
-                    buffer[x] = color16ToSDL_LUT[color16];
-                } else {
-                    buffer[x] = 0x00000000;
-                }
-            }
-        }
-    } else {
-        // 32-bit mode: Just reorder bytes from RRGGBBAA to ARGB
-        size_t scanlineEnd = offset + FB_WIDTH * 4;
-        if (scanlineEnd <= framebuffer.size()) {
-            // Fast path: entire scanline is in bounds
-            const uint8_t* src = &framebuffer[offset];
-            for (int x = 0; x < FB_WIDTH; x++) {
-                uint8_t r = src[x * 4];
-                uint8_t g = src[x * 4 + 1];
-                uint8_t b = src[x * 4 + 2];
-                uint8_t a = src[x * 4 + 3];
-                buffer[x] = (a << 24) | (r << 16) | (g << 8) | b;
-            }
-        } else {
-            // Slow path: partial scanline (rare)
-            for (int x = 0; x < FB_WIDTH; x++) {
-                size_t pixelOffset = offset + x * 4;
-                if (pixelOffset + 3 < framebuffer.size()) {
-                    uint8_t r = framebuffer[pixelOffset];
-                    uint8_t g = framebuffer[pixelOffset + 1];
-                    uint8_t b = framebuffer[pixelOffset + 2];
-                    uint8_t a = framebuffer[pixelOffset + 3];
-                    buffer[x] = (a << 24) | (r << 16) | (g << 8) | b;
-                } else {
-                    buffer[x] = 0x00000000;
-                }
-            }
-        }
-    }
-
     return true;
 }
 

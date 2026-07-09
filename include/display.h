@@ -132,16 +132,22 @@ public:
     static Color16 color32To16(Color32 color);
 
 private:
-    // Lookup table for RGBA16 to SDL ARGB conversion (65536 entries)
-    // Pre-computed to eliminate per-pixel bit manipulation
-    static uint32_t color16ToSDL_LUT[65536];
+    // Lookup table for RGBA16 -> RGBA32 (outputFrame format) conversion.
+    // Pre-computed to eliminate per-pixel bit manipulation in latchScanline().
+    static uint32_t color16To32_LUT[65536];
     static bool lutInitialized;
     static void initializeLUT();
 
-    // TEMPORARY HACK: Full framebuffer for direct access (no rolling banks)
-    // 256×256×2 = 128 KiB for 16-bit mode
-    // OLD: 8 banks × 1 KiB each = 8 KiB total
-    std::array<uint8_t, 131072> framebuffer;  // 128 KiB raw buffer (TEMPORARY!)
+    // Rolling framebuffer: 8 banks × 1 KiB = 8 KiB, mapped at $E000-$FFFF in
+    // PPU memory. Holds a sliding window of scanlines (16 in RGBA16, 8 in
+    // RGBA32); scanline y lives in slot (y % window). Writes outside the
+    // current window are dropped (see getBufferBank).
+    std::array<uint8_t, FB_BANKS * FB_BANK_SIZE> framebuffer;  // 8 KiB
+
+    // Latched full-frame output (RGBA32). As each visible scanline is scanned
+    // out, it is copied here from the rolling buffer, so the frontend can read
+    // a complete 256×256 frame even though the live buffer only holds a window.
+    std::array<Color32, FB_WIDTH * FULL_HEIGHT> outputFrame;  // 256 KiB
 
     // Current render mode
     RenderMode renderMode;
@@ -150,12 +156,20 @@ private:
     int currentScanline;
     int currentPixel;
 
-    // Rolling bank management
-    int bufferStartBank;  // Which bank is at index 0 (oldest data)
-    int scanlinesInCurrentBank;  // Track how many scanlines written to current bank
+    // fbY of the oldest scanline currently in the rolling window. The window
+    // covers [windowStart, windowStart + windowScanlines) and tracks the beam.
+    int windowStart;
 
-    // Clear a bank in the buffer when it rolls out
-    void clearBank(int bankIndex);
+    // Number of scanlines the rolling window holds for the current mode.
+    int windowScanlines() const {
+        return (renderMode == RenderMode::RGBA16) ? FB_SCANLINES_16BIT : FB_SCANLINES_32BIT;
+    }
+
+    // Zero one scanline slot when it leaves the window / is reused.
+    void clearSlot(int slot);
+
+    // Copy a fully-scanned scanline from the rolling buffer to outputFrame.
+    void latchScanline(int fbY);
 };
 
 } // namespace ZeroPoint

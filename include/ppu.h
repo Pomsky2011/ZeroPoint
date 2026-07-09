@@ -86,8 +86,24 @@ public:
     // Clock the PPU by one cycle
     void tick();
 
+    // Run up to `cycles` PPU cycles in one call and return how many were
+    // actually consumed. Semantically identical to calling tick() `cycles`
+    // times, but collapses multi-cycle stalls into a single step instead of
+    // spinning one function call per stalled cycle. This is the fast interpreter
+    // path used by the standalone runner/JIT executor.
+    uint32_t runBatch(uint32_t cycles);
+
     // Load microcode into memory
     void loadMicrocode(const uint8_t* code, size_t length, uint16_t offset = 0);
+
+    // Raise a CPU-driven interrupt on the PPU: at its next instruction boundary
+    // the PPU pushes the return address and vectors to `vector`. Highest priority
+    // (above V/H-blank), one-shot. Used by the host/boot ROM to notify a running
+    // PPU program that its code is about to be switched so it can react.
+    void raiseCpuInterrupt(uint16_t vector) {
+        cpuIrqPending = true;
+        cpuIrqVector = vector;
+    }
 
     // Start execution
     void start();
@@ -120,6 +136,12 @@ public:
         return executionPointer;
     }
 
+    // Cycles the PPU is still busy finishing the current instruction (0 = ready
+    // to issue the next one on the following tick). Exposed for debugging/tests.
+    uint32_t getStallCycles() const {
+        return stallCycles;
+    }
+
     // Direct memory access (for debugging and CPU window)
     uint8_t readMemory(uint16_t address) const {
         return handleMemoryRead(address);
@@ -133,6 +155,13 @@ public:
     // Register access for CPU I/O
     void setRegister(uint8_t reg, uint16_t value) {
         if (reg < 64) registers[reg] = value;
+    }
+
+    // Set the live execution pointer (CPU I/O write to PPUPC). Also mirrors
+    // into R62 so reads via getRegister(REG_PC) stay consistent.
+    void setExecutionPointer(uint16_t value) {
+        executionPointer = value;
+        registers[REG_PC] = value;
     }
 
 private:
@@ -166,12 +195,33 @@ private:
     bool vblank;
     bool hblank;
 
+    // Previous-tick blank state. Blank interrupts are edge-triggered: they fire
+    // once on the 0->1 transition, not continuously while the blank line is
+    // asserted. Without this, an ISR that runs longer than a few cycles would be
+    // re-entered at every instruction boundary during the blank period, blowing
+    // the stack. Sampled at each instruction boundary in serviceInterrupts().
+    bool prevVblank;
+    bool prevHblank;
+
+    // CPU-raised (host/boot ROM) interrupt: pending flag + vector. Serviced at
+    // the next instruction boundary with priority over the blank interrupts.
+    bool cpuIrqPending;
+    uint16_t cpuIrqVector;
+
     // Register banks for preset F setpos (4-bit register IDs)
     uint8_t regBankX;
     uint8_t regBankY;
 
     // Cycle counter
     uint32_t cycleCounter;
+
+    // Multi-cycle instruction pacing. An instruction applies its effect on the
+    // cycle it is issued, then occupies the PPU for the remaining cycles of its
+    // cost. While stallCycles > 0 the PPU is "busy" and tick() does nothing but
+    // count down. instrCycles is the cost of the instruction most recently
+    // issued (set during executeInstruction / executePresetF).
+    uint32_t stallCycles;
+    uint16_t instrCycles;
 
     // Display pointer (for memory-mapped I/O)
     Display* display;
@@ -211,6 +261,12 @@ private:
     void executeInstruction();
     void executePresetE(uint8_t subopcode, uint16_t operand);
     void executePresetF(uint8_t subopcode, uint8_t operand);
+
+    // Recognize a pending V/H-blank interrupt at an instruction boundary. If one
+    // fires, pushes the return address, redirects the execution pointer to the
+    // handler, sets the interrupt-entry stall, and returns true. Shared by tick()
+    // and runBatch() so their boundary behavior can never drift apart.
+    bool serviceInterrupts();
 
     // Fetch instruction
     uint16_t fetchInstruction();

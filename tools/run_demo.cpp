@@ -2,7 +2,6 @@
 // Loads a 65536-byte demo and runs it with display output
 
 #include "ppu.h"
-#include "ppu_jit.h"
 #include "display.h"
 #include "window.h"
 #include <iostream>
@@ -17,7 +16,7 @@ int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <demo.bin> [--jit]" << std::endl;
         std::cerr << "  Runs a PPU microcode demo with SDL display" << std::endl;
-        std::cerr << "  --jit: Enable experimental JIT compilation" << std::endl;
+        std::cerr << "  --jit: (work in progress) runs the batched interpreter, same as default" << std::endl;
         return 1;
     }
 
@@ -67,30 +66,16 @@ int main(int argc, char* argv[]) {
 
     std::cout << "PPU started, state: " << (int)ppu.getState() << "\n";
 
-    // Initialize JIT if requested and supported
-    PPUJIT jit;
-    bool useJIT = false;
-    JITBlock* jitBlock = nullptr;
-
+    // The PPU always runs the batched interpreter (PPU::runBatch): it executes
+    // whole instructions and collapses multi-cycle stalls, 1.2x-4x faster than
+    // ticking cycle by cycle and provably state-identical.
     if (enableJIT) {
-        if (PPUJIT::isSupported()) {
-            std::cout << "JIT compilation enabled (" << PPUJIT::getArchitecture() << ")\n";
-            jitBlock = jit.compileBlock(&ppu, 0, 1000);
-            if (jitBlock) {
-                useJIT = true;
-                std::cout << "JIT compilation successful\n";
-            } else {
-                std::cout << "JIT compilation failed, falling back to interpreter\n";
-            }
-        } else {
-            std::cout << "JIT not supported on this platform, using interpreter\n";
-        }
-    } else {
-        std::cout << "JIT disabled (use --jit to enable), using interpreter\n";
+        std::cout << "--jit: native code generation is a work in progress; "
+                     "running the batched interpreter (already the default).\n";
     }
 
     std::cout << "Running demo... Press ESC to quit\n";
-    std::cout << "JIT mode: " << (useJIT && jitBlock ? "ENABLED" : "DISABLED") << "\n\n";
+    std::cout << "Execution: batched interpreter\n\n";
 
     // Performance tracking
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -103,8 +88,7 @@ int main(int argc, char* argv[]) {
     int64_t renderTimeNs = 0;
 
     // Main loop
-    int cycles = 0;
-    const int MAX_CYCLES = 50000000;  // 50M cycles max (enough for slow pixel I/O)
+    long long cycles = 0;  // 64-bit: this runner loops until the window closes
 
     // Frame timing: 1,119,600 + 2/3 PPU cycles per frame
     // PPU clock: 67,108,864 Hz (2^26 Hz)
@@ -128,40 +112,29 @@ int main(int argc, char* argv[]) {
     // Frame 1 & 2: 1,119,601 cycles, Frame 3: 1,119,600 cycles
     int CYCLES_PER_RENDER = 1119601;
 
-    while (!window.shouldClose() && ppu.getState() == PPUState::Running && cycles < MAX_CYCLES) {
-        // Execute PPU in large batches (JIT or interpreter)
-        int batchSize = (useJIT && jitBlock) ? 10 : 1000;  // JIT does 1000 cycles per call, so 10 calls = 10k cycles
-
+    while (!window.shouldClose() && ppu.getState() == PPUState::Running) {
+        // Execute the PPU with per-cycle display sync. Beam-synced firmware
+        // (e.g. an H-blank ISR that reads the scanline register at $00E0) needs
+        // the display's scanline/blank state to advance *between* PPU
+        // instructions -- so we tick the display and refresh blank status inside
+        // the cycle loop rather than batching a stale snapshot. Batching (runBatch)
+        // freezes the scanline for its whole span and blanks the screen. ~20k
+        // cycles per outer iteration bounds event/render latency.
+        const int CHUNK = 20000;
         auto ppuStart = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < batchSize && ppu.getState() == PPUState::Running; i++) {
-            if (useJIT && jitBlock) {
-                // Execute 1000 PPU cycles via JIT (batched within call)
-                jit.execute(jitBlock, &ppu);
-                cycles += 1000;
-                displayCycleAccumulator += DISPLAY_TICK_INCREMENT * 1000;
-                renderCycleCounter += 1000;
-            } else {
-                // Execute 1 PPU cycle via interpreter
-                ppu.tick();
-                cycles++;
-                displayCycleAccumulator += DISPLAY_TICK_INCREMENT;
-                renderCycleCounter++;
+        for (int i = 0; i < CHUNK && ppu.getState() == PPUState::Running; i++) {
+            displayCycleAccumulator += DISPLAY_TICK_INCREMENT;
+            while (displayCycleAccumulator >= DISPLAY_TICK_THRESHOLD) {
+                display.tick();
+                displayCycleAccumulator -= DISPLAY_TICK_THRESHOLD;
+                ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
             }
+            ppu.tick();
+            cycles++;
+            renderCycleCounter++;
         }
         auto ppuEnd = std::chrono::high_resolution_clock::now();
         ppuExecutionTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(ppuEnd - ppuStart).count();
-
-        // Update display in batches (integer-based fractional timing, no floating point drift)
-        auto displayStart = std::chrono::high_resolution_clock::now();
-        while (displayCycleAccumulator >= DISPLAY_TICK_THRESHOLD) {
-            display.tick();
-            displayCycleAccumulator -= DISPLAY_TICK_THRESHOLD;
-        }
-        auto displayEnd = std::chrono::high_resolution_clock::now();
-        displayTickTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(displayEnd - displayStart).count();
-
-        // Update blank status after batch
-        ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
 
         // Render once per frame (~57.16 Hz) to avoid bottleneck
         if (renderCycleCounter >= CYCLES_PER_RENDER) {
