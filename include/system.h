@@ -7,6 +7,7 @@
 #include "dma.h"
 #include "display.h"
 #include "rom.h"
+#include "interrupt_controller.h"
 #include <cstdint>
 #include <string>
 
@@ -28,6 +29,22 @@ public:
     void step();                    // Execute one master clock cycle
     void run(uint64_t cycles);      // Run for N cycles
     bool loadROM(const std::string& filename);
+
+    // Boot ROM / hot-swap: (re)load a subchip's program. The sequence is
+    // notify -> let it acknowledge -> halt -> upload -> restart, so a subchip
+    // that is already running gets interrupted and knows its code is being
+    // switched before it is overwritten (rather than executing garbage mid-swap).
+    //   entry        - execution pointer / PC to (re)start the new program at.
+    //   switchVector - (PPU only) handler the running program is interrupted to
+    //                  before the swap; 0 = don't interrupt, just halt.
+    void loadPPUProgram(const uint8_t* code, size_t length,
+                        uint16_t entry = 0, uint16_t switchVector = 0);
+    void loadAPUProgram(const uint8_t* code, size_t length, uint16_t entry = 0);
+
+    // Code-switch signal delivered to the APU's CPU->APU input port so a running
+    // APU program can poll for an imminent code swap and acknowledge it.
+    static constexpr uint16_t APU_CODESWITCH_PORT   = 0x00;  // DEF88186 input offset
+    static constexpr uint8_t  APU_CODESWITCH_SIGNAL = 0xC5;  // sentinel value
 
     // Component access
     CPU& getCPU() { return cpu; }
@@ -55,6 +72,12 @@ public:
     void setVBlankIRQEnabled(bool enabled) { vblankIRQEnabled = enabled; }
     void setHBlankIRQEnabled(bool enabled) { hblankIRQEnabled = enabled; }
 
+    // Change the timer enable mask. Must go through here (not a raw write to
+    // timers.control) so the next-fire schedule is rebuilt: the per-cycle timer
+    // path is a single comparison against nextTimerEventCycle, and enabling or
+    // disabling a timer changes when that next event is.
+    void setTimerControl(uint8_t value);
+
     // Debug mode
     void setDevMode(bool enabled);
     bool isDevMode() const { return devMode; }
@@ -68,6 +91,11 @@ public:
     static constexpr uint64_t TIMER_K1024_PERIOD = 65536;         // 1/1024 second
     static constexpr uint64_t TIMER_MICRO_PERIOD = 67109;         // 16777/16777216 second
     static constexpr uint64_t TIMER_VBLANK60_PERIOD = TIMER_VBLANK_PERIOD * 60; // 60 V-blanks
+
+    // Interrupt controller (public for I/O register access). Aggregates all
+    // IRQ sources onto the CPU's single maskable line and lets the ISR read
+    // back which source fired.
+    InterruptController intc;
 
     // Timer system state (public for I/O register access)
     struct {
@@ -108,6 +136,27 @@ private:
     // Cycle synchronization
     uint64_t masterCycleCount;
 
+    // Timer next-event scheduling. Rather than incrementing 8 counters every
+    // master cycle, we track the master cycle of the next timer fire and skip
+    // straight to it. Between fires updateTimers() is a single compare.
+    //   nextTimerEventCycle   - masterCycleCount at which some enabled timer
+    //                           next reaches its period; UINT64_MAX when no
+    //                           timer is enabled (fast path always skips).
+    //   timersLastUpdateCycle - the cycle through which the counters have been
+    //                           advanced; the next increment is the cycle after.
+    uint64_t nextTimerEventCycle;
+    uint64_t timersLastUpdateCycle;
+    void rescheduleTimers();   // recompute nextTimerEventCycle from counters
+    void fireDueTimers();      // advance counters to now, fire, reschedule
+
+    // Per-component cycle budgets. Each component accrues clock cycles at its
+    // own rate (CPU = master/4, APU = master/16) and spends them by debiting
+    // each executed instruction's *real* cycle cost. This paces the CPU/APU
+    // by cycles rather than by "one instruction per slot", so multi-cycle
+    // instructions no longer run several times too fast.
+    int64_t cpuCycleBudget;
+    int64_t apuCycleBudget;
+
     // Clock cycle pattern (repeats every 16 master cycles)
     // Cycle 0: PPU, Display
     // Cycle 1: PPU, DMA, Display
@@ -125,10 +174,15 @@ private:
     // Debug mode
     bool devMode;
 
-    // Helper methods
-    void tickComponents();
-    void checkInterrupts();
+    // Helper methods. tickComponents() returns the display's post-tick blank
+    // state via out-params so checkInterrupts() reuses it instead of resampling.
+    void tickComponents(bool& outVBlank, bool& outHBlank);
+    void checkInterrupts(bool currentVBlank, bool currentHBlank);
     void updateTimers();
+
+    // Route a source through the interrupt controller: latch its pending bit
+    // and assert the CPU line if the controller's top-level mask allows it.
+    void signalIRQ(IRQSource src);
 };
 
 } // namespace ZeroPoint

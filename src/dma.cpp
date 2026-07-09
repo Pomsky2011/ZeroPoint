@@ -28,6 +28,7 @@ void DMAController::reset() {
     }
 
     interruptActive = false;
+    busyChannels = 0;
 }
 
 bool DMAController::queueDMA(const uint8_t config[9]) {
@@ -83,6 +84,12 @@ void DMAController::tick() {
         return;
     }
 
+    // Fast idle path: nothing transferring and nothing queued, so there is no
+    // work to scan for. This is the overwhelmingly common case.
+    if (busyChannels == 0 && pendingQueue.empty()) [[likely]] {
+        return;
+    }
+
     // Process active channels (max 2 at a time)
     int processedCount = 0;
     for (uint8_t i = 0; i < 16 && processedCount < MAX_ACTIVE_CHANNELS; i++) {
@@ -130,6 +137,7 @@ void DMAController::startTransfer(uint8_t channel, const DMAConfig& config) {
     transfer.bytesTransferred = 0;
     transfer.totalBytes = config.getTotalSize();
     std::memset(transfer.patternBuffer, 0, sizeof(transfer.patternBuffer));
+    busyChannels++;  // channel is now active (Idle/Complete -> Configuring)
 }
 
 void DMAController::processChannel(uint8_t channel) {
@@ -197,6 +205,7 @@ void DMAController::processChannel(uint8_t channel) {
                     if (transfer.bytesTransferred >= transfer.totalBytes) {
                         transfer.state = DMAState::Complete;
                         transfer.cyclesRemaining = 0;
+                        busyChannels--;  // channel left the active set
                     } else {
                         // Set up for next byte
                         transfer.cyclesRemaining = getCyclesPerByte(transfer.config.getMode());

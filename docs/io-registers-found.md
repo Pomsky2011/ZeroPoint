@@ -105,19 +105,25 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 - Base: `MMP_BASE` = $0000
 - Size: `MMP_SIZE` = $0100 (256 bytes)
 
-**32 Channels** (apu.h:180-191):
-Each `MMPChannel` has:
-- `pitch` (uint16_t) - Playback rate
-- `volume` (uint8_t) - Volume/dynamic range
-- `stlAddress` (uint16_t) - STL entry pointer
-- `samplePosition` (uint16_t) - Current position
+**16 Channels with pan** (each `MMPChannel` has):
+- `pitch` (uint16_t) - Playback rate (0x1000 = 1.0×)
+- `volume` (uint8_t) - 0 = silent, 255 = max
+- `pan` (uint8_t) - 0 = full L, 128 = center, 255 = full R
+- `reserved0` (uint8_t) - Reserved per-channel flags
+- `stlAddress` (uint16_t) - STL entry pointer (0 = off)
+- `samplePosition` (uint32_t) - Fixed-point position (upper bits = index, lower 12 = fraction)
 - `active` (bool) - Channel active flag
 
-**Global MMP Flags**:
-- `reverbFlagsLeft/Right` (uint16_t)
-- `echoFlagsLeft/Right` (uint16_t)
-- `gaussianInterpolationLeft/Right` (bool)
-- `echoDelays[32]` (uint16_t[32])
+**Register Map** ($0000-$00FF):
+| Range       | Size  | Description                          |
+|-------------|-------|--------------------------------------|
+| $0000-$001F | 32 B  | Pitch (ch0-15, 2 bytes each)         |
+| $0020-$002F | 16 B  | Volume (ch0-15, 1 byte each)         |
+| $0030-$003F | 16 B  | Pan (ch0-15, 1 byte each)            |
+| $0040-$004F | 16 B  | Reserved0 (ch0-15, per-channel)      |
+| $0050-$006F | 32 B  | STL address (ch0-15, 2 bytes each)   |
+| $0070-$007F | 16 B  | Reserved1 (global)                   |
+| $0080-$00FF | 128 B | Reserved2                            |
 
 **Access Method**: MMP registers are memory-mapped at $0000-$00FF in APU memory, accessible via bank $60 window.
 

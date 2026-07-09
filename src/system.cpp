@@ -11,6 +11,8 @@ System::System()
     : cpu(), ppu(), apu(), dma(), display(),
       romLoaded(false), entryPoint(0),
       masterCycleCount(0),
+      nextTimerEventCycle(UINT64_MAX), timersLastUpdateCycle(0),
+      cpuCycleBudget(0), apuCycleBudget(0),
       vblankIRQEnabled(false), hblankIRQEnabled(false),
       lastVBlank(false), lastHBlank(false),
       devMode(false)
@@ -74,6 +76,12 @@ void System::reset() {
     dma.reset();
 
     masterCycleCount = 0;
+    nextTimerEventCycle = UINT64_MAX;   // no timers enabled -> nothing scheduled
+    timersLastUpdateCycle = 0;
+    cpuCycleBudget = 0;
+    apuCycleBudget = 0;
+
+    intc.reset();
 
     lastVBlank = false;
     lastHBlank = false;
@@ -128,9 +136,68 @@ bool System::loadROM(const std::string& filename) {
     return true;
 }
 
+// Number of subchip cycles granted after raising the code-switch signal, so a
+// running program reaches an instruction boundary and services/acknowledges the
+// notification before its code memory is overwritten.
+static constexpr int CODE_SWITCH_ACK_CYCLES = 256;
+
+void System::loadPPUProgram(const uint8_t* code, size_t length,
+                            uint16_t entry, uint16_t switchVector) {
+    // 1. If a program is running, interrupt it so it knows the swap is coming,
+    //    and give it a bounded window to reach a boundary and react.
+    if (switchVector != 0 && ppu.getState() == PPUState::Running) {
+        ppu.raiseCpuInterrupt(switchVector);
+        for (int i = 0; i < CODE_SWITCH_ACK_CYCLES; i++) {
+            ppu.tick();
+        }
+    }
+
+    // 2. Halt so the PPU can't execute half-overwritten code. reset() returns it
+    //    to WaitingForStart and clears its memory.
+    ppu.reset();
+
+    // 3. Upload the new microcode at offset 0.
+    ppu.loadMicrocode(code, length, 0);
+
+    // 4. Restart at the new entry point.
+    ppu.setExecutionPointer(entry);
+    ppu.start();
+
+    std::cout << "[boot] PPU program loaded (" << length << " bytes, entry $"
+              << std::hex << entry << std::dec << ")\n";
+}
+
+void System::loadAPUProgram(const uint8_t* code, size_t length, uint16_t entry) {
+    // 1. Signal the APU via its CPU->APU input port that a code switch is coming,
+    //    and let a running program observe/acknowledge it.
+    apu.writeDEF88186Input(APU_CODESWITCH_PORT, APU_CODESWITCH_SIGNAL);
+    if (!apu.isHalted()) {
+        for (int i = 0; i < CODE_SWITCH_ACK_CYCLES; i++) {
+            apu.step();
+        }
+    }
+
+    // 2. Halt so the APU can't execute half-overwritten code.
+    apu.setHalted(true);
+
+    // 3. Upload the new program at address 0.
+    apu.loadROM(code, length, 0);
+
+    // 4. Restart at the new entry point.
+    apu.setPC(entry);
+    apu.setHalted(false);
+
+    std::cout << "[boot] APU program loaded (" << length << " bytes, entry $"
+              << std::hex << entry << std::dec << ")\n";
+}
+
 void System::step() {
-    tickComponents();
-    checkInterrupts();
+    // Read the display's blank state once (post-tick) and hand it to both
+    // consumers instead of recomputing isVBlank()/isHBlank() four times per
+    // master cycle.
+    bool currentVBlank, currentHBlank;
+    tickComponents(currentVBlank, currentHBlank);
+    checkInterrupts(currentVBlank, currentHBlank);
     updateTimers();
     masterCycleCount++;
 }
@@ -147,7 +214,7 @@ void System::run(uint64_t cycles) {
     }
 }
 
-void System::tickComponents() {
+void System::tickComponents(bool& outVBlank, bool& outHBlank) {
     // Integer-based cycle pattern (repeats every 16 master cycles)
     // Each component runs on specific cycles:
     // - PPU:     every cycle (0-15)
@@ -169,36 +236,70 @@ void System::tickComponents() {
         dma.tick();
     }
 
-    // CPU runs every 4 cycles (on cycles 3, 7, 11, 15)
-    if (cyclePhase % 4 == 3) {
+    // CPU runs at master/4 (16 MHz). Accrue one CPU cycle of budget every
+    // 4 master cycles, then execute whole instructions while budget remains,
+    // debiting each instruction's real cycle cost. This makes a 7-cycle
+    // instruction actually take 7 CPU cycles worth of wall-clock pacing
+    // instead of running as fast as a 2-cycle one.
+    if (cyclePhase % 4 == 3 && cpu.getState() == CPUState::Running) {
+        cpuCycleBudget++;
+    }
+    while (cpuCycleBudget > 0 && cpu.getState() == CPUState::Running) {
+        uint64_t before = cpu.cycleCount;
         cpu.step();
+        cpuCycleBudget -= static_cast<int64_t>(cpu.cycleCount - before);
     }
 
-    // APU runs every 16 cycles (on cycle 15)
-    if (cyclePhase == 15) {
+    // APU runs at master/16 (4 MHz). Same cycle-debited pacing; each APU
+    // instruction costs 4 APU cycles, so it now runs at its rated ~1 MIPS
+    // instead of ~4x too fast.
+    if (cyclePhase == 15 && !apu.isHalted()) {
+        apuCycleBudget++;
+    }
+    while (apuCycleBudget > 0 && !apu.isHalted()) {
+        uint64_t before = apu.getCycleCount();
         apu.step();
+        apuCycleBudget -= static_cast<int64_t>(apu.getCycleCount() - before);
     }
 
-    // Update PPU blank status from display
-    ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
+    // Sample the display's blank state once, now that it has ticked. Feed it to
+    // the PPU and return it so checkInterrupts() doesn't recompute it.
+    outVBlank = display.isVBlank();
+    outHBlank = display.isHBlank();
+    ppu.setBlankStatus(outVBlank, outHBlank);
 }
 
-void System::checkInterrupts() {
-    bool currentVBlank = display.isVBlank();
-    bool currentHBlank = display.isHBlank();
+void System::signalIRQ(IRQSource src) {
+    // Latch the source for ISR discrimination, then assert the CPU line only
+    // if the controller's top-level mask allows this source through.
+    intc.raise(src);
+    if (intc.isEnabled(src)) {
+        cpu.triggerIRQ();
+    }
+}
+
+void System::checkInterrupts(bool currentVBlank, bool currentHBlank) {
+    // Fast path: with both blank IRQs disabled and no blank period to fall out
+    // of, no edge can fire and there's nothing to clear. Keep the last-state
+    // latches in sync so enabling an IRQ mid-blank doesn't fabricate an edge.
+    if (!vblankIRQEnabled && !hblankIRQEnabled && !lastVBlank && !lastHBlank) [[likely]] {
+        lastVBlank = currentVBlank;
+        lastHBlank = currentHBlank;
+        return;
+    }
 
     // Detect V-Blank rising edge
     if (vblankIRQEnabled && currentVBlank && !lastVBlank) {
-        // Trigger CPU IRQ for V-Blank
-        cpu.triggerIRQ();
+        // Route V-Blank through the interrupt controller
+        signalIRQ(IRQSource::VBlank);
         // Pause DMA during interrupt
         dma.triggerInterrupt();
     }
 
     // Detect H-Blank rising edge
     if (hblankIRQEnabled && currentHBlank && !lastHBlank) {
-        // Trigger CPU IRQ for H-Blank
-        cpu.triggerIRQ();
+        // Route H-Blank through the interrupt controller
+        signalIRQ(IRQSource::HBlank);
         // Pause DMA during interrupt
         dma.triggerInterrupt();
     }
@@ -224,120 +325,108 @@ void System::setDevMode(bool enabled) {
     }
 }
 
+// Static description of the 8 timers: enable-bit mask + period, in the register
+// bit order 0bVHSQETAR. The matching counters live in the timers struct and are
+// paired up by index in the two helpers below.
+namespace {
+struct TimerDef { uint8_t mask; uint64_t period; };
+constexpr TimerDef TIMER_DEFS[8] = {
+    {0x80, System::TIMER_VBLANK_PERIOD},       // V  V-blank
+    {0x40, System::TIMER_HBLANK_PERIOD},       // H  H-blank
+    {0x20, System::TIMER_SECOND_PERIOD},       // S  1s
+    {0x10, System::TIMER_QUARTER_SEC_PERIOD},  // Q  1/4s
+    {0x08, System::TIMER_EIGHTH_SEC_PERIOD},   // E  1/8s
+    {0x04, System::TIMER_K1024_PERIOD},        // T  1/1024s
+    {0x02, System::TIMER_MICRO_PERIOD},        // A  ~1ms
+    {0x01, System::TIMER_VBLANK60_PERIOD},     // R  60 V-blanks
+};
+} // namespace
+
+// Gather pointers to the counters in the same order as TIMER_DEFS.
+static void collectTimerCounters(decltype(System::timers)& t, uint64_t* out[8]) {
+    out[0] = &t.vblankCounter;    out[1] = &t.hblankCounter;
+    out[2] = &t.secondCounter;    out[3] = &t.quarterSecCounter;
+    out[4] = &t.eighthSecCounter; out[5] = &t.k1024Counter;
+    out[6] = &t.microCounter;     out[7] = &t.vblank60Counter;
+}
+
+void System::rescheduleTimers() {
+    // nextTimerEventCycle = timersLastUpdateCycle + (smallest cycles-to-fire
+    // across enabled timers). Each counter is < its period (we reset on hit),
+    // so period-counter is the number of increments until that timer fires.
+    uint64_t* counters[8];
+    collectTimerCounters(timers, counters);
+
+    uint64_t best = UINT64_MAX;
+    for (int i = 0; i < 8; ++i) {
+        if (timers.control & TIMER_DEFS[i].mask) {
+            uint64_t remaining = TIMER_DEFS[i].period - *counters[i];
+            if (remaining < best) best = remaining;
+        }
+    }
+    nextTimerEventCycle = (best == UINT64_MAX)
+                              ? UINT64_MAX
+                              : timersLastUpdateCycle + best;
+}
+
+void System::fireDueTimers() {
+    uint64_t* counters[8];
+    collectTimerCounters(timers, counters);
+
+    // Advance every enabled counter by the cycles elapsed since we last touched
+    // them. By construction of nextTimerEventCycle this brings exactly the
+    // soonest timer(s) up to their period (never past it), so no fire is missed.
+    uint64_t elapsed = masterCycleCount - timersLastUpdateCycle;
+    for (int i = 0; i < 8; ++i) {
+        if (!(timers.control & TIMER_DEFS[i].mask)) continue;
+        *counters[i] += elapsed;
+        if (*counters[i] >= TIMER_DEFS[i].period) {
+            *counters[i] = 0;
+            timers.status |= TIMER_DEFS[i].mask;
+            if (timers.intEnable & TIMER_DEFS[i].mask) {
+                signalIRQ(IRQSource::Timer);
+            }
+        }
+    }
+    timersLastUpdateCycle = masterCycleCount;
+    rescheduleTimers();
+}
+
 void System::updateTimers() {
-    // Timer bit definitions: 0bVHSQETAR
-    constexpr uint8_t TIMER_VBLANK = 0x80;      // V
-    constexpr uint8_t TIMER_HBLANK = 0x40;      // H
-    constexpr uint8_t TIMER_SECOND = 0x20;      // S
-    constexpr uint8_t TIMER_QUARTER = 0x10;     // Q
-    constexpr uint8_t TIMER_EIGHTH = 0x08;      // E
-    constexpr uint8_t TIMER_K1024 = 0x04;       // T
-    constexpr uint8_t TIMER_MICRO = 0x02;       // A
-    constexpr uint8_t TIMER_VBLANK60 = 0x01;    // R
+    // Fast path: nothing is due (and the no-timers-enabled case parks
+    // nextTimerEventCycle at UINT64_MAX, so this always skips). One compare
+    // instead of eight counter updates per master cycle.
+    if (masterCycleCount < nextTimerEventCycle) [[likely]] {
+        return;
+    }
+    fireDueTimers();
+}
 
-    // V-blank timer
-    if (timers.control & TIMER_VBLANK) {
-        timers.vblankCounter++;
-        if (timers.vblankCounter >= TIMER_VBLANK_PERIOD) {
-            timers.vblankCounter = 0;
-            timers.status |= TIMER_VBLANK;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_VBLANK) {
-                cpu.triggerIRQ();
+void System::setTimerControl(uint8_t value) {
+    // Bring the currently-enabled counters current through the *previous* master
+    // cycle before switching the enabled set, so continuing timers keep exact
+    // phase and any newly-enabled timer starts counting from this cycle. This
+    // catch-up cannot fire a timer: nextTimerEventCycle >= masterCycleCount, so
+    // fewer than "remaining" increments elapse here.
+    if (masterCycleCount > 0) {
+        uint64_t through = masterCycleCount - 1;
+        if (through > timersLastUpdateCycle) {
+            uint64_t catchup = through - timersLastUpdateCycle;
+            uint64_t* counters[8];
+            collectTimerCounters(timers, counters);
+            for (int i = 0; i < 8; ++i) {
+                if (timers.control & TIMER_DEFS[i].mask) {
+                    *counters[i] += catchup;
+                }
             }
+            timersLastUpdateCycle = through;
         }
+    } else {
+        timersLastUpdateCycle = 0;
     }
 
-    // H-blank timer
-    if (timers.control & TIMER_HBLANK) {
-        timers.hblankCounter++;
-        if (timers.hblankCounter >= TIMER_HBLANK_PERIOD) {
-            timers.hblankCounter = 0;
-            timers.status |= TIMER_HBLANK;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_HBLANK) {
-                cpu.triggerIRQ();
-            }
-        }
-    }
-
-    // 1 Second timer
-    if (timers.control & TIMER_SECOND) {
-        timers.secondCounter++;
-        if (timers.secondCounter >= TIMER_SECOND_PERIOD) {
-            timers.secondCounter = 0;
-            timers.status |= TIMER_SECOND;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_SECOND) {
-                cpu.triggerIRQ();
-            }
-        }
-    }
-
-    // 1/4 Second timer
-    if (timers.control & TIMER_QUARTER) {
-        timers.quarterSecCounter++;
-        if (timers.quarterSecCounter >= TIMER_QUARTER_SEC_PERIOD) {
-            timers.quarterSecCounter = 0;
-            timers.status |= TIMER_QUARTER;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_QUARTER) {
-                cpu.triggerIRQ();
-            }
-        }
-    }
-
-    // 1/8 Second timer
-    if (timers.control & TIMER_EIGHTH) {
-        timers.eighthSecCounter++;
-        if (timers.eighthSecCounter >= TIMER_EIGHTH_SEC_PERIOD) {
-            timers.eighthSecCounter = 0;
-            timers.status |= TIMER_EIGHTH;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_EIGHTH) {
-                cpu.triggerIRQ();
-            }
-        }
-    }
-
-    // 1/1024 Second timer
-    if (timers.control & TIMER_K1024) {
-        timers.k1024Counter++;
-        if (timers.k1024Counter >= TIMER_K1024_PERIOD) {
-            timers.k1024Counter = 0;
-            timers.status |= TIMER_K1024;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_K1024) {
-                cpu.triggerIRQ();
-            }
-        }
-    }
-
-    // 16777/16777216 Second timer
-    if (timers.control & TIMER_MICRO) {
-        timers.microCounter++;
-        if (timers.microCounter >= TIMER_MICRO_PERIOD) {
-            timers.microCounter = 0;
-            timers.status |= TIMER_MICRO;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_MICRO) {
-                cpu.triggerIRQ();
-            }
-        }
-    }
-
-    // 60 V-Blank timer
-    if (timers.control & TIMER_VBLANK60) {
-        timers.vblank60Counter++;
-        if (timers.vblank60Counter >= TIMER_VBLANK60_PERIOD) {
-            timers.vblank60Counter = 0;
-            timers.status |= TIMER_VBLANK60;
-            // Trigger interrupt if enabled
-            if (timers.intEnable & TIMER_VBLANK60) {
-                cpu.triggerIRQ();
-            }
-        }
-    }
+    timers.control = value;
+    rescheduleTimers();
 }
 
 // Static DMA callback wrappers
