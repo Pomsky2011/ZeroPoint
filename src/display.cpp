@@ -56,6 +56,7 @@ void Display::tick() {
             currentScanline = 0;
             windowStart = 0;
             framebuffer.fill(0);
+            pendingClearSlot = -1;
             return;
         }
 
@@ -64,8 +65,27 @@ void Display::tick() {
         if (currentScanline >= 1 && currentScanline <= VISIBLE_SCANLINES) [[likely]] {
             int target = currentScanline - 1;
             int window = windowScanlines();
+            int slotsPerBank = (renderMode == RenderMode::RGBA16) ? 2 : 1;
             while (windowStart < target) {
-                clearSlot(windowStart % window);
+                int slot = windowStart % window;
+                // In block mode, the earlier half of a bank pair is held
+                // (not cleared) until its later half also exits, so both
+                // clear together. slotsPerBank alternates defer/flush every
+                // iteration, so a pending slot - if any - is always exactly
+                // this one's bank partner, never stale.
+                bool isLastOfBank = (slot % slotsPerBank) == slotsPerBank - 1;
+                if (!rollingModeBlock || slotsPerBank == 1 || isLastOfBank) {
+                    // Flush a deferral left over from before rollingModeBlock
+                    // changed mid-pair, so toggling the VOC bit mid-frame can
+                    // never permanently strand an uncleared slot.
+                    if (pendingClearSlot >= 0) {
+                        clearSlot(pendingClearSlot);
+                        pendingClearSlot = -1;
+                    }
+                    clearSlot(slot);
+                } else {
+                    pendingClearSlot = slot;
+                }
                 windowStart++;
             }
         }
@@ -82,6 +102,7 @@ void Display::setRenderMode(RenderMode mode) {
     // 32-bit mode: 1 scanline per bank
     framebuffer.fill(0);
     windowStart = 0;
+    pendingClearSlot = -1;
 
     renderMode = mode;
 }

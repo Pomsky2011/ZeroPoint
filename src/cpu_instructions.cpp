@@ -357,7 +357,7 @@ void cpu_inst_0x4C(CPU* cpu) {  // STA (dp)
 }
 
 void cpu_inst_0x4D(CPU* cpu) {  // STA (dp),Y
-    cpu->opSTA(cpu->addrDirectPageIndirectIndexedY());
+    cpu->opSTA(cpu->addrDirectPageIndirectIndexedY(true));
     cpu->cycleCount += 6;
 }
 
@@ -382,12 +382,12 @@ void cpu_inst_0x51(CPU* cpu) {  // STA addr
 }
 
 void cpu_inst_0x52(CPU* cpu) {  // STA addr,X
-    cpu->opSTA(cpu->addrAbsoluteIndexedX());
+    cpu->opSTA(cpu->addrAbsoluteIndexedX(true));
     cpu->cycleCount += 3;
 }
 
 void cpu_inst_0x53(CPU* cpu) {  // STA addr,Y
-    cpu->opSTA(cpu->addrAbsoluteIndexedY());
+    cpu->opSTA(cpu->addrAbsoluteIndexedY(true));
     cpu->cycleCount += 3;
 }
 
@@ -447,7 +447,7 @@ void cpu_inst_0x5E(CPU* cpu) {  // STZ addr
 }
 
 void cpu_inst_0x5F(CPU* cpu) {  // STZ addr,X
-    cpu->opSTZ(cpu->addrAbsoluteIndexedX());
+    cpu->opSTZ(cpu->addrAbsoluteIndexedX(true));
     cpu->cycleCount += 3;
 }
 
@@ -501,7 +501,7 @@ void cpu_inst_0x6A(CPU* cpu) {  // INC addr
 }
 
 void cpu_inst_0x6B(CPU* cpu) {  // INC addr,X
-    cpu->opINC(cpu->addrAbsoluteIndexedX());
+    cpu->opINC(cpu->addrAbsoluteIndexedX(true));
     cpu->cycleCount += 3;
 }
 
@@ -541,7 +541,7 @@ void cpu_inst_0x72(CPU* cpu) {  // DEC addr
 }
 
 void cpu_inst_0x73(CPU* cpu) {  // DEC addr,X
-    cpu->opDEC(cpu->addrAbsoluteIndexedX());
+    cpu->opDEC(cpu->addrAbsoluteIndexedX(true));
     cpu->cycleCount += 3;
 }
 
@@ -611,7 +611,7 @@ void cpu_inst_0x81(CPU* cpu) {  // ROL addr
 }
 
 void cpu_inst_0x82(CPU* cpu) {  // ROL addr,X
-    cpu->opROL(cpu->addrAbsoluteIndexedX(), false);
+    cpu->opROL(cpu->addrAbsoluteIndexedX(true), false);
     cpu->cycleCount += 3;
 }
 
@@ -631,7 +631,7 @@ void cpu_inst_0x85(CPU* cpu) {  // ROR addr
 }
 
 void cpu_inst_0x86(CPU* cpu) {  // ROR addr,X
-    cpu->opROR(cpu->addrAbsoluteIndexedX(), false);
+    cpu->opROR(cpu->addrAbsoluteIndexedX(true), false);
     cpu->cycleCount += 3;
 }
 
@@ -671,7 +671,7 @@ void cpu_inst_0x8E(CPU* cpu) {  // LSR addr
 }
 
 void cpu_inst_0x8F(CPU* cpu) {  // LSR addr,X
-    cpu->opLSR(cpu->addrAbsoluteIndexedX(), false);
+    cpu->opLSR(cpu->addrAbsoluteIndexedX(true), false);
     cpu->cycleCount += 3;
 }
 
@@ -723,7 +723,7 @@ void cpu_inst_0x99(CPU* cpu) {  // ASL addr
 }
 
 void cpu_inst_0x9A(CPU* cpu) {  // ASL addr,X
-    cpu->opASL(cpu->addrAbsoluteIndexedX(), false);
+    cpu->opASL(cpu->addrAbsoluteIndexedX(true), false);
     cpu->cycleCount += 3;
 }
 

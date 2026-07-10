@@ -23,6 +23,7 @@ constexpr uint16_t CYC_MEM           = 3;   // single word load/store (MOV/MOVDP
 constexpr uint16_t CYC_PRESET_E      = 2;   // preset-E: extra decode stage
 constexpr uint16_t CYC_PRESET_F      = 2;   // preset-F default: extra decode stage
 constexpr uint16_t CYC_INT_ENTRY     = 4;   // interrupt entry: push PC + vector
+constexpr uint16_t CYC_CALL          = 4;   // CALL: push return address + table lookup
 
 // Memory-streaming ops: base + one bus cycle per element touched.
 constexpr uint16_t CYC_PAL_BASE      = 2;
@@ -65,6 +66,10 @@ PPU::~PPU() {
 void PPU::reset() {
     // Clear all registers (including R59/R60 interrupt addresses)
     registers.fill(0);
+    // SP defaults into low RAM rather than 0: address 0 is the program's own
+    // entry point, so a push before firmware explicitly sets up its stack
+    // would otherwise corrupt the code it's about to execute.
+    registers[REG_SP] = 0x8000;
 
     // Clear target registers
     targetRegisters.fill(0);
@@ -89,6 +94,7 @@ void PPU::reset() {
     cpuIrqVector = 0;
     regBankX = 0;
     regBankY = 0;
+    callTable.fill(0);
 
     // Reset tile system
     for (auto& tile : tileStorage) {
@@ -121,6 +127,13 @@ void PPU::reset() {
     vocRegisters.translucency[1] = 0x00;
     vocRegisters.translucency[2] = 0x00;
     vocRegisters.translucency[3] = 0x00;
+
+    // Resync the Display to these defaults. A no-op the first time this runs
+    // (during PPU construction, before System has wired up the display
+    // pointer via setDisplay()); on every later reset/hot-swap it prevents
+    // the Display from being stuck in whatever rolling/color mode a prior
+    // $00F0 write left it in.
+    applyVOCRenderMode();
 }
 
 void PPU::loadMicrocode(const uint8_t* code, size_t length, uint16_t offset) {
@@ -150,10 +163,7 @@ bool PPU::serviceInterrupts() {
     // push convention as the blank interrupts so RET stays balanced.
     if (cpuIrqPending) [[unlikely]] {
         cpuIrqPending = false;
-        uint16_t returnAddr = executionPointer;
-        registers[REG_SP] += 2;
-        memory[registers[REG_SP]] = returnAddr & 0xFF;
-        memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;
+        pushReturnAddress(executionPointer);
         executionPointer = cpuIrqVector;
         stallCycles = CYC_INT_ENTRY - 1;
         return true;
@@ -163,14 +173,10 @@ bool PPU::serviceInterrupts() {
     if (vblankEdge) [[unlikely]] {
         bool vblankIntEnabled = (vocRegisters.renderModeControl & VOC_VBLANK_INT) != 0;
         if (vblankIntEnabled && registers[REG_VBLANK_INT] != 0) [[likely]] {
-            // Push return address (little-endian). The stack grows UPWARD to
-            // match the ppuasm PUSH/RET shorthands (PUSH does INC SP; RET pops
-            // with DEC SP). Incrementing before the write keeps interrupt entry
-            // balanced with RET, so an ISR that ends in RET doesn't leak SP.
-            uint16_t returnAddr = executionPointer;
-            registers[REG_SP] += 2;
-            memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
-            memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
+            // Push return address. The stack grows UPWARD to match the
+            // ppuasm PUSH/RET shorthands (PUSH does INC SP; RET pops with
+            // DEC SP), so an ISR that ends in RET doesn't leak SP.
+            pushReturnAddress(executionPointer);
 
             // Jump to interrupt handler
             executionPointer = registers[REG_VBLANK_INT];
@@ -183,13 +189,10 @@ bool PPU::serviceInterrupts() {
     if (hblankEdge) [[unlikely]] {
         bool hblankIntEnabled = (vocRegisters.renderModeControl & VOC_HBLANK_INT) != 0;
         if (hblankIntEnabled && registers[REG_HBLANK_INT] != 0) [[likely]] {
-            // Push return address (little-endian). Stack grows UPWARD to match
-            // the ppuasm PUSH/RET shorthands, so an ISR ending in RET stays
-            // balanced and doesn't leak SP (see V-blank push above).
-            uint16_t returnAddr = executionPointer;
-            registers[REG_SP] += 2;
-            memory[registers[REG_SP]] = returnAddr & 0xFF;        // Low byte
-            memory[registers[REG_SP] + 1] = (returnAddr >> 8) & 0xFF;  // High byte
+            // Push return address. Stack grows UPWARD to match the ppuasm
+            // PUSH/RET shorthands, so an ISR ending in RET stays balanced
+            // (see V-blank push above).
+            pushReturnAddress(executionPointer);
 
             // Jump to interrupt handler
             executionPointer = registers[REG_HBLANK_INT];
@@ -279,10 +282,10 @@ void PPU::executeInstruction() {
 
     switch (static_cast<PPUOpcode>(opcode)) {
         case PPUOpcode::DEFCALL: {
-            // defcall X, Y - define callable function
-            // Encoding: 0000 XXXXXX YYYYYY (regX, regY pre-extracted)
-            // For now, this is a no-op marker
-            // TODO: Implement call table registration
+            // defcall X, Y - register registers[Y] as the entry point for call
+            // slot registers[X] (masked to the table's 8-bit range, matching
+            // CALL's 8-bit operand). Encoding: 0000 XXXXXX YYYYYY.
+            callTable[registers[regX] & 0xFF] = registers[regY];
             break;
         }
 
@@ -615,41 +618,10 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                             // Get 4-bit palette index (high nibble for even pixels, low nibble for odd)
                             uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
 
-                            if (is32bit) {
-                                // 32-bit RGBA mode with 16-color palette
-                                // Convert 16-bit palette entry to 32-bit
-                                uint16_t pal16 = palette16[paletteIndex];
-
-                                // Extract 5-bit components (BBBBBGGGGGRRRRR-A format)
-                                uint8_t r5 = (pal16 >> 1) & 0x1F;
-                                uint8_t g5 = (pal16 >> 6) & 0x1F;
-                                uint8_t b5 = (pal16 >> 11) & 0x1F;
-                                uint8_t a1 = pal16 & 0x01;
-
-                                // Expand 5-bit to 8-bit
-                                uint8_t r8 = (r5 << 3) | (r5 >> 2);
-                                uint8_t g8 = (g5 << 3) | (g5 >> 2);
-                                uint8_t b8 = (b5 << 3) | (b5 >> 2);
-                                uint8_t a8 = a1 ? 0xFF : 0x00;
-
-                                color = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
-                            } else {
-                                // 16-bit mode with 16-color palette - use 16-bit palette directly
-                                uint16_t pal16 = palette16[paletteIndex];
-
-                                // Extract and expand to 32-bit for drawing
-                                uint8_t r5 = (pal16 >> 1) & 0x1F;
-                                uint8_t g5 = (pal16 >> 6) & 0x1F;
-                                uint8_t b5 = (pal16 >> 11) & 0x1F;
-                                uint8_t a1 = pal16 & 0x01;
-
-                                uint8_t r8 = (r5 << 3) | (r5 >> 2);
-                                uint8_t g8 = (g5 << 3) | (g5 >> 2);
-                                uint8_t b8 = (b5 << 3) | (b5 >> 2);
-                                uint8_t a8 = a1 ? 0xFF : 0x00;
-
-                                color = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
-                            }
+                            // Both is32bit and !is32bit draw from the 16-color
+                            // palette; the entry is always 16-bit, so expansion
+                            // to 32-bit RGBA is identical either way.
+                            color = expandPalette16(palette16[paletteIndex]);
                         } else {
                             // 8bpp mode: 1 pixel per byte, use palette lookup
                             uint8_t paletteIndex = tileStorage[currentTileId][ty * 8 + tx];
@@ -661,19 +633,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                                 // 16-bit mode with 256-color palette
                                 // Use lower 16 entries or convert to 16-bit format
                                 if (paletteIndex < 16) {
-                                    uint16_t pal16 = palette16[paletteIndex];
-
-                                    uint8_t r5 = (pal16 >> 1) & 0x1F;
-                                    uint8_t g5 = (pal16 >> 6) & 0x1F;
-                                    uint8_t b5 = (pal16 >> 11) & 0x1F;
-                                    uint8_t a1 = pal16 & 0x01;
-
-                                    uint8_t r8 = (r5 << 3) | (r5 >> 2);
-                                    uint8_t g8 = (g5 << 3) | (g5 >> 2);
-                                    uint8_t b8 = (b5 << 3) | (b5 >> 2);
-                                    uint8_t a8 = a1 ? 0xFF : 0x00;
-
-                                    color = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
+                                    color = expandPalette16(palette16[paletteIndex]);
                                 } else {
                                     // Fallback: grayscale for palette indices >= 16
                                     color = (paletteIndex << 24) | (paletteIndex << 16) |
@@ -763,9 +723,13 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
         }
 
         case PresetFOpcode::CALL: {
-            // call X - call function at address X (from defcall)
-            // Would need a call stack - placeholder
-            // registers[REG_PC] = operand;
+            // call X - call the function registered under slot X (via DEFCALL).
+            // Pushes the return address the same way blank/CPU interrupt entry
+            // does (SP grows upward), so the ppuasm RET shorthand
+            // (SETDP SP; DEC SP; DEC SP; MOV PC; JMR) can pop it back.
+            pushReturnAddress(executionPointer);
+            executionPointer = callTable[operand];
+            instrCycles = CYC_CALL;
             break;
         }
 
@@ -839,21 +803,23 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
     // Memory-mapped display I/O region: 0x0100-0x010B (word-aligned for MOVDP)
     // 0x0100-0x0101: X position (16-bit)
     // 0x0102-0x0103: Y position (16-bit)
-    // 0x0104-0x0105: Red component (16-bit, low byte used)
-    // 0x0106-0x0107: Green component (16-bit, low byte used)
-    // 0x0108-0x0109: Blue component (16-bit, low byte used)
-    // 0x010A-0x010B: Alpha component (16-bit, low byte used) - writing triggers pixel draw
+    // 0x0104-0x0105: Palette index (16-bit, low byte used) - see VOC_PALETTE_MODE
+    // 0x0106-0x0109: unused
+    // 0x010A-0x010B: (16-bit, low byte used) - writing triggers the pixel draw
 
     if (address == 0x010A && display != nullptr) {
-        // Extract position and color from memory (little-endian 16-bit values)
+        // Extract position from memory (little-endian 16-bit values)
         uint16_t x = memory[0x0100] | (memory[0x0101] << 8);
         uint16_t y = memory[0x0102] | (memory[0x0103] << 8);
 
-        // Build RGBA32 color (RRGGBBAA format) - use low bytes of 16-bit values
-        uint32_t color = (memory[0x0104] << 24) |  // R
-                        (memory[0x0106] << 16) |   // G
-                        (memory[0x0108] << 8) |    // B
-                        memory[0x010A];            // A
+        // The pixel-draw port is palette-indexed, like tile drawing. VOC bit 3
+        // (VOC_PALETTE_MODE) picks which table the index in $0104 selects.
+        uint32_t color;
+        if ((vocRegisters.renderModeControl & VOC_PALETTE_MODE) != 0) {
+            color = palette256[memory[0x0104]];
+        } else {
+            color = expandPalette16(palette16[memory[0x0104] & 0x0F]);
+        }
 
         // Draw pixel to display
         display->setPixel32(x, y, color);
@@ -998,14 +964,20 @@ void PPU::applyVOCRenderMode() {
     bool is32bit = (vocRegisters.renderModeControl & VOC_COLOR_DEPTH) != 0;
     display->setRenderMode(is32bit ? RenderMode::RGBA32 : RenderMode::RGBA16);
 
-    // TODO: Apply rolling mode setting (bit 6) when display supports it
-    // TODO: Apply palette mode setting (bit 3) when palette system is implemented
+    // Apply rolling mode setting (bit 6): 0=block, 1=single.
+    bool singleMode = (vocRegisters.renderModeControl & VOC_ROLLING_MODE) != 0;
+    display->setRollingMode(!singleMode);
+
+    // Palette mode (bit 3) is applied at the $0100-$010B pixel-draw port
+    // (handleMemoryWrite), which reads vocRegisters.renderModeControl
+    // directly rather than caching it here.
 }
 
 void PPU::applyVOCReset() {
     // Reset PPU state but preserve VRAM (memory)
     // Don't clear memory - only registers and state
     registers.fill(0);
+    registers[REG_SP] = 0x8000;  // see PPU::reset() - avoid a stray push corrupting code at 0
     targetRegisters.fill(0);
     targetBytes.fill(0);
     executionPointer = 0;
@@ -1016,6 +988,7 @@ void PPU::applyVOCReset() {
     instrCycles = CYC_BASE;
     regBankX = 0;
     regBankY = 0;
+    callTable.fill(0);
 
     // Reset tile system
     for (auto& tile : tileStorage) {
@@ -1043,13 +1016,13 @@ void PPU::loadPalette256() {
     // Load 256-color palette from memory address pointed to by DP
     uint16_t addr = registers[REG_DP];
 
-    // Read 256 palette entries (32-bit format: RRGGBBAA)
+    // Read 256 palette entries (32-bit format: RRGGBBAA, b0=R first in memory)
     for (int i = 0; i < 256; i++) {
         uint8_t b0 = memory[addr + i * 4];
         uint8_t b1 = memory[addr + i * 4 + 1];
         uint8_t b2 = memory[addr + i * 4 + 2];
         uint8_t b3 = memory[addr + i * 4 + 3];
-        palette256[i] = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+        palette256[i] = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
     }
 }
 

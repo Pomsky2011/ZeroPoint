@@ -241,19 +241,22 @@ uint32_t CPU::addrAbsoluteLong() {
     return fetch24();
 }
 
-uint32_t CPU::addrAbsoluteIndexedX() {
+uint32_t CPU::addrAbsoluteIndexedX(bool alwaysPenalize) {
     uint16_t offset = fetch16();
     uint16_t effectiveOffset = offset + (P.X ? (X & 0xFF) : X);
-    // 65C816 read penalty: +1 cycle when indexing crosses a page boundary.
-    // (Approximation: also applied to stores, which are always slow on real HW.)
-    if ((offset & 0xFF00) != (effectiveOffset & 0xFF00)) cycleCount += 1;
+    // 65C816: reads pay +1 cycle only when indexing crosses a page boundary;
+    // writes/RMW always pay it (alwaysPenalize), since the fixup cycle can't
+    // be skipped once the CPU commits to a write.
+    bool crossed = (offset & 0xFF00) != (effectiveOffset & 0xFF00);
+    if (crossed || alwaysPenalize) cycleCount += 1;
     return (DB << 16) | effectiveOffset;
 }
 
-uint32_t CPU::addrAbsoluteIndexedY() {
+uint32_t CPU::addrAbsoluteIndexedY(bool alwaysPenalize) {
     uint16_t offset = fetch16();
     uint16_t effectiveOffset = offset + (P.X ? (Y & 0xFF) : Y);
-    if ((offset & 0xFF00) != (effectiveOffset & 0xFF00)) cycleCount += 1;  // page cross
+    bool crossed = (offset & 0xFF00) != (effectiveOffset & 0xFF00);
+    if (crossed || alwaysPenalize) cycleCount += 1;  // page cross / forced write penalty
     return (DB << 16) | effectiveOffset;
 }
 
@@ -301,13 +304,15 @@ uint32_t CPU::addrDirectPageIndexedIndirectX() {
     return (DB << 16) | pointer;
 }
 
-uint32_t CPU::addrDirectPageIndirectIndexedY() {
+uint32_t CPU::addrDirectPageIndirectIndexedY(bool alwaysPenalize) {
     uint8_t offset = fetch();
     uint16_t dpAddr = (D + offset) & 0xFFFF;
     uint16_t pointer = readWord(dpAddr);
     uint16_t effectiveAddr = pointer + (P.X ? (Y & 0xFF) : Y);
-    // 65C816 read penalty: +1 cycle when the (dp),Y index crosses a page.
-    if ((pointer & 0xFF00) != (effectiveAddr & 0xFF00)) cycleCount += 1;
+    // 65C816: +1 cycle when the (dp),Y index crosses a page on a read; a
+    // write (alwaysPenalize) always pays it.
+    bool crossed = (pointer & 0xFF00) != (effectiveAddr & 0xFF00);
+    if (crossed || alwaysPenalize) cycleCount += 1;
     return (DB << 16) | effectiveAddr;
 }
 
@@ -1384,11 +1389,20 @@ void CPU::opBRK() {
 }
 
 void CPU::opCOP() {
-    uint8_t copValue = fetch();  // Signature byte = COP operand
-    // COP pokes an interrupt device at $D880XX, where XX is the COP operand.
-    // TODO: map $D88000-$D880FF to a real interrupt controller device; for now
-    //       the poke lands in the I/O bank as a stub so the value is observable.
-    writeByte(0xD88000 | copValue, copValue);
+    fetch();  // Skip signature byte (software-readable by the handler via the
+              // pushed PC, same convention as BRK; hardware doesn't act on it)
+    push8(PB);
+    push16(PC);
+    push8(P.toByte());
+    P.I = true;
+    P.D = false;
+    // Vector through the COP handler at $00:FFE4-FFE5 (native 65C816), one
+    // slot below BRK's $00:FFE6 in the same vector table. Like BRK, this is a
+    // direct CPU-internal software trap — it does not go through the shared
+    // peripheral InterruptController at $D80058, which only aggregates
+    // hardware-sourced IRQs (V-blank/H-blank/Timer/DMA).
+    PC = readWord(0x00FFE4);
+    PB = 0x00;
     cycleCount += 7;
 }
 

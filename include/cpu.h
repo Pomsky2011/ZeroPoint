@@ -149,8 +149,13 @@ public:
     uint32_t addrImmediate();
     uint32_t addrAbsolute();
     uint32_t addrAbsoluteLong();
-    uint32_t addrAbsoluteIndexedX();
-    uint32_t addrAbsoluteIndexedY();
+    // alwaysPenalize: real 65C816 hardware always spends the index-fixup
+    // cycle on writes/read-modify-write (it must compute the address before
+    // it knows whether a read could have skipped it), but only spends it on
+    // reads when the index actually crosses a page boundary. Reads pass the
+    // default (false); stores/RMW pass true.
+    uint32_t addrAbsoluteIndexedX(bool alwaysPenalize = false);
+    uint32_t addrAbsoluteIndexedY(bool alwaysPenalize = false);
     uint32_t addrAbsoluteLongIndexedX();
     uint32_t addrDirectPage();
     uint32_t addrDirectPageIndexedX();
@@ -158,7 +163,7 @@ public:
     uint32_t addrDirectPageIndirect();
     uint32_t addrDirectPageIndirectLong();
     uint32_t addrDirectPageIndexedIndirectX();
-    uint32_t addrDirectPageIndirectIndexedY();
+    uint32_t addrDirectPageIndirectIndexedY(bool alwaysPenalize = false);
     uint32_t addrDirectPageIndirectLongIndexedY();
     uint32_t addrStackRelative();
     uint32_t addrStackRelativeIndirectIndexedY();

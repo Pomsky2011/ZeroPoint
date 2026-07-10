@@ -212,6 +212,11 @@ private:
     uint8_t regBankX;
     uint8_t regBankY;
 
+    // Call table (DEFCALL/CALL): DEFCALL registers an entry-point address
+    // under an 8-bit slot number; CALL's 8-bit operand looks the address up
+    // and jumps to it, matching PresetFOpcode::CALL's addressing range.
+    std::array<uint16_t, 256> callTable;
+
     // Cycle counter
     uint32_t cycleCounter;
 
@@ -268,6 +273,16 @@ private:
     // and runBatch() so their boundary behavior can never drift apart.
     bool serviceInterrupts();
 
+    // Push a return address onto the PPU stack (SP grows upward, matching the
+    // ppuasm PUSH/RET shorthands). Shared by every interrupt-entry path and
+    // CALL. Wraps SP and the memory index at 16 bits rather than indexing past
+    // the end of `memory` when SP is 0xFFFF.
+    void pushReturnAddress(uint16_t returnAddr) {
+        registers[REG_SP] += 2;
+        memory[registers[REG_SP]] = returnAddr & 0xFF;
+        memory[(registers[REG_SP] + 1) & 0xFFFF] = (returnAddr >> 8) & 0xFF;
+    }
+
     // Fetch instruction
     uint16_t fetchInstruction();
 
@@ -297,6 +312,21 @@ private:
     void loadPalette16();
     void loadPalette256();
     uint32_t applyTranslucency(uint32_t color, uint8_t tileIndex);
+
+    // Expand a 16-bit palette entry (BBBBBGGGGGRRRRR-A) to 32-bit RGBA,
+    // shared by TILEDRAW's 16-color paths and the palette-indexed pixel-draw
+    // port.
+    static inline uint32_t expandPalette16(uint16_t pal16) {
+        uint8_t r5 = (pal16 >> 1) & 0x1F;
+        uint8_t g5 = (pal16 >> 6) & 0x1F;
+        uint8_t b5 = (pal16 >> 11) & 0x1F;
+        uint8_t a1 = pal16 & 0x01;
+        uint8_t r8 = (r5 << 3) | (r5 >> 2);
+        uint8_t g8 = (g5 << 3) | (g5 >> 2);
+        uint8_t b8 = (b5 << 3) | (b5 >> 2);
+        uint8_t a8 = a1 ? 0xFF : 0x00;
+        return (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
+    }
     uint32_t blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alpha);
 };
 

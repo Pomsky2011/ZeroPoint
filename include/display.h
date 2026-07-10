@@ -79,6 +79,14 @@ public:
     RenderMode getRenderMode() const { return renderMode; }
     void setRenderMode(RenderMode mode);
 
+    // VOC rolling mode (bit 6 of $00F0): block=true rotates a whole 1 KiB
+    // bank (2 scanlines in RGBA16, 1 in RGBA32) as a unit, clearing both
+    // halves together only once the later scanline of the pair exits the
+    // window. block=false (VOC "single") clears each scanline slot the
+    // instant it exits, independent of its bank partner. In RGBA32 mode a
+    // bank already holds exactly one scanline, so the two are identical.
+    void setRollingMode(bool block) { rollingModeBlock = block; }
+
     // Get the current pixel color being output (if in visible area)
     // Returns 32-bit color (16-bit values are expanded)
     Color32 getCurrentColor() const;
@@ -159,6 +167,15 @@ private:
     // fbY of the oldest scanline currently in the rolling window. The window
     // covers [windowStart, windowStart + windowScanlines) and tracks the beam.
     int windowStart;
+
+    // See setRollingMode(). Defaults to true (block), matching the VOC
+    // render-mode-control register's power-on value of 0x00 (bit 6 clear).
+    bool rollingModeBlock = true;
+
+    // Block-mode's deferred clear: the earlier half of a bank pair, held
+    // until its partner exits so both clear together. -1 when nothing is
+    // deferred. See Display::tick().
+    int pendingClearSlot = -1;
 
     // Number of scanlines the rolling window holds for the current mode.
     int windowScanlines() const {
