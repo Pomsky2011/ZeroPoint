@@ -107,10 +107,6 @@ void Display::setRenderMode(RenderMode mode) {
     renderMode = mode;
 }
 
-size_t Display::getFramebufferSize() const {
-    return FB_BANKS * FB_BANK_SIZE;  // Always 8 KiB
-}
-
 int Display::getBufferBank(int y, int& offsetInBank) const {
     // Map an absolute scanline Y to its slot in the rolling window. Scanline y
     // lives in slot (y % window); only scanlines currently inside the window
@@ -173,100 +169,6 @@ void Display::latchScanline(int fbY) {
                      (framebuffer[o + 2] << 8) | framebuffer[o + 3];
         }
     }
-}
-
-Color32 Display::getCurrentColor() const {
-    if (!isVisibleArea()) {
-        return 0x00000000; // Return transparent black if not in visible area
-    }
-
-    // Scanline 1 maps to framebuffer row 0
-    int fbY = currentScanline - 1;
-    int fbX = currentPixel;
-
-    if (fbY < 0 || fbY >= 256 || fbX < 0 || fbX >= 256) {
-        return 0x00000000;
-    }
-
-    // Use rolling bank system
-    int offsetInBank;
-    int bank = getBufferBank(fbY, offsetInBank);
-
-    if (bank < 0) {
-        return 0x00000000; // Outside buffer window
-    }
-
-    if (renderMode == RenderMode::RGBA16) {
-        // 2 bytes per pixel
-        size_t pixelOffset = fbX * 2;
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank + pixelOffset;
-        if (offset + 1 < framebuffer.size()) {
-            uint8_t low = framebuffer[offset];
-            uint8_t high = framebuffer[offset + 1];
-            Color16 color16 = (high << 8) | low;
-            return color16To32(color16);
-        }
-    } else {
-        // 4 bytes per pixel
-        size_t pixelOffset = fbX * 4;
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank + pixelOffset;
-        if (offset + 3 < framebuffer.size()) {
-            uint8_t r = framebuffer[offset];
-            uint8_t g = framebuffer[offset + 1];
-            uint8_t b = framebuffer[offset + 2];
-            uint8_t a = framebuffer[offset + 3];
-            return (r << 24) | (g << 16) | (b << 8) | a;
-        }
-    }
-
-    return 0x00000000;
-}
-
-Color16 Display::getCurrentColor16() const {
-    if (!isVisibleArea()) {
-        return 0x0000; // Return black if not in visible area
-    }
-
-    // Scanline 1 maps to framebuffer row 0
-    int fbY = currentScanline - 1;
-    int fbX = currentPixel;
-
-    if (fbY < 0 || fbY >= 256 || fbX < 0 || fbX >= 256) {
-        return 0x0000;
-    }
-
-    // Use rolling bank system
-    int offsetInBank;
-    int bank = getBufferBank(fbY, offsetInBank);
-
-    if (bank < 0) {
-        return 0x0000; // Outside buffer window
-    }
-
-    if (renderMode == RenderMode::RGBA16) {
-        // 2 bytes per pixel
-        size_t pixelOffset = fbX * 2;
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank + pixelOffset;
-        if (offset + 1 < framebuffer.size()) {
-            uint8_t low = framebuffer[offset];
-            uint8_t high = framebuffer[offset + 1];
-            return (high << 8) | low;
-        }
-    } else {
-        // 4 bytes per pixel
-        size_t pixelOffset = fbX * 4;
-        size_t offset = bank * FB_BANK_SIZE + offsetInBank + pixelOffset;
-        if (offset + 3 < framebuffer.size()) {
-            uint8_t r = framebuffer[offset];
-            uint8_t g = framebuffer[offset + 1];
-            uint8_t b = framebuffer[offset + 2];
-            uint8_t a = framebuffer[offset + 3];
-            Color32 color32 = (r << 24) | (g << 16) | (b << 8) | a;
-            return color32To16(color32);
-        }
-    }
-
-    return 0x0000;
 }
 
 void Display::setPixel(int x, int y, Color16 color) {

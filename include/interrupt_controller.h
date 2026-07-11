@@ -61,9 +61,6 @@ public:
         return (enable_ & static_cast<uint8_t>(src)) != 0;
     }
 
-    // Sources that are both pending and enabled.
-    uint8_t pendingEnabled() const { return pending_ & enable_; }
-
 private:
     uint8_t pending_;
     uint8_t enable_;

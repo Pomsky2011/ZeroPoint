@@ -211,29 +211,9 @@ void APU::setIOBank(uint16_t bank) {
     ioBank = bank;
 }
 
-uint8_t APU::readDEF88186Input(uint16_t offset) {
-    if (offset < DEF88186_INPUT_SIZE) {
-        return memory[DEF88186_INPUT_BASE + offset];
-    }
-    return 0;
-}
-
 void APU::writeDEF88186Input(uint16_t offset, uint8_t value) {
     if (offset < DEF88186_INPUT_SIZE) {
         memory[DEF88186_INPUT_BASE + offset] = value;
-    }
-}
-
-uint8_t APU::readDEF88186Output(uint16_t offset) {
-    if (offset < DEF88186_OUTPUT_SIZE) {
-        return memory[DEF88186_OUTPUT_BASE + offset];
-    }
-    return 0;
-}
-
-void APU::writeDEF88186Output(uint16_t offset, uint8_t value) {
-    if (offset < DEF88186_OUTPUT_SIZE) {
-        memory[DEF88186_OUTPUT_BASE + offset] = value;
     }
 }
 

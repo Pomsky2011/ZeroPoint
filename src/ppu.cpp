@@ -254,12 +254,6 @@ uint32_t PPU::runBatch(uint32_t cycles) {
     return cycles - remaining;
 }
 
-uint16_t PPU::fetchInstruction() {
-    uint16_t instruction = (memory[executionPointer] << 8) | memory[executionPointer + 1];
-    executionPointer += 2;
-    return instruction;
-}
-
 void PPU::executeInstruction() {
     // OPTIMIZED: Inline fetch and decode
     // Fetch instruction (big-endian, 2 bytes)

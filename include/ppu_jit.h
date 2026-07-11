@@ -34,9 +34,6 @@ public:
     // Invalidate all compiled blocks
     void invalidateAll();
 
-    // Get or compile block at address
-    JITBlock* getBlock(PPU* ppu, uint16_t addr);
-
     // Check if JIT is supported on this platform
     static bool isSupported();
 

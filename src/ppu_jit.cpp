@@ -342,18 +342,4 @@ void PPUJIT::invalidateAll() {
     blocks.clear();
 }
 
-JITBlock* PPUJIT::getBlock(PPU* ppu, uint16_t addr) {
-    auto it = blocks.find(addr);
-    if (it != blocks.end() && it->second->valid) {
-        return it->second;
-    }
-
-    // Compile new block
-    JITBlock* block = compileBlock(ppu, addr, 1000);
-    if (block) {
-        blocks[addr] = block;
-    }
-    return block;
-}
-
 } // namespace ZeroPoint

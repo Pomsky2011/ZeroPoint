@@ -87,13 +87,6 @@ public:
     // bank already holds exactly one scanline, so the two are identical.
     void setRollingMode(bool block) { rollingModeBlock = block; }
 
-    // Get the current pixel color being output (if in visible area)
-    // Returns 32-bit color (16-bit values are expanded)
-    Color32 getCurrentColor() const;
-
-    // Get 16-bit color (for legacy/compatibility)
-    Color16 getCurrentColor16() const;
-
     // Direct framebuffer access (for testing/debugging)
     // Returns pointer to rolling 8-bank buffer (8 KiB)
     // 16-bit mode
@@ -103,9 +96,6 @@ public:
     // 32-bit mode
     Color32* getFramebuffer32() { return reinterpret_cast<Color32*>(framebuffer.data()); }
     const Color32* getFramebuffer32() const { return reinterpret_cast<const Color32*>(framebuffer.data()); }
-
-    // Get framebuffer size in bytes
-    size_t getFramebufferSize() const;
 
     // Get the bank and offset for a given Y coordinate in the rolling buffer
     // Returns bank index (0-7) or -1 if outside buffer window

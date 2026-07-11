@@ -136,12 +136,6 @@ public:
         return executionPointer;
     }
 
-    // Cycles the PPU is still busy finishing the current instruction (0 = ready
-    // to issue the next one on the following tick). Exposed for debugging/tests.
-    uint32_t getStallCycles() const {
-        return stallCycles;
-    }
-
     // Direct memory access (for debugging and CPU window)
     uint8_t readMemory(uint16_t address) const {
         return handleMemoryRead(address);
@@ -282,9 +276,6 @@ private:
         memory[registers[REG_SP]] = returnAddr & 0xFF;
         memory[(registers[REG_SP] + 1) & 0xFFFF] = (returnAddr >> 8) & 0xFF;
     }
-
-    // Fetch instruction
-    uint16_t fetchInstruction();
 
     // Helper methods
     // Inline hot-path flag functions to eliminate function call overhead

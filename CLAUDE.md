@@ -292,9 +292,9 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 ```
 ZeroPoint/          - Emulator core
 ├── include/        - Headers (display, ppu, apu, cpu, dma, rom, window, vulkan_window, ppu_jit, interrupt_controller)
-│   ├── cpu_instructions.h, ppu_instructions.h, apu_instructions.h - Instruction dispatch headers
+│   ├── cpu_instructions.h - Instruction dispatch header (PPU/APU dispatch live in ppu.cpp/apu.cpp)
 ├── src/            - Implementation (including vulkan_window.cpp)
-│   ├── cpu_instructions.cpp, ppu_instructions.cpp, apu_instructions.cpp - Instruction handlers
+│   ├── cpu_instructions.cpp - Instruction handlers
 ├── qt/             - Qt frontend
 ├── tools/          - Test/demo runners (test_jit, run_demo_vulkan, etc.)
 ├── shaders/        - Vulkan GLSL shaders (compiled to SPIR-V)
