@@ -15,6 +15,7 @@ System::System()
       masterCycleCount(0),
       nextTimerEventCycle(UINT64_MAX), timersLastUpdateCycle(0),
       cpuCycleBudget(0), apuCycleBudget(0),
+      audioSampleAccum(0),
       vblankIRQEnabled(false), hblankIRQEnabled(false),
       lastVBlank(false), lastHBlank(false),
       devMode(false)
@@ -87,6 +88,8 @@ void System::reset() {
     timersLastUpdateCycle = 0;
     cpuCycleBudget = 0;
     apuCycleBudget = 0;
+    audioSampleAccum = 0;
+    audioBuffer.clear();
 
     intc.reset();
 
@@ -332,6 +335,17 @@ void System::tickComponents(bool& outVBlank, bool& outHBlank) {
     outVBlank = display.isVBlank();
     outHBlank = display.isHBlank();
     ppu.setBlankStatus(outVBlank, outHBlank);
+
+    // MMP mixer runs independently of the APU's CPU (it's a hardware
+    // sequencer driven by channel registers, not fetch/decode/execute), so
+    // sample it on its own schedule regardless of apu.isHalted().
+    audioSampleAccum += AUDIO_SAMPLE_RATE;
+    if (audioSampleAccum >= TIMER_SECOND_PERIOD) {
+        audioSampleAccum -= TIMER_SECOND_PERIOD;
+        apu.updateMMP();
+        audioBuffer.push_back(apu.getMixedSampleLeft());
+        audioBuffer.push_back(apu.getMixedSampleRight());
+    }
 }
 
 void System::signalIRQ(IRQSource src) {

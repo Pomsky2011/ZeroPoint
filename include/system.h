@@ -32,6 +32,10 @@ public:
     static constexpr uint64_t CYCLES_PER_FRAME =
         static_cast<uint64_t>(TOTAL_SCANLINES) * TOTAL_PIXELS_PER_LINE;
 
+    // Sample rate the APU's MMP mixer is polled at (see getAudioBuffer()).
+    // A frontend's audio device should be opened at this same rate.
+    static constexpr uint32_t AUDIO_SAMPLE_RATE = 48000;
+
     // System control
     void reset();
 
@@ -93,6 +97,14 @@ public:
 
     // Statistics
     uint64_t getMasterCycleCount() const { return masterCycleCount; }
+
+    // Interleaved stereo 16-bit PCM produced by the APU's MMP mixer -
+    // getMixedSampleLeft()/Right() polled once per 1/AUDIO_SAMPLE_RATE of
+    // emulated time, appended during step()/run()/stepFrame(). Frontends
+    // should drain this after each stepFrame() (e.g. queue it to an audio
+    // device) and clear it; it is never cleared internally.
+    const std::vector<int16_t>& getAudioBuffer() const { return audioBuffer; }
+    void clearAudioBuffer() { audioBuffer.clear(); }
 
     // Configuration
     void setVBlankIRQEnabled(bool enabled) { vblankIRQEnabled = enabled; }
@@ -191,6 +203,15 @@ private:
     // instructions no longer run several times too fast.
     int64_t cpuCycleBudget;
     int64_t apuCycleBudget;
+
+    // Audio sample pacing: a Bresenham-style accumulator (add
+    // AUDIO_SAMPLE_RATE each master cycle, fire and subtract
+    // TIMER_SECOND_PERIOD - i.e. the master clock rate - once it catches
+    // up) so 48000 samples/sec comes out exact on average even though
+    // MASTER_CLOCK_HZ / AUDIO_SAMPLE_RATE isn't an integer. No drift over
+    // an arbitrarily long run.
+    uint64_t audioSampleAccum;
+    std::vector<int16_t> audioBuffer;
 
     // Clock cycle pattern (repeats every 16 master cycles)
     // Cycle 0: PPU, Display

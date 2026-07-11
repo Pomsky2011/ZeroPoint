@@ -7,12 +7,16 @@ Window::Window(int scale)
     : window(nullptr)
     , renderer(nullptr)
     , texture(nullptr)
+    , audioDevice(0)
     , scale(scale)
     , quit(false)
 {
 }
 
 Window::~Window() {
+    if (audioDevice != 0) {
+        SDL_CloseAudioDevice(audioDevice);
+    }
     if (texture) {
         SDL_DestroyTexture(texture);
     }
@@ -26,7 +30,7 @@ Window::~Window() {
 }
 
 bool Window::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         std::cerr << "SDL initialization failed: " << SDL_GetError() << "\n";
         return false;
     }
@@ -72,7 +76,31 @@ bool Window::init() {
         return false;
     }
 
+    // No callback: this is push-mode audio. Frontends drive System at their
+    // own pace and hand us the resulting samples via queueAudio() each
+    // frame; SDL_QueueAudio() drains them to the device on its own thread.
+    SDL_AudioSpec want, have;
+    SDL_zero(want);
+    want.freq = System::AUDIO_SAMPLE_RATE;
+    want.format = AUDIO_S16SYS;
+    want.channels = 2;
+    want.samples = 1024;
+
+    audioDevice = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    if (audioDevice == 0) {
+        std::cerr << "Audio device open failed: " << SDL_GetError() << " (continuing without audio)\n";
+    } else {
+        SDL_PauseAudioDevice(audioDevice, 0);
+    }
+
     return true;
+}
+
+void Window::queueAudio(const int16_t* interleaved, int frameCount) {
+    if (audioDevice == 0 || frameCount <= 0) {
+        return;
+    }
+    SDL_QueueAudio(audioDevice, interleaved, static_cast<Uint32>(frameCount) * 2 * sizeof(int16_t));
 }
 
 void Window::render(const Display& display) {

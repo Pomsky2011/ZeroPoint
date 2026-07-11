@@ -39,8 +39,18 @@ attached (`System::loadBootROM` + `System::reset()`, see `src/main.cpp`).
 - A colored vertical bar along the left 16 pixels of the screen, one shade
   per scanline (`ppu-gradient.asm`, beam-synced via an H-blank ISR).
 - The APU counts X from 0 to 60 and writes its progress to $1000 each pass,
-  then halts - inspect via a debugger/test harness, there's no audio output
-  in this version (see `apu-heartbeat.asm`).
+  then halts - inspect via a debugger/test harness (see `apu-heartbeat.asm`).
+- Silence. `System`'s tick loop now polls the APU's MMP mixer for real
+  (`System::tickComponents()` in `src/system.cpp`, at `AUDIO_SAMPLE_RATE`)
+  and `src/main.cpp` queues the result to the SDL audio device, so real
+  APU-generated audio does reach the speakers in this demo. But
+  `apu-heartbeat.asm` above never touches an MMP channel register, so the
+  mixer has nothing active to play - correct silence, not a bug. Write to
+  a channel's pitch/sample/active registers (see `ZPdevtools/docs/apu/` for
+  the MMP register map) to actually hear something.
+  The no-ROM/no-`--boot` test-pattern fallback (`runTestPattern()` in
+  `src/main.cpp`, no `System` exists yet in that path) still plays a fixed
+  quiet 440 Hz tone as a smoke test that the audio device itself works.
 
 ## Why only a 16px bar, not a full-screen gradient
 

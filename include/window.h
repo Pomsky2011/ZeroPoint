@@ -3,6 +3,7 @@
 
 #include "display.h"
 #include "cpu.h"
+#include "system.h"
 #include <SDL2/SDL.h>
 #include <cstdint>
 
@@ -33,6 +34,11 @@ public:
     // See cpu.h PlayerInput:: for the register bit layout.
     void getPlayerInput(uint8_t& direction, uint8_t& control, uint8_t& buttons) const;
 
+    // Push interleaved stereo 16-bit PCM (as produced by System::getAudioBuffer())
+    // to the audio device. No-op if the device failed to open. Safe to call
+    // with an empty/zero-length buffer.
+    void queueAudio(const int16_t* interleaved, int frameCount);
+
 private:
     // Convert ZeroPoint color format to SDL RGBA
     uint32_t convertColor(Color16 color) const;
@@ -40,6 +46,7 @@ private:
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Texture* texture;
+    SDL_AudioDeviceID audioDevice;
 
     int scale;
     bool quit;

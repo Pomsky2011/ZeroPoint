@@ -3,11 +3,13 @@
 #include "display.h"
 #include "window.h"
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace ZeroPoint;
 
@@ -23,14 +25,34 @@ static void fillTestPattern(Display& display) {
 }
 
 // Fallback path (no ROM): present the test pattern, no CPU/PPU/APU execution.
+// There's no System/APU here to generate real audio, so play a quiet 440 Hz
+// tone instead - just enough to confirm the audio device itself works.
 static int runTestPattern(Window& window) {
     Display display;
     fillTestPattern(display);
     std::cout << "No ROM provided - showing test pattern. "
                  "Pass a .rom file to run the emulator.\n";
+
+    static constexpr int16_t TONE_AMPLITUDE = 300;  // ~1% of full scale
+    static constexpr double TONE_FREQ_HZ = 440.0;
+    const int framesPerTick = System::AUDIO_SAMPLE_RATE * 16 / 1000;
+    const double phaseStep = 2.0 * M_PI * TONE_FREQ_HZ / System::AUDIO_SAMPLE_RATE;
+    double phase = 0.0;
+    std::vector<int16_t> tone(framesPerTick * 2);
+
     while (!window.shouldClose()) {
         window.pollEvents();
         window.render(display);
+
+        for (int i = 0; i < framesPerTick; i++) {
+            int16_t sample = static_cast<int16_t>(TONE_AMPLITUDE * std::sin(phase));
+            tone[i * 2] = sample;
+            tone[i * 2 + 1] = sample;
+            phase += phaseStep;
+            if (phase >= 2.0 * M_PI) phase -= 2.0 * M_PI;
+        }
+        window.queueAudio(tone.data(), framesPerTick);
+
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
     return 0;
@@ -92,6 +114,10 @@ int main(int argc, char** argv) {
             window.pollEvents();
             system.stepFrame();
             window.render(system.getDisplay());
+
+            const auto& audio = system.getAudioBuffer();
+            window.queueAudio(audio.data(), static_cast<int>(audio.size() / 2));
+            system.clearAudioBuffer();
         }
         return 0;
     }
@@ -119,6 +145,10 @@ int main(int argc, char** argv) {
         system.stepFrame();
 
         window.render(system.getDisplay());
+
+        const auto& audio = system.getAudioBuffer();
+        window.queueAudio(audio.data(), static_cast<int>(audio.size() / 2));
+        system.clearAudioBuffer();
 
         auto elapsed = std::chrono::steady_clock::now() - frameStart;
         if (elapsed < frameDuration) {
