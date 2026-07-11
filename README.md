@@ -19,16 +19,16 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 ## Features
 
 ### System Clock Synchronization
-- **Master Clock**: 64 MHz (PPU pixel clock)
+- **Master Clock**: 67.108864 MHz (2^26 Hz, PPU pixel clock)
 - **Integer-based**: Deterministic 16-cycle execution pattern
-- **PPU**: 64 MHz (every cycle) - Graphics microcode
-- **DMA**: 32 MHz (every 2 cycles) - Memory transfers
-- **CPU**: 16 MHz (every 4 cycles) - System master
-- **APU**: 4 MHz (every 16 cycles) - Audio synthesis
-- **Display**: 64 MHz (every cycle) - Video output
+- **PPU**: 67.108864 MHz (every cycle) - Graphics microcode
+- **DMA**: 33.554432 MHz (every 2 cycles) - Memory transfers
+- **CPU**: 16.777216 MHz (every 4 cycles) - System master
+- **APU**: 4.194304 MHz (every 16 cycles) - Audio synthesis
+- **Display**: 67.108864 MHz (every cycle) - Video output
 
 ### DEF88186 Main CPU ✨
-- **Hybrid 65C816/8086 16-bit processor** @ 16 MHz
+- **Hybrid 65C816/8086 16-bit processor** @ 16.777216 MHz
 - **ALL 256 opcodes implemented** - Production ready!
 - **24-bit addressing** - 16 MB addressable (256 banks × 64 KB)
 - **8/16-bit modes** - Configurable via M and X flags
@@ -42,8 +42,8 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - Test suite: 5/5 tests passing ✅
 
 ### PPU (Picture Processing Unit)
-- **Microcode-based graphics processor** @ 64 MHz
-- **1 instruction per cycle** - 64 million instructions/second
+- **Microcode-based graphics processor** @ 67.108864 MHz
+- **1 instruction per cycle** - 67.1 million instructions/second
 - **35 instructions** (15 basic + 16 extended Preset F + 4 extended Preset E)
 - **256×256 display** with dual color modes (16-bit/32-bit RGBA)
 - **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation ✨ **FULLY FUNCTIONAL**
@@ -52,7 +52,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **Tile system** - 8×8 pixel tiles, 256 tiles max, DIY placement with translucency
 - **Interrupts** - V-Blank and H-Blank with automatic stack management
 - **64 × 16-bit registers** with special registers (PC, DP, SP)
-- **JIT Compiler** - Experimental native code generation (x86-64/ARM64) ✨ **NEW!**
+- **Batched executor (`--jit`)** - Fast interpreter path that runs whole instructions and collapses timing stalls, 1.2x-4x faster than per-cycle ticking (not native code generation, despite the flag name)
 
 ### APU (Audio Processing Unit)
 - **8-bit RISC processor** @ 4 MHz (1.0 MIPS)
@@ -63,9 +63,16 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **MMP** - Music Mixing Processor for 16 stereo channels
 - **SST** - Sample Storage System with looping and effects
 - **64 KiB addressable memory** + 448 KiB banked ROM
+- **Full-system audio output** - `System` polls the MMP mixer at 48 kHz and the SDL frontend pushes it live to the audio device, so cartridge-generated sound reaches real speakers, not just the standalone APU test tool
+
+### Boot ROM
+- **Bank $E0** - 64 KiB, read-only, mapped at construction; hardware reset lands here instead of bank $00 whenever a boot ROM is loaded
+- **Default stub** (`examples/boot-rom/boot.asm`) - Reads the cartridge entry point from I/O and hands off control via a Work-RAM JMP-long trampoline
+- **Alternate Boot ROM loading** - `System::loadBootROM()` / `--boot` flag for loading a custom boot ROM in place of the default stub
+- Signature verification against the zplink-signed ROM trailer is not implemented yet - the stub trusts whatever entry point is loaded
 
 ### DMA Controller ✅ COMPLETE!
-- **16 independent channels** @ 32 MHz
+- **16 independent channels** @ 33.554432 MHz
 - **4 transfer modes** - DataCopy (3 cyc/byte), ConstCopy (1 cyc/byte), RepeatTransfer (3 cyc/byte), ConstRepeat (2 cyc/byte)
 - **Max 2 channels active** - Simultaneous transfers with automatic queueing
 - **Interrupt-aware** - Pauses during CPU interrupts, resumes automatically
@@ -87,14 +94,14 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
   - Persistent mapped staging buffer (zero allocation overhead)
   - Optimized command buffer recording (single submit)
   - MAILBOX/IMMEDIATE present modes (lowest latency)
-  - Cross-platform: macOS (MoltenVK), Linux (native), Windows (ready)
+  - Cross-platform: Linux (native), Windows (ready)
   - Performance: 83 MHz sustained (123% of target 67.1 MHz)
-- **SDL2 Renderer** - Fallback with Metal backend on macOS
+- **SDL2 Renderer** - Fallback renderer
 - **Qt Widget** - Integrated display in Qt GUI
 
 ### Development Tools
 - **cpuasm** - DEF88186 CPU assembler ✨ NEW!
-- **zpasm** - PPU microcode assembler
+- **ppuasm** - PPU microcode assembler
 - **apuasm** - APU assembly language compiler
 - **test_cpu** - CPU interpreter test suite ✨ NEW!
 - **Instruction Implementation Framework** - Table-driven dispatch system for easy CPU/PPU/APU instruction modification ✨ NEW!
@@ -142,45 +149,41 @@ cmake --build . -j
 
 ### Platform Support
 
-| Platform | Architecture | JIT Support | App Bundles | CI/CD |
-|----------|-------------|-------------|-------------|-------|
-| Windows  | x64         | ✅ x86-64   | -           | ✅    |
-| Windows  | ARM64       | ✅ ARM64    | -           | ✅    |
-| Linux    | x86_64      | ✅ x86-64   | -           | ✅    |
-| Linux    | ARM64       | ✅ ARM64    | -           | ✅    |
-| macOS    | Intel       | ✅ x86-64   | ✅ .app     | ✅    |
-| macOS    | Apple Silicon | ✅ ARM64  | ✅ .app     | ✅    |
+| Platform | Architecture | JIT Support | CI/CD |
+|----------|-------------|-------------|-------|
+| Windows  | x64         | ✅ x86-64   | ✅    |
+| Windows  | ARM64       | ✅ ARM64    | ✅    |
+| Linux    | x86_64      | ✅ x86-64   | ✅    |
+| Linux    | ARM64       | ✅ ARM64    | ✅    |
+
+macOS support was removed; the emulator targets Linux and Windows only.
 
 ### Executables
-- `bin/zeropoint_sdl` (or `zeropoint_sdl.app` on macOS) - SDL frontend
-- `bin/zeropoint_qt` (or `zeropoint_qt.app` on macOS) - Qt frontend
+- `bin/zeropoint_sdl` - SDL frontend
+- `bin/zeropoint_qt` - Qt frontend
 - `bin/test_cpu` - DEF88186 CPU interpreter test
 - `bin/test_ppu` - PPU microcode test suite
 - `bin/test_apu <program.bin>` - APU program tester
 - `bin/test_dma` - DMA controller test suite
-- `bin/run_demo <demo.bin> [--jit]` (or `run_demo.app` on macOS) - Run PPU demo with SDL window (optional JIT compilation)
+- `bin/run_demo <demo.bin> [--jit]` - Run PPU demo with SDL window (optional batched-executor mode)
 - `bin/test_demo <demo.bin>` - Run PPU demo headless (testing)
-- `bin/run_apu_demo <program.bin>` (or `run_apu_demo.app` on macOS) - Run APU program with audio output
-
-**macOS Note**: All GUI applications are packaged as native .app bundles with custom icons. Double-click in Finder or drag to Applications folder.
+- `bin/run_apu_demo <program.bin>` - Run APU program with audio output
 
 ## Creating Demos
 
 ### PPU Assembly
-Located in `/Users/alexanderwhite/Documents/Code/ZPdevtools`
+Assemblers live in the sibling `ZPdevtools` repo.
 
 ```bash
-cd ../ZPdevtools
-gcc -o zpasm zpasm.c
-./zpasm examples/ppu/simple_pixel_test.asm output.bin
+cd ../ZPdevtools && make
+./ppuasm examples/ppu/simple_pixel_test.asm output.bin
 cd ../ZeroPoint/build
 ./bin/run_demo ../ZPdevtools/output.bin
 ```
 
 ### APU Assembly
 ```bash
-cd ../ZPdevtools
-gcc -o apuasm apuasm.c
+cd ../ZPdevtools && make
 ./apuasm examples/apu/hello.asm
 cd ../ZeroPoint/build
 ./bin/test_apu ../ZPdevtools/examples/apu/hello.bin 10000
@@ -218,13 +221,13 @@ cd ../ZeroPoint/build
 
 **CPU (DEF88186)**: ✅ **COMPLETE!** All 256 opcodes implemented and tested. Production ready. Can execute any valid DEF88186 program.
 
-**PPU**: ✅ **DISPLAY COMPLETE!** Rolling framebuffer with NTSC timing fully functional. Tile system, interrupts, microcode execution, and VOC all operational. Stable JIT compiler for x86-64/ARM64 (use `--jit` flag).
+**PPU**: ✅ **DISPLAY COMPLETE!** Rolling framebuffer with NTSC timing fully functional. Tile system, interrupts, microcode execution, and VOC all operational. Stable batched executor for x86-64/ARM64 (use `--jit` flag; it's a fast interpreter, not native codegen).
 
-**APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 stereo channels) all implemented. SST header bug fixed - clean audio playback confirmed.
+**APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 stereo channels) all implemented. SST header bug fixed - clean audio playback confirmed, and the main emulator now streams that audio live to the SDL audio device (not just the standalone `run_apu_demo` tool).
 
 **DMA**: ✅ **COMPLETE!** All 4 transfer modes implemented with 16-channel support. Fully integrated with CPU memory system and interrupt handling. Comprehensive test suite (7/7 passing).
 
-**macOS**: ✅ **NATIVE APP BUNDLES!** Professional .app packages with custom icon support. Double-click to launch, ready for Applications folder distribution.
+**Boot ROM**: ✅ **INFRASTRUCTURE COMPLETE!** Bank $E0 mapped read-only, hardware reset hands off to the cartridge via the default stub or a custom `--boot` ROM. Signature verification against the zplink-signed ROM trailer is still in progress.
 
 ## License
 
