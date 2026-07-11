@@ -2,6 +2,7 @@
 #define ZEROPOINT_WINDOW_H
 
 #include "display.h"
+#include "cpu.h"
 #include <SDL2/SDL.h>
 #include <cstdint>
 
@@ -23,6 +24,14 @@ public:
 
     // Process events
     void pollEvents();
+
+    // Player 1 input, computed from the current keyboard state. Default
+    // bindings: arrows = direction (an adjacent pair gives a diagonal; all
+    // four held at once has no directional meaning, so it doubles as the
+    // D-pad's center-click), z/x/c/v = buttons 1-4, a/s/d/f = big-left/
+    // little-left/little-right/big-right, right shift = menu, enter = pause.
+    // See cpu.h PlayerInput:: for the register bit layout.
+    void getPlayerInput(uint8_t& direction, uint8_t& control, uint8_t& buttons) const;
 
 private:
     // Convert ZeroPoint color format to SDL RGBA

@@ -481,9 +481,20 @@ void PPU::executePresetE(uint8_t subopcode, uint16_t operand) {
 void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
     switch (static_cast<PresetFOpcode>(subopcode)) {
         case PresetFOpcode::SETPOS: {
-            // setpos X Y - set position using 4-bit register IDs from banks
-            // Placeholder: register IDs computed but position storage not yet implemented
-            (void)operand;
+            // setpos X, Y - set tile-draw position from two 4-bit register
+            // IDs, extended via SETREGBANK the same way CPREG extends its
+            // operands. Encoding: 0000 XXXX YYYY.
+            // Writes into the same memory-mapped position cells TILEDRAW
+            // reads ($0200-$0203), so SETPOS and a raw poke to that region
+            // are interchangeable.
+            uint8_t regX = ((operand >> 4) & 0x0F) | (regBankX << 4);
+            uint8_t regY = (operand & 0x0F) | (regBankY << 4);
+            uint16_t x = registers[regX];
+            uint16_t y = registers[regY];
+            memory[0x0200] = x & 0xFF;
+            memory[0x0201] = (x >> 8) & 0xFF;
+            memory[0x0202] = y & 0xFF;
+            memory[0x0203] = (y >> 8) & 0xFF;
             break;
         }
 

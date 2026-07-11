@@ -24,10 +24,18 @@ public:
     System();
     ~System();
 
+    // One display frame = every pixel of every scanline. The display advances
+    // one tick per master clock cycle, so this is also the number of master
+    // cycles per frame. Shared by every frontend via stepFrame() so they all
+    // run the same core at the same pace instead of each re-deriving it.
+    static constexpr uint64_t CYCLES_PER_FRAME =
+        static_cast<uint64_t>(TOTAL_SCANLINES) * TOTAL_PIXELS_PER_LINE;
+
     // System control
     void reset();
     void step();                    // Execute one master clock cycle
     void run(uint64_t cycles);      // Run for N cycles
+    void stepFrame();               // Run CYCLES_PER_FRAME cycles, or until the CPU halts
     bool loadROM(const std::string& filename);
 
     // Boot ROM / hot-swap: (re)load a subchip's program. The sequence is

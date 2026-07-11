@@ -4,8 +4,8 @@
 #include <QWidget>
 #include <QTimer>
 #include <QImage>
-#include "display.h"
-#include "rom.h"
+#include <QString>
+#include "system.h"
 
 class EmulatorWidget : public QWidget
 {
@@ -15,7 +15,7 @@ public:
     explicit EmulatorWidget(QWidget *parent = nullptr);
     ~EmulatorWidget();
 
-    void loadROM(ZeroPoint::ROM *rom);
+    bool loadROM(const QString &path);
     void start();
     void stop();
     void reset();
@@ -23,16 +23,25 @@ public:
 protected:
     void paintEvent(QPaintEvent *event) override;
     void timerEvent(QTimerEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
 
 private:
-    ZeroPoint::Display display;
-    ZeroPoint::ROM *currentROM;
+    ZeroPoint::System system;
     QImage frameBuffer;
     int timerId;
     bool running;
 
+    // Held-key state for Player 1 input. See cpu.h PlayerInput:: for the
+    // register bit layout these are packed into each frame.
+    bool keyUp = false, keyDown = false, keyLeft = false, keyRight = false;
+    bool keyZ = false, keyX = false, keyC = false, keyV = false;
+    bool keyBigLeft = false, keyLittleLeft = false, keyLittleRight = false, keyBigRight = false;
+    bool keyMenu = false, keyPause = false;
+
     void updateFrameBuffer();
-    QRgb convertColor(ZeroPoint::Color16 color);
+    void updatePlayerInput();
+    void fillTestPattern();
 };
 
 #endif // EMULATORWIDGET_H

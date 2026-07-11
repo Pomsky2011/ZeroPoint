@@ -3,18 +3,13 @@
 #include "display.h"
 #include "window.h"
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <thread>
 
 using namespace ZeroPoint;
-
-// One display frame = every pixel of every scanline. In the System model the
-// display advances one tick per master clock cycle, so this is also the number
-// of master cycles per frame.
-static constexpr uint64_t CYCLES_PER_FRAME =
-    static_cast<uint64_t>(TOTAL_SCANLINES) * TOTAL_PIXELS_PER_LINE;
 
 // Draw a static gradient so the windowed app is still useful without a ROM.
 static void fillTestPattern(Display& display) {
@@ -44,20 +39,27 @@ static int runTestPattern(Window& window) {
 int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
-    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev]\n";
+    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N]\n";
     std::cout << "Press ESC to exit\n\n";
 
     std::string romPath;
     bool devMode = false;
+    int scale = 2;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--dev") == 0) {
             devMode = true;
+        } else if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
+            scale = std::atoi(argv[++i]);
+            if (scale <= 0) {
+                std::cerr << "Invalid --scale value, using 2x\n";
+                scale = 2;
+            }
         } else if (argv[i][0] != '-') {
             romPath = argv[i];
         }
     }
 
-    Window window(2);  // 2x scale
+    Window window(scale);
     if (!window.init()) {
         std::cerr << "Failed to initialize window\n";
         return 1;
@@ -89,10 +91,11 @@ int main(int argc, char** argv) {
 
         window.pollEvents();
 
-        for (uint64_t i = 0; i < CYCLES_PER_FRAME; i++) {
-            if (system.getCPU().isHalted()) break;
-            system.step();
-        }
+        uint8_t direction, control, buttons;
+        window.getPlayerInput(direction, control, buttons);
+        system.getCPU().setPlayerInput(direction, control, buttons);
+
+        system.stepFrame();
 
         window.render(system.getDisplay());
 

@@ -1049,15 +1049,20 @@ int16_t APU::mixChannels(bool right) {
 
         size_t cacheSize = ch.sampleCache.size();
         size_t idx  = (ch.samplePosition >> 12) % cacheSize;
+        size_t prev = (idx + cacheSize - 1) % cacheSize;
         size_t next = (idx + 1) % cacheSize;
+        size_t next2 = (idx + 2) % cacheSize;
 
+        int8_t s0 = static_cast<int8_t>(ch.sampleCache[prev]);
         int8_t s1 = static_cast<int8_t>(ch.sampleCache[idx]);
         int8_t s2 = static_cast<int8_t>(ch.sampleCache[next]);
+        int8_t s3 = static_cast<int8_t>(ch.sampleCache[next2]);
 
         uint32_t frac = ch.samplePosition & 0xFFF;
-        int32_t interpolated = s1 + ((s2 - s1) * static_cast<int32_t>(frac)) / 4096;
+        int32_t interpolated = cubicInterpolate(s0, s1, s2, s3, frac);
 
-        // Scale 8-bit signed sample to 16-bit
+        // Scale interpolated 8-bit-range sample to 16-bit (may exceed +/-128
+        // range due to cubic overshoot; the final mix clamp below handles it)
         int32_t sample16 = interpolated * 256;
 
         // Apply volume (0 = silent, 255 = max)
@@ -1100,10 +1105,13 @@ void APU::processChannel(int channel) {
     }
 }
 
-int16_t APU::resampleSample(uint8_t sample, uint16_t pitch) {
-    (void)pitch;  // Pitch resampling not yet implemented
-    // Convert 8-bit unsigned to 16-bit signed
-    int16_t signed_sample = static_cast<int16_t>(sample) - 128;
-    signed_sample *= 256;  // Scale to 16-bit range
-    return signed_sample;
+// Catmull-Rom cubic spline through s0..s3, interpolating between s1 and s2.
+// frac is Q12 fixed-point (0..4095) position between s1 (frac=0) and s2 (frac=4096).
+int16_t APU::cubicInterpolate(int8_t s0, int8_t s1, int8_t s2, int8_t s3, uint32_t frac) {
+    float t = static_cast<float>(frac) / 4096.0f;
+    float a0 = -0.5f * s0 + 1.5f * s1 - 1.5f * s2 + 0.5f * s3;
+    float a1 = static_cast<float>(s0) - 2.5f * s1 + 2.0f * s2 - 0.5f * s3;
+    float a2 = -0.5f * s0 + 0.5f * s2;
+    float a3 = s1;
+    return static_cast<int16_t>(((a0 * t + a1) * t + a2) * t + a3);
 }

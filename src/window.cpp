@@ -106,6 +106,51 @@ void Window::pollEvents() {
     }
 }
 
+void Window::getPlayerInput(uint8_t& direction, uint8_t& control, uint8_t& buttons) const {
+    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+
+    bool up = keys[SDL_SCANCODE_UP];
+    bool down = keys[SDL_SCANCODE_DOWN];
+    bool left = keys[SDL_SCANCODE_LEFT];
+    bool right = keys[SDL_SCANCODE_RIGHT];
+
+    direction = 0;
+    control = PlayerInput::CTRL_CONNECTION;
+
+    if (up && down && left && right) {
+        control |= PlayerInput::CTRL_CENTER;
+    } else if (up && left) {
+        direction = PlayerInput::DIR_UPLEFT;
+    } else if (up && right) {
+        direction = PlayerInput::DIR_UPRIGHT;
+    } else if (down && left) {
+        direction = PlayerInput::DIR_DOWNLEFT;
+    } else if (down && right) {
+        direction = PlayerInput::DIR_DOWNRIGHT;
+    } else if (up) {
+        direction = PlayerInput::DIR_UP;
+    } else if (down) {
+        direction = PlayerInput::DIR_DOWN;
+    } else if (left) {
+        direction = PlayerInput::DIR_LEFT;
+    } else if (right) {
+        direction = PlayerInput::DIR_RIGHT;
+    }
+
+    if (keys[SDL_SCANCODE_A]) control |= PlayerInput::CTRL_BIGLEFT;
+    if (keys[SDL_SCANCODE_F]) control |= PlayerInput::CTRL_BIGRIGHT;
+    if (keys[SDL_SCANCODE_S]) control |= PlayerInput::CTRL_LITTLELEFT;
+    if (keys[SDL_SCANCODE_D]) control |= PlayerInput::CTRL_LITTLERIGHT;
+    if (keys[SDL_SCANCODE_RSHIFT]) control |= PlayerInput::CTRL_MENU;
+    if (keys[SDL_SCANCODE_RETURN]) control |= PlayerInput::CTRL_PAUSE;
+
+    buttons = 0;
+    if (keys[SDL_SCANCODE_Z]) buttons |= PlayerInput::BTN_1;
+    if (keys[SDL_SCANCODE_X]) buttons |= PlayerInput::BTN_2;
+    if (keys[SDL_SCANCODE_C]) buttons |= PlayerInput::BTN_3;
+    if (keys[SDL_SCANCODE_V]) buttons |= PlayerInput::BTN_4;
+}
+
 uint32_t Window::convertColor(Color16 color) const {
     // Format: BBBBBGGGGGRRRRR-
     // Extract 5-bit components (ignore bit 0)

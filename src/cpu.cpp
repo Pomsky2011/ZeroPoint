@@ -17,6 +17,7 @@ CPU::CPU()
       useMemoryMap(false),
       memory(nullptr), memorySize(0),
       ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr), systemPtr(nullptr),
+      p1Direction(0), p1Control(PlayerInput::CTRL_CONNECTION), p1Buttons(0),
       state(CPUState::Running),
       instructionCount(0),
       irqPending(false), nmiPending(false)
@@ -1938,7 +1939,8 @@ void CPU::setupIORegisters() {
                 case 0x02: // DMA interrupt status (1 if paused, 0 if running)
                     return dmaPtr->isInterruptActive() ? 0x01 : 0x00;
 
-                // Channels 0-15 status (0x03-0x12, but we have 16 bytes total)
+                // Channels 0-11 status (0x03-0x0E); channels 12-15 have no
+                // status byte here (block only has 16 bytes total)
                 case 0x03: case 0x04: case 0x05: case 0x06:
                 case 0x07: case 0x08: case 0x09: case 0x0A:
                 case 0x0B: case 0x0C: case 0x0D: case 0x0E: {
@@ -1999,11 +2001,13 @@ void CPU::setupIORegisters() {
         // Read handler
         [this](uint16_t offset) -> uint8_t {
             switch (offset) {
-                // Port 1 (Controller)
-                case 0x00: // P1_BUTTONS_LO (A, B, Select, Start, etc.)
-                    return 0x00;  // Placeholder - no input yet
-                case 0x01: // P1_BUTTONS_HI
-                    return 0x00;
+                // Port 1 (Controller) - see PlayerInput:: for bit layout
+                case 0x00: // P1_DIR (8-way directional)
+                    return p1Direction;
+                case 0x01: // P1_CTRL (control pad/bumpers/triggers/menu/pause/connection)
+                    return p1Control;
+                case 0x02: // P1_BTN (4 face buttons + DATA nibble)
+                    return p1Buttons;
 
                 // Port 2 (Debug Interface)
                 case 0x08: { // P2_STATUS

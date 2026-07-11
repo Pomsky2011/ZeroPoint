@@ -108,7 +108,10 @@ elseif(PLATFORM_LINUX)
     add_compile_options(-Wall -Wextra)
 endif()
 
-# Core emulator library
+# Core emulator library — pure emulation (CPU/PPU/APU/DMA/Display/System/ROM),
+# no rendering backend. Links nothing but the standard library so it can be
+# embedded by any frontend (SDL, Qt, Vulkan, or a future libretro/BizHawk-style
+# host) without dragging in a graphics API it doesn't use.
 set(CORE_SOURCES
     src/display.cpp
     src/rom.cpp
@@ -119,8 +122,6 @@ set(CORE_SOURCES
     src/cpu.cpp
     src/cpu_instructions.cpp
     src/system.cpp
-    src/window.cpp
-    src/vulkan_window.cpp
 )
 
 set(CORE_HEADERS
@@ -131,34 +132,37 @@ set(CORE_HEADERS
     include/ppu_jit.h
     include/apu.h
     include/cpu.h
-    include/window.h
-    include/vulkan_window.h
 )
 
 add_library(zeropoint_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
 
-# Link SDL2 and Vulkan based on platform
-if(CROSS_WINDOWS)
-    # mingw-w64-sdl2 provides SDL2::SDL2 target
-    target_link_libraries(zeropoint_core SDL2::SDL2 Vulkan::Vulkan)
-elseif(PLATFORM_WINDOWS)
-    if(TARGET SDL2::SDL2)
-        target_link_libraries(zeropoint_core SDL2::SDL2 Vulkan::Vulkan)
-    else()
-        target_link_libraries(zeropoint_core $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}> Vulkan::Vulkan)
-    endif()
-elseif(PLATFORM_LINUX)
-    target_link_libraries(zeropoint_core $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}> Vulkan::Vulkan pthread dl)
+# SDL2 rendering/input backend (Window). Leaf consumer of zeropoint_core, not
+# part of it — only frontends that actually want an SDL window link this.
+add_library(zeropoint_sdl_window STATIC
+    src/window.cpp
+    include/window.h
+)
+if(CROSS_WINDOWS OR PLATFORM_WINDOWS)
+    target_link_libraries(zeropoint_sdl_window zeropoint_core SDL2::SDL2)
+else()
+    target_link_libraries(zeropoint_sdl_window zeropoint_core $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}>)
 endif()
+
+# Vulkan rendering backend (VulkanWindow). Same idea: a leaf consumer, not core.
+add_library(zeropoint_vulkan_window STATIC
+    src/vulkan_window.cpp
+    include/vulkan_window.h
+)
+target_link_libraries(zeropoint_vulkan_window zeropoint_core Vulkan::Vulkan)
 
 # SDL frontend (old standalone version)
 add_executable(zeropoint_sdl
     src/main.cpp
 )
 if(CROSS_WINDOWS OR PLATFORM_WINDOWS)
-    target_link_libraries(zeropoint_sdl zeropoint_core SDL2::SDL2)
+    target_link_libraries(zeropoint_sdl zeropoint_sdl_window zeropoint_core SDL2::SDL2)
 else()
-    target_link_libraries(zeropoint_sdl zeropoint_core $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}>)
+    target_link_libraries(zeropoint_sdl zeropoint_sdl_window zeropoint_core $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}>)
 endif()
 
 # Qt frontend
@@ -182,19 +186,19 @@ set(QT_UI
 
 add_executable(zeropoint_qt ${QT_SOURCES} ${QT_HEADERS} ${QT_UI})
 
+# Qt never touches window.h/vulkan_window.h — it renders via QImage — so it
+# links only the core and Qt itself, no SDL2/Vulkan.
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(zeropoint_qt
         zeropoint_core
         Qt6::Core
         Qt6::Widgets
-        $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,$<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}>>
     )
 else()
     target_link_libraries(zeropoint_qt
         zeropoint_core
         Qt5::Core
         Qt5::Widgets
-        $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,$<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}>>
     )
 endif()
 
@@ -215,11 +219,11 @@ target_link_libraries(test_ppu zeropoint_core)
 # Demo runner (with SDL) — Linux only (dev tool)
 if(PLATFORM_LINUX)
     add_executable(run_demo tools/run_demo.cpp)
-    target_link_libraries(run_demo zeropoint_core ${SDL2_LIBRARIES})
+    target_link_libraries(run_demo zeropoint_sdl_window zeropoint_core ${SDL2_LIBRARIES})
 
     # Demo runner (with Vulkan)
     add_executable(run_demo_vulkan tools/run_demo_vulkan.cpp)
-    target_link_libraries(run_demo_vulkan zeropoint_core ${SDL2_LIBRARIES} Vulkan::Vulkan)
+    target_link_libraries(run_demo_vulkan zeropoint_vulkan_window zeropoint_core ${SDL2_LIBRARIES} Vulkan::Vulkan)
 endif()
 
 # Demo test (no SDL)

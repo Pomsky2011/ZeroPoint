@@ -66,8 +66,12 @@ void MainWindow::onLoadROM()
         ui->statusLabel->setText(info);
         ui->statusbar->showMessage(QString::fromStdString(rom.getTitle()), 3000);
 
-        // Load ROM into emulator widget
-        emulatorWidget->loadROM(&rom);
+        // Load ROM into the emulator widget's System - this actually drives
+        // CPU/PPU/APU execution, not just ROM metadata.
+        if (!emulatorWidget->loadROM(filename)) {
+            QMessageBox::critical(this, tr("Load Error"), tr("Failed to load ROM into emulator"));
+            return;
+        }
 
         // Replace central widget with emulator
         QWidget *oldWidget = ui->centralwidget;

@@ -123,7 +123,7 @@ private:
     // MMP helper functions
     void resetMMP();
     void processChannel(int channel);
-    int16_t resampleSample(uint8_t sample, uint16_t pitch);
+    static int16_t cubicInterpolate(int8_t s0, int8_t s1, int8_t s2, int8_t s3, uint32_t frac);
 
     // Memory regions
     static constexpr size_t MEMORY_SIZE = 65536;  // 64 KiB

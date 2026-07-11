@@ -214,6 +214,13 @@ void System::run(uint64_t cycles) {
     }
 }
 
+void System::stepFrame() {
+    for (uint64_t i = 0; i < CYCLES_PER_FRAME; i++) {
+        if (cpu.isHalted()) break;
+        step();
+    }
+}
+
 void System::tickComponents(bool& outVBlank, bool& outHBlank) {
     // Integer-based cycle pattern (repeats every 16 master cycles)
     // Each component runs on specific cycles:

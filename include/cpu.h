@@ -60,6 +60,39 @@ enum class CPUState {
     Waiting   // WAI instruction
 };
 
+// Player 1 controller bitmask ($D80030-$D80032). Frontends (Window::pollEvents
+// and friends) OR these together and call CPU::setPlayerInput().
+namespace PlayerInput {
+    // $D80030: directional byte, one bit per 8-way direction (not two axes)
+    constexpr uint8_t DIR_UPLEFT    = 0x80;
+    constexpr uint8_t DIR_UP        = 0x40;
+    constexpr uint8_t DIR_UPRIGHT   = 0x20;
+    constexpr uint8_t DIR_RIGHT     = 0x10;
+    constexpr uint8_t DIR_DOWNRIGHT = 0x08;
+    constexpr uint8_t DIR_DOWN      = 0x04;
+    constexpr uint8_t DIR_DOWNLEFT  = 0x02;
+    constexpr uint8_t DIR_LEFT      = 0x01;
+
+    // $D80031: control byte
+    constexpr uint8_t CTRL_CENTER      = 0x80;  // Control pad press
+    constexpr uint8_t CTRL_BIGLEFT     = 0x40;  // Left bumper
+    constexpr uint8_t CTRL_BIGRIGHT    = 0x20;  // Right bumper
+    constexpr uint8_t CTRL_LITTLELEFT  = 0x10;  // Left trigger
+    constexpr uint8_t CTRL_LITTLERIGHT = 0x08;  // Right trigger
+    constexpr uint8_t CTRL_MENU        = 0x04;  // Select-equivalent
+    constexpr uint8_t CTRL_PAUSE       = 0x02;  // Start-equivalent
+    constexpr uint8_t CTRL_CONNECTION  = 0x01;  // Controller plugged in
+
+    // $D80032: button byte. High nibble = 4 face buttons; low nibble is a
+    // DATA nibble reserved for a future transfer mechanism (analogous to
+    // Port 2's byte-wide RX/TX serial interface, but nibble-wide on Port 1).
+    constexpr uint8_t BTN_4 = 0x80;
+    constexpr uint8_t BTN_3 = 0x40;
+    constexpr uint8_t BTN_2 = 0x20;
+    constexpr uint8_t BTN_1 = 0x10;
+    constexpr uint8_t DATA_MASK = 0x0F;
+}
+
 class CPU {
 public:
     CPU();
@@ -92,6 +125,15 @@ public:
     void setDisplay(Display* disp) { displayPtr = disp; }
     void setDMA(DMAController* dma) { dmaPtr = dma; }
     void setSystem(class System* sys) { systemPtr = sys; }
+
+    // Set Player 1 controller state, read back at $D80030-$D80032. See
+    // PlayerInput:: for the bit layout. Not touched by reset() - a CPU reset
+    // doesn't unplug the controller or release held buttons.
+    void setPlayerInput(uint8_t direction, uint8_t control, uint8_t buttons) {
+        p1Direction = direction;
+        p1Control = control;
+        p1Buttons = buttons;
+    }
     void loadROM(const uint8_t* data, size_t size, uint8_t startBank);
     void allocateRAM(uint8_t startBank, uint8_t numBanks);
     void mapPPUWindow(uint8_t bank);
@@ -386,6 +428,12 @@ private:
     Display* displayPtr;
     DMAController* dmaPtr;
     class System* systemPtr;
+
+    // Player 1 controller state (see PlayerInput:: and setPlayerInput()).
+    // Defaults to connected, no input held.
+    uint8_t p1Direction;
+    uint8_t p1Control;
+    uint8_t p1Buttons;
 
     // Memory mapping helpers
     uint8_t readMapped(uint32_t address);
