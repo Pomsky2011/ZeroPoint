@@ -2,6 +2,14 @@
 I/O REGISTERS FOUND - NEED ADDRESS ASSIGNMENT
 ================================================================================
 
+SUPERSEDED / ASPIRATIONAL: this is a pre-implementation proposal. Addresses
+were assigned differently than proposed here (base bank $D8, not $00; the
+DMA_STATUS bit order below is backwards vs. the real implementation, which
+puts queue count in the HIGH nibble and active count in the LOW nibble; the
+DMA_CHAN_SELECT/DMA_CHAN_STATE select-then-read design was never built —
+channel state is read directly by offset instead). See docs/io-usage-guide.md
+for the real, current register map. Kept as historical design intent only.
+
 Here are the I/O register blocks that exist in the codebase and need
 memory-mapped addresses assigned by YOU.
 

@@ -12,11 +12,16 @@ All hardware control registers are located in **Bank $D8**:
 | $D8:0000-$D8:000F | 16 bytes | PPU Control | Read/Write |
 | $D8:0010-$D8:001F | 16 bytes | APU Control | Read/Write |
 | $D8:0020-$D8:002F | 16 bytes | DMA Control | Read/Write |
+| $D8:0030-$D8:003F | 16 bytes | Player Ports (P1 controller, P2 debug serial) | Read/Write |
 | $D8:0040-$D8:0047 | 8 bytes | Display Status | Read-Only |
+| $D8:0048-$D8:004F | 8 bytes | System Control (DEV_MODE only) | Read/Write |
+| $D8:0050-$D8:0057 | 8 bytes | Timer Control | Read/Write |
+| $D8:0058-$D8:005F | 8 bytes | Interrupt Controller | Read/Write |
 
 ### Memory Windows
 - **Bank $B0**: PPU Memory Window (64 KB)
 - **Bank $A0**: APU Memory Window (64 KB)
+- **Bank $BE-$BF**: Shadow Work RAM (128 KB)
 
 ---
 
@@ -321,11 +326,13 @@ upload_microcode:
     CPX #ppu_program_size
     BNE upload_microcode
 
-    ; Set V-Blank interrupt handler
+    ; Set V-Blank interrupt handler: PPU register R59, exposed via
+    ; PPU_VBLANK_INT at $D8000B (low byte) / $D8000C (high byte) -
+    ; NOT $00F0/$00F1, which are VOC render-mode/palette-address registers
     LDA #<vblank_handler
-    STA $00F0      ; Assume handler address in VOC or via registers
+    STA $D8000B
     LDA #>vblank_handler
-    STA $00F1
+    STA $D8000C
 
     ; Switch back to ROM
     LDA #$00
@@ -342,14 +349,19 @@ upload_microcode:
 
 ## Summary
 
-All I/O registers are now implemented at **Bank $D8** as you specified:
+All I/O registers are implemented at **Bank $D8** ($D80000-$D8005F, 96 bytes total):
 - ✅ PPU Control: $D80000-$D8000F
 - ✅ APU Control: $D80010-$D8001F
-- ✅ DMA Control: $D80020-$D8002F (placeholder)
-- ✅ Display Status: $D80040-$D80047
+- ✅ DMA Control: $D80020-$D8002F (fully wired, not a placeholder — see `docs/dma.md`'s "CPU Register Interface" section for the actual 9-byte streaming protocol)
+- ✅ Player Ports: $D80030-$D8003F (P1 controller; P2 is a buffered serial port with no consumer yet, see `docs/debug-protocol.md`)
+- ✅ Display Status: $D80040-$D80047 (read-only)
+- ✅ System Control: $D80048-$D8004F (DEV_MODE flag only)
+- ✅ Timer Control: $D80050-$D80057
+- ✅ Interrupt Controller: $D80058-$D8005F
 
 Memory windows work via:
 - ✅ Bank $B0 for PPU (64 KB)
 - ✅ Bank $A0 for APU (64 KB)
+- ✅ Bank $BE-$BF for Shadow Work RAM (128 KB)
 
 Setup function `CPU::setupIORegisters()` must be called after setting PPU, APU, and Display pointers.

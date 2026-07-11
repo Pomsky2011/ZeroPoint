@@ -2,6 +2,13 @@
 
 This document lists ALL I/O registers that currently exist in the ZeroPoint hardware implementations and need CPU memory-mapped addresses assigned.
 
+> **Note**: This is a pre-implementation planning doc — the addresses were
+> assigned differently than proposed here (bank $D8, not $70/$60), and
+> controller input, timers, and interrupts (marked "NOT FOUND" below) were
+> all subsequently implemented. **`docs/io-usage-guide.md` reflects the
+> actual, current register map** — treat this file as historical context for
+> *why* the registers exist, not where they live.
+
 ---
 
 ## 1. PPU (Picture Processing Unit)
@@ -26,7 +33,8 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 
 ### Memory Access
 - `readMemory(address)` → uint8_t (read PPU's 64 KiB memory)
-- **Note**: No `writeByte()` method exists yet for CPU writes to PPU memory
+- `writeMemory(address, value)` — now implemented (`include/ppu.h`), wired
+  into `CPU::writeMapped`; the "no write method yet" note below is stale
 
 ### VOC Registers (Memory-Mapped at $00F0-$00FF in PPU memory)
 **Struct**: `VOCRegisters` (ppu.h:182-189)
@@ -48,7 +56,7 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 - Bit 3 (0x08): VOC_PALETTE_MODE - 0=16 color, 1=256 color
 - Bit 0 (0x01): VOC_RESET - Reset switch
 
-**Access Method**: These are already memory-mapped within PPU's 64 KiB space. CPU accesses them via bank $70 window.
+**Access Method**: These are already memory-mapped within PPU's 64 KiB space. CPU accesses them via bank **$B0** window (not $70 — that address was never adopted).
 
 ---
 
@@ -78,14 +86,14 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 - `loadROM(data, size, address)` - Load program into APU memory
 
 ### Special Registers (CPU Access)
+Only `pc`, `sp`, `romBank`, and `ioBank` actually have I/O register access
+(`src/cpu.cpp` APU Control block). `rp`/`dp`/`db`/`bf` have no I/O path at
+all — CPU code cannot read or write them.
 - **pc** (uint16_t) - Program counter
 - **sp** (uint16_t) - Stack pointer
-- **rp** (uint8_t) - ROM page
-- **dp** (uint8_t) - Data page
-- **db** (uint8_t) - Data byte
-- **bf** (bool) - Byte flip flag
 - **romBank** (uint16_t) - Current ROM bank (0-17)
 - **ioBank** (uint16_t) - Current I/O bank
+- **rp/dp/db/bf** - exist as APU state but are not CPU-accessible via I/O
 
 ### DEF88186 Communication Interface
 **Methods**: `readDEF88186Input()`, `writeDEF88186Input()`, `readDEF88186Output()`, `writeDEF88186Output()`
@@ -125,7 +133,7 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 | $0070-$007F | 16 B  | Reserved1 (global)                   |
 | $0080-$00FF | 128 B | Reserved2                            |
 
-**Access Method**: MMP registers are memory-mapped at $0000-$00FF in APU memory, accessible via bank $60 window.
+**Access Method**: MMP registers are memory-mapped at $0000-$00FF in APU memory, accessible via bank **$A0** window (not $60 — that address was never adopted).
 
 ---
 
@@ -219,25 +227,28 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 
 ---
 
-## 6. Controller/Input (NOT FOUND)
-**Status**: No controller input hardware implemented yet.
-**Needs**: Controller register implementation before I/O mapping.
+## 6. Controller/Input — now implemented
+**Status**: `PlayerInput` (P1 direction/control/buttons) exists in
+`include/cpu.h`, fed from SDL keyboard via `Window::getPlayerInput`
+(`src/window.cpp`), exposed at `$D80030-$D80032`. A single controller only —
+no multi-controller/strobe design as originally proposed.
 
 ---
 
-## 7. Timers (NOT FOUND)
-**Status**: No timer hardware implemented yet.
-**Needs**: Timer implementation before I/O mapping.
+## 7. Timers — now implemented
+**Status**: 8 hardware timers (V/H/S/Q/E/T/A/R fixed-period flags) exist in
+`System` (`include/system.h`/`src/system.cpp`), exposed at
+`$D80050-$D80052`. No programmable reload/countdown timers, if that's what
+was originally envisioned — just fixed periods.
 
 ---
 
-## 8. Interrupts (NOT FOUND in dedicated hardware)
-**Status**: Interrupts handled by:
-- PPU: V-Blank/H-Blank (via R59/R60)
-- CPU: BRK, COP, IRQ, NMI vectors
-- DMA: Interrupt pause/resume
-
-**Needs**: Unified interrupt controller implementation.
+## 8. Interrupts — now implemented as a dedicated controller
+**Status**: `InterruptController` (`include/interrupt_controller.h`) latches
+and routes 4 sources (V-Blank/H-Blank/Timer/DMA-reserved) to the CPU's
+single IRQ line, exposed at `$D80058-$D80059`. Simpler than the originally
+proposed 8-source design with vector registers — vectors remain fixed CPU
+memory, not I/O.
 
 ---
 
@@ -261,8 +272,11 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 - APUSP (2 bytes) - stack pointer
 - APU_ROMBANK (1 byte) - ROM bank select
 - APU_IOBANK (1 byte) - I/O bank select
-- APUREG_ADDR (1 byte) - register select (0-255)
-- APUREG_DATA (1 byte) - register read/write
+- APUREG_ADDR (1 byte) - register select (0-255) — addresses exist at
+  $D80018/$D80019 but the read handler always returns 0 and the write
+  handler has no case for them at all; this is a non-functional stub, unlike
+  PPUREG_ADDR/DATA above which genuinely works
+- APUREG_DATA (1 byte) - register read/write (same stub caveat)
 
 ### DMA Control Block (needs 16+ bytes)
 - DMA_CONFIG (9 bytes) - Write 9-byte config to queue transfer
@@ -279,8 +293,8 @@ This document lists ALL I/O registers that currently exist in the ZeroPoint hard
 ---
 
 ## Memory Windows Already Supported
-- **Bank $70**: PPU memory window (64 KB)
-- **Bank $60**: APU memory window (64 KB)
+- **Bank $B0**: PPU memory window (64 KB) — not $70, see note at top of this doc
+- **Bank $A0**: APU memory window (64 KB) — not $60
 
 These use `CPU::mapPPUWindow()` and `CPU::mapAPUWindow()` - already implemented!
 

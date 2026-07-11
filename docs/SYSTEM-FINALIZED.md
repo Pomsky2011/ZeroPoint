@@ -2,6 +2,10 @@
 
 This document summarizes what was implemented to finalize the basic ZeroPoint system.
 
+> **Note**: This document predates the interrupt controller, hardware timers, and
+> DMA I/O integration (see `CLAUDE.md` "Status" section for current state). Some
+> "remaining work" items below are now done; see inline corrections.
+
 ---
 
 ## What Was Implemented (Emulation Side)
@@ -56,7 +60,8 @@ Complete system integration with:
 - **Memory setup**: Auto-configures RAM banks, windows, I/O
 - **Synchronized execution**: `step()`, `run(cycles)`
 - **Component access**: Getters for CPU, PPU, APU, Display
-- **Interrupt detection**: V-Blank/H-Blank edge detection (routing TODO)
+- **Interrupt detection**: V-Blank/H-Blank edge detection, routed through the
+  interrupt controller ($D80058-$D8005F) to the CPU's single IRQ line ✅ DONE
 
 **Features**:
 ```cpp
@@ -172,14 +177,13 @@ These are documented in **`MISSING-IMPLEMENTATIONS.md`** for your decision.
 - I/O space reserved at $C200
 - **Decision needed**: Controller format, button mapping
 
-**Timers**
-- I/O space reserved at $C300
-- **Decision needed**: Timer specs
+**Timers** ✅ DONE
+- 8 hardware timers implemented at $D80050-$D80052 (TIMER_CONTROL/STATUS/INT_ENABLE)
 
-**DMA Integration**
-- DMA controller exists, not wired to I/O
-- I/O registers at $D80020 are placeholders
-- **Impact**: Can manually copy, just slower
+**DMA Integration** ✅ DONE
+- DMA controller is wired to I/O; $D80020-$D8002F is a live 9-byte config
+  buffer (see `src/cpu.cpp` `registerIORegion(IO_BANK, 0x0020, ...)`), not a
+  placeholder
 
 ---
 
@@ -275,18 +279,22 @@ cpu.run(1000000);
 
 ### For You to Decide
 
-1. **Confirm interrupt vector locations** - Match docs?
-2. **Provide boot ROM** (when ready) - Bank $FF
-3. **Decide on controller format** (if needed now) - Bank $00, $C200
-4. **Decide on timer specs** (if needed now) - Bank $00, $C300
+1. **Boot ROM** - still not provided (bank $FF is unmapped); RSA/SHA-256
+   verification math spec now written in `ZPbootROM/def88186/rsa.def`
+2. Controller format and timer specs were decided and implemented — a
+   single-controller design at $D80030-$D80032 (not $C200) and 8 fixed-period
+   hardware timers at $D80050-$D80057 (not $C300, and not programmable
+   reload timers as this doc originally floated)
 
 ### Future Enhancements (Low Priority)
 
-- Register select mechanism (PPUREG_ADDR/DATA, APUREG_ADDR/DATA)
-- DMA integration
-- Hardware scrolling
-- Reverb/echo effects
-- Debugger tools
+- Register select mechanism: PPUREG_ADDR/DATA is done (`src/cpu.cpp`
+  ~1743-1805); **APUREG_ADDR/DATA is still a non-functional stub** (always
+  reads 0, writes are no-ops)
+- DMA integration — done, see `docs/dma.md`
+- Hardware scrolling — still missing
+- Reverb/echo effects — still missing
+- Debugger tools — still missing
 - Optimizations
 
 ---

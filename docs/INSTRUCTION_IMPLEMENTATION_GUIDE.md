@@ -34,7 +34,7 @@ This guide explains how to implement instructions for the CPU, PPU, and APU arch
 
 ### Implementing a CPU Instruction
 
-**File**: `/Users/alexanderwhite/Documents/Code/ZeroPoint/src/cpu_instructions.cpp`
+**File**: `src/cpu_instructions.cpp`
 
 **Template**:
 ```cpp
@@ -175,20 +175,26 @@ void cpu_inst_0x97(CPU* cpu) {  // ADC #const
 
 ### Implementing a PPU Instruction
 
-**File**: `/Users/alexanderwhite/Documents/Code/ZeroPoint/src/ppu_instructions.cpp`
+**File**: `src/ppu.cpp` — `include/ppu_instructions.h`/`src/ppu_instructions.cpp`
+are now empty stubs (dispatch was consolidated directly into `ppu.cpp`); do
+not add new opcodes there.
 
-**Template**:
+Basic opcodes (0x0-0xD) are `case` blocks in the switch inside
+`PPU::executeInstruction()`. Preset E sub-opcodes go in
+`PPU::executePresetE()`, Preset F sub-opcodes in `PPU::executePresetF()` —
+there is no per-opcode free function, just inline cases operating on `this`.
+
+**Template** (adding a case to `PPU::executeInstruction()`'s switch):
 ```cpp
-void ppu_exec_0xX(PPU* ppu, uint16_t operand) {
-    // Decode operand fields
-    uint8_t regX = (operand >> 6) & 0x3F;  // Upper 6 bits
-    uint8_t regY = operand & 0x3F;          // Lower 6 bits
+case PPUOpcode::YOUR_OPCODE: {
+    // regX/regY are already pre-extracted from the operand's upper/lower
+    // 6 bits at the top of executeInstruction() — reuse them where they fit
+    uint16_t value = registers[regX];
+    registers[regY] = value;
 
-    // Implement logic
-    uint16_t value = ppu->getRegister(regX);
-    ppu->setRegister(regY, value);
-
-    // No need to update cycles - PPU is 1 cycle per instruction
+    // Override instrCycles here if this isn't a single base-cycle op
+    // (see the CYC_* constants and how MUL/DIV/branches set it)
+    break;
 }
 ```
 
@@ -230,34 +236,32 @@ uint8_t subop = (operand >> 8) & 0x0F;  // Bits 11-8
 uint8_t suboperand = operand & 0xFF;     // Bits 7-0
 ```
 
-### Example: ADD Instruction
+### Example: ADD Instruction (real code, `src/ppu.cpp`)
 
 ```cpp
-void ppu_exec_0xA(PPU* ppu, uint16_t operand) {  // ADD
-    uint8_t regX = (operand >> 6) & 0x3F;
-    uint8_t regY = operand & 0x3F;
-
-    uint16_t result = ppu->getRegister(regX) + ppu->getRegister(regY);
-    ppu->setRegister(regX, result);
+case PPUOpcode::ADD: {
+    // add X Y - X = X + Y (regX, regY pre-extracted)
+    registers[regX] += registers[regY];
+    break;
 }
 ```
 
-### Example: Jump If Zero
+### Example: Jump If Zero/Greater (real code, `src/ppu.cpp`)
+
+PPU flags (`zero`/`greater`) are fully implemented (`PPUFlags` in
+`include/ppu.h`, set by `CMP` via `updateFlags()`) — this is not a
+placeholder:
 
 ```cpp
-void ppu_exec_0x6(PPU* ppu, uint16_t operand) {  // JUMP_ZG
-    bool isGreater = (operand & 0x800) != 0;  // Bit 11
-
-    uint16_t pc = ppu->getRegister(62);  // R62 is PC
-
-    if (isGreater) {
-        // JMG - jump if greater flag is set
-        // Note: You'll need access to PPU flags
-        // For now this is a placeholder
-    } else {
-        // JMZ - jump if zero flag is set
-        // Implement based on your flag system
+case PPUOpcode::JUMP_ZG: {
+    // Bit 11: 0 = jmz, 1 = jmg
+    bool isGreater = (operand & 0x800) != 0;
+    bool taken = isGreater ? flags.greater : flags.zero;
+    if (taken) {
+        executionPointer = registers[REG_PC];
     }
+    instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
+    break;
 }
 ```
 
@@ -267,28 +271,38 @@ void ppu_exec_0x6(PPU* ppu, uint16_t operand) {  // JUMP_ZG
 
 ### Architecture Overview
 
-- **32 opcodes** (0x00-0x1F)
+- **5-bit opcode field** (0x00-0x1F, 32 encodable values); `switch(opcode)`
+  in `APU::executeInstruction()` only dispatches 0x00-0x1B (28 values) —
+  0x1C-0x1F fall through to `default: halted = true`. Several of those 28
+  cases further sub-decode into 2-4 mnemonics off the operand bits (~47
+  total mnemonics — see CLAUDE.md's APU section)
 - **16-bit big-endian** instructions
 - **Format**: `[OOOOO PPPPPPPPPPP]` (5-bit opcode, 11-bit operand)
-- **256 x 8-bit registers**
+- **256 x 8-bit registers exist, but only R0-R127 are reachable** — ALU
+  source operands are hardwired to a single bit selecting R0(X)/R1(Y) only,
+  and destination fields are 7 bits wide (max R127)
 - **4 MHz clock, 4 cycles per instruction**
 
 ### Implementing an APU Instruction
 
-**File**: `/Users/alexanderwhite/Documents/Code/ZeroPoint/src/apu_instructions.cpp`
+**File**: `src/apu.cpp` — `include/apu_instructions.h`/`src/apu_instructions.cpp`
+are unused; there are no `apu_exec_0xXX` free functions. Dispatch is a
+single inline `switch(opcode)` in `APU::executeInstruction()`; add your case
+there.
 
-**Template**:
+**Template** (adding a case to `APU::executeInstruction()`'s switch):
 ```cpp
-void apu_exec_0xXX(APU* apu, uint16_t operand) {
+case 0xXX: {
     // Decode operand
     uint8_t regX = (operand >> 4) & 0xFF;  // Example
     uint8_t regY = operand & 0x0F;
 
-    // Implement logic
-    uint8_t value = apu->getRegister(regX);
-    apu->setRegister(regY, value);
+    // Implement logic directly on member state (registers, pc, sp, ...)
+    uint8_t value = registers[regX];
+    registers[regY] = value;
 
     // Cycles are automatically added by APU::step()
+    break;
 }
 ```
 
@@ -341,6 +355,11 @@ void apu_exec_0x06(APU* apu, uint16_t operand) {  // ADD
 
 ## Common Patterns
 
+Note: PPU and APU no longer use a free function per opcode (the sections
+above cover this) — the snippets below show the *logic* pattern, not the
+literal function signature; put the body in the appropriate `case` inside
+`ppu.cpp`'s/`apu.cpp`'s switch statements instead of a standalone function.
+
 ### Pattern 1: Simple Register Operation
 
 ```cpp
@@ -350,17 +369,13 @@ void cpu_inst_0xXX(CPU* cpu) {
     cpu->cycleCount += 2;
 }
 
-// PPU
-void ppu_exec_0xX(PPU* ppu, uint16_t operand) {
-    uint8_t reg = operand & 0x3F;
-    ppu->setRegister(reg, ppu->getRegister(reg) + 1);
-}
+// PPU (inside a case in PPU::executeInstruction, member context - "this" implied)
+uint8_t reg = operand & 0x3F;
+registers[reg]++;
 
-// APU
-void apu_exec_0xXX(APU* apu, uint16_t operand) {
-    uint8_t reg = operand & 0xFF;
-    apu->setRegister(reg, apu->getRegister(reg) + 1);
-}
+// APU (inside a case in APU::executeInstruction)
+uint8_t reg = operand & 0xFF;
+registers[reg]++;
 ```
 
 ### Pattern 2: Memory Access
@@ -375,20 +390,16 @@ void cpu_inst_0xXX(CPU* cpu) {
     cpu->cycleCount += 3;
 }
 
-// PPU (using DP register)
-void ppu_exec_0xX(PPU* ppu, uint16_t operand) {
-    uint16_t dp = ppu->getRegister(63);  // R63 = DP
-    uint8_t value = ppu->readMemory(dp);
-    uint8_t reg = operand & 0x3F;
-    ppu->setRegister(reg, value);
-}
+// PPU (using DP register, inside a case in PPU::executeInstruction)
+uint16_t dp = registers[REG_DP];  // R63 = DP
+uint8_t value = readMemory(dp);
+uint8_t reg = operand & 0x3F;
+registers[reg] = value;
 
-// APU
-void apu_exec_0xXX(APU* apu, uint16_t operand) {
-    uint16_t addr = operand & 0x7FF;
-    uint8_t value = apu->readByte(addr);
-    apu->setRegister(0, value);  // Store in register 0
-}
+// APU (inside a case in APU::executeInstruction)
+uint16_t addr = operand & 0x7FF;
+uint8_t value = readByte(addr);
+registers[0] = value;  // Store in register 0
 ```
 
 ### Pattern 3: Conditional Branches
@@ -485,7 +496,7 @@ After implementing instructions:
 
 1. **Start simple**: Implement basic instructions (NOP, simple loads/stores) first
 2. **Use existing code**: Many CPU instructions have `opXXX()` implementations - reuse them!
-3. **Check the docs**: See `/Users/alexanderwhite/Documents/Code/ZPdevtools/docs/` for ISA specs
+3. **Check the docs**: See `ZPdevtools/docs/` (sibling repo) for ISA specs
 4. **Test incrementally**: Build and test after implementing each instruction
 5. **Watch cycles**: Accurate cycle counts matter for timing-sensitive code
 

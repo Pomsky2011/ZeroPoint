@@ -11,7 +11,7 @@
 - **Development Tools**: Assemblers (CPU/PPU/APU), ROM builder, disassemblers ✅
 
 ### 🔧 Remaining Core Work
-- **Boot ROM**: System initialization and program loader (Phase 1) (This can just be a placeholder for now)
+- **Boot ROM**: System initialization and program loader (Phase 1) — WIP in the separate `ZPbootROM` repo; `init.def` (register/stack/hardware init + RAM-clear DMA) is written, `main.def`/`copy.def`/`rsa.def` are still empty
 - **System Integration**: CPU ↔ PPU ↔ APU communication (Phase 1)
 - **Debuggers**: Interactive debugging for CPU/PPU/APU (Phase 3)
 - **Documentation**: User manual, tutorials, examples (Phase 5)
@@ -145,8 +145,7 @@
 **Deliverable**: Interactive debugging environment
 
 ### 3.2 Emulator Features
-- [ ] **Window scaling options**
-  - 1×, 2×, 4×, 8× display scaling
+- [x] **Window scaling options** — configurable scale in Qt settings dialog (`qt/mainwindow.cpp`)
   - Fullscreen mode
   - Aspect ratio options
   - Scanline filters (optional)
@@ -278,13 +277,13 @@
 
 ### Graphics Extensions
 - [ ] Hardware scrolling
-- [ ] Sprite system (layer over DIY tiles)
+- [x] ~~Sprite system~~ — by design, not planned as a dedicated layer; done manually on top of the tile system
 - [ ] Additional blending modes
 - [ ] Transparency effects
 
 ### Audio Extensions
 - [ ] Reverb/echo effects implementation
-- [ ] Gaussian interpolation
+- [x] Cubic (Catmull-Rom) sample interpolation — replaces linear; true Gaussian windowing not pursued
 - [ ] Advanced sample looping
 - [ ] Real-time audio effects
 

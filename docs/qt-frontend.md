@@ -34,21 +34,28 @@ The main window (`mainwindow.h/cpp`) provides:
 The configuration dialog (`configdialog.h/cpp`) contains three tabs:
 
 ### Display Tab
-- **Window Scale:** 1x to 4x scaling (native is 256x256)
-- **VSync:** Enable/disable vertical synchronization
-- **Filtering:** Nearest (sharp pixels) or Linear (smooth)
+- **Window Scale:** configurable scaling (native is 256x256), persisted via `QSettings`
+- **VSync:** the checkbox exists and is persisted, but nothing in the Qt
+  frontend actually reads it to affect rendering/swap behavior yet
+- **Filtering:** the combo box (Nearest/Linear) exists in the UI file, but
+  `ConfigDialog` exposes no getter/setter for it and nothing in
+  `mainwindow.cpp` references it — selecting a filter has no effect
 
 ### Audio Tab
-- **Enable Audio:** Toggle audio output
-- **Volume:** 0-100% volume control
+- **Enable Audio / Volume:** these settings are stored and persisted, but
+  the Qt frontend has no audio output implementation at all (no `QAudio`
+  usage anywhere) — `mainwindow.cpp`'s own comment on applying settings
+  reads `// Would apply settings here when implemented`. Live APU audio
+  output only exists in the standalone `run_apu_demo` dev tool.
 
 ### Input Tab
-- **Keyboard Controls:** View and configure key mappings
+- The UI has an input tab, but `ConfigDialog` exposes no way to view or
+  remap keys — bindings are hardcoded in `emulatorwidget.cpp`:
   - D-pad: Arrow keys
-  - A Button: Z
-  - B Button: X
-  - Start: Return/Enter
-  - Select: Right Shift
+  - Buttons 1-4: Z / X / C / V
+  - Shoulder controls: A (big-left) / S (little-left) / D (little-right) / F (big-right)
+  - Menu: either Shift key
+  - Pause: Return/Enter
 
 ## Emulator Widget
 
@@ -56,7 +63,8 @@ The emulator widget (`emulatorwidget.h/cpp`) is a custom QWidget that:
 - Integrates the ZeroPoint display system
 - Renders the 256x256 framebuffer using Qt's QPainter
 - Runs emulation loop at ~60 FPS using QTimer
-- Converts the 16-bit BBBBBGGGGGRRRRR- color format to Qt RGB
+- Reads `Display::getPixel()` (RGBA32) and extracts 8-bit R/G/B directly for
+  Qt — there is no 16→8-bit scaling step (see corrected "Color Conversion" below)
 
 ## ROM Loading
 
@@ -100,13 +108,13 @@ This creates a simple test ROM with:
 ## Implementation Notes
 
 ### Color Conversion
-The ZeroPoint uses 16-bit color in BBBBBGGGGGRRRRR- format:
-- Bits 15-11: Blue (5 bits)
-- Bits 10-6: Green (5 bits)
-- Bits 5-1: Red (5 bits)
-- Bit 0: Ignored
-
-This is converted to Qt RGB888 by scaling each 5-bit component to 8 bits.
+The display's internal 16-bit format (5-5-5-1, RGBA16) exists, but
+`EmulatorWidget::updateFrameBuffer()` (`qt/emulatorwidget.cpp`) reads
+`Display::getPixel()` in its **RGBA32** form (`RRGGBBAA`, one byte per
+channel) and takes the 8-bit R/G/B directly — there is no 5-bit-to-8-bit
+scaling step in the Qt frontend; that conversion only happens internally in
+`Display` when translating between its 16-bit and 32-bit representations
+(see `docs/display.md`).
 
 ### Timing
 The emulator runs at approximately 60 FPS:

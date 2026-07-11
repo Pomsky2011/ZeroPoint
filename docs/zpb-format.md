@@ -30,6 +30,23 @@ When a .zpb ROM is loaded:
 - Maximum ROM size: 2 MB (to fit in main RAM)
 - Entry point specifies where execution begins
 
+## Signature Verification
+
+The emulator's loader (`src/rom.cpp`) does **not** perform any signature
+verification — it only checks the magic bytes, `version == 1`, header size,
+and ROM size, then loads unconditionally. There is no signature field in
+this 64-byte header at all.
+
+This is a different (and currently incompatible) format from the *signed*
+`.zpb` produced by `ZPdevtools/zpbuild` — that tool writes `version = 2` and
+appends a "ZPSG" trailer (32-byte SHA-256 digest + 256-byte RSA-2048
+signature) after the ROM payload. Since `src/rom.cpp:46` rejects any
+`version != 1`, the emulator currently refuses to load a zpbuild-signed ROM
+at all. Verifying that trailer is meant to be the boot ROM's job (see
+`ZPbootROM/def88186/rsa.def`), not something the emulator's loader enforces
+today — but the version check needs to accept 2 (and ignore/skip the
+trailer) before a signed ROM will even load.
+
 ## Example
 
 ```

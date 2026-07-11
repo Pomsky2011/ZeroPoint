@@ -226,7 +226,7 @@ The display uses a **bank-based rolling buffer** instead of a full-frame buffer:
 During each H-Blank (end of scanline), the display rolls banks to make room:
 
 **RGBA32 mode (32-bit color):**
-- Rolls 2 banks per H-Blank
+- Rolls 1 bank per H-Blank (one scanline advances per H-Blank; `slotsPerBank == 1` in `src/display.cpp`)
 - Each bank holds 1 scanline (1024 bytes)
 - Buffer window: 8 scanlines ahead
 

@@ -6,18 +6,18 @@ The ZeroPoint DMA (Direct Memory Access) controller enables efficient data trans
 
 ## Clock Synchronization
 
-The DMA controller runs at 32 MHz, half the speed of the master clock:
+The DMA controller runs at 33.554432 MHz (2^25 Hz), half the speed of the master clock:
 
-- **Master clock**: 64 MHz (PPU pixel clock)
-- **DMA clock**: 32 MHz (every 2 master cycles)
+- **Master clock**: 67.108864 MHz (2^26 Hz)
+- **DMA clock**: 33.554432 MHz (2^25 Hz, every 2 master cycles)
 - **Execution pattern**: Executes on odd master cycles (1, 3, 5, 7, 9, 11, 13, 15)
 
 This allows the DMA to run efficiently without competing with the PPU for every cycle.
 
 Other system components:
-- **PPU**: 64 MHz (every cycle)
-- **CPU**: 16 MHz (every 4 cycles)
-- **APU**: 4 MHz (every 16 cycles)
+- **PPU**: 67.108864 MHz (every cycle)
+- **CPU**: 16.777216 MHz (every 4 cycles)
+- **APU**: 4.194304 MHz (every 16 cycles)
 
 ## Configuration
 
@@ -29,7 +29,7 @@ Each DMA transfer is configured with a 9-byte structure:
 | 1-3    | 3    | Source address (24-bit, little endian) |
 | 4-6    | 3    | Target address (24-bit, little endian) |
 | 7      | 1    | Size multiplier |
-| 8      | 1    | Interrupt/trigger byte ("OK it's your turn now") |
+| 8      | 1    | Any byte — writing this 9th byte is itself the trigger (`src/cpu.cpp`: `dmaPtr->queueDMA(dmaConfigBuffer)` fires as soon as the 9th byte lands); the value is stored (`DMAConfig::interrupt`) but never read anywhere |
 
 ### Mode Byte Format
 
@@ -45,6 +45,27 @@ Bits 3-0 (YYYY): Channel number (0-15)
 Total bytes = ((S + 1) × 256) × size_multiplier
 Maximum: (4 × 256) × 1 = 1024 bytes per transfer
 ```
+
+### CPU Register Interface ($D80020-$D8002F)
+
+The 9-byte config struct above isn't written as a block — it's streamed one
+byte at a time to `$D80021-$D80028` (`src/cpu.cpp` `registerIORegion(IO_BANK,
+0x0020, 16, ...)`):
+
+| Offset | Access | Meaning |
+|--------|--------|---------|
+| $D80020 | R/W | Read: current write position in the 9-byte buffer. Write (any value): resets the buffer and write position to 0 |
+| $D80021-$D80028 | W | Each write appends one byte to the config buffer, in order (mode, source×3, target×3, multiplier, trigger). The 9th write auto-queues the transfer via `DMAController::queueDMA()` and resets the position for the next transfer |
+| $D80021 | R | Status byte: `QQQQAAAA` — queued-channel count in bits 7-4, active-channel count in bits 3-0 |
+| $D80022 | R | 1 if DMA interrupt is active, else 0 |
+| $D80023-$D8002E | R | Per-channel state, one byte per channel — but only **channels 0-11** (12 of the 16 hardware channels have a status byte here; channels 12-15 have no CPU-visible status) |
+
+The buffer position auto-advances on every write and is what determines which
+config byte you're setting — the specific offset ($D80021 vs $D80022 vs ...)
+is not checked against the position, only validated as being in range. In
+practice firmware should still write config bytes 1-9 to offsets $D80021
+through $D80028 (cycling back to $D80021 for the 9th byte) to keep source
+readable, since the hardware itself doesn't enforce that ordering.
 
 ## Transfer Modes
 
@@ -139,18 +160,9 @@ Total cycles = 8 (config) + init_cycles + (bytes × cycles_per_byte)
 Source: 0x010000 (pattern data: 0x00, 0x00)
 Target: 0x020000 (VRAM)
 Mode: Const Copy
-S: 1 (pattern size = 2 bytes)
-Size multiplier: 1
-Total: (2 × 256) × 1 = 512 bytes... wait, that's wrong.
-
-Actually, let's recalculate:
-S = 1, so pattern size = S + 1 = 2
-Transfer size = ((S + 1) × 256) × multiplier = (2 × 256) × 1 = 512 bytes
-
-Hmm, but we want 256 bytes. So:
-S = 0 (pattern size = 1 byte)
+S = 0 (pattern size = S + 1 = 1 byte)
 multiplier = 1
-Transfer size = ((0 + 1) × 256) × 1 = 256 bytes
+Transfer size = ((S + 1) × 256) × multiplier = (1 × 256) × 1 = 256 bytes
 ```
 
 Configuration bytes:

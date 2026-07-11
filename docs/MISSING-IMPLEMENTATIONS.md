@@ -2,6 +2,13 @@
 
 This document lists everything needed to finalize the basic ZeroPoint system.
 
+> **Note**: This document is from an early planning phase and much of it is now
+> stale — System class, DMA I/O, PPU/APU register-select, interrupt vectors,
+> disassemblers, and C preprocessor are all implemented since. See `CLAUDE.md`
+> "Status" for the current, authoritative list of what remains. Inline
+> corrections below cover the items relevant to recent work; the rest of this
+> doc should be read as a historical snapshot, not current state.
+
 ---
 
 ## Category 1: Emulation-Side (Will be implemented automatically)
@@ -39,7 +46,7 @@ These are development/emulation features that will be added to the C++ codebase.
 **Connect DMA to CPU memory system**
 - **Needed for**: Fast memory transfers via I/O registers at $D80020
 - **Current status**: DMA controller exists but not connected
-- **Impact**: DMA I/O registers at $D8:0020-$D8:002F are placeholders
+- **Status**: ✅ DONE — DMA is connected via `registerIORegion(IO_BANK, 0x0020, ...)` in `src/cpu.cpp`
 - **Priority**: MEDIUM - Nice to have, not critical for basic system
 - **File**: `src/cpu.cpp` (setupIORegisters, lines 2027-2030)
 - **Requires**:
@@ -114,8 +121,8 @@ These need design decisions or specifications.
 - **Additional DEF88186 vectors**:
   - $00:FFF4-$FFF5: COP vector
   - $00:FFF8-$FFF9: ABORT vector
-- **Priority**: HIGH - Required for interrupts
-- **Decision needed**: Confirm vector locations match documentation
+- **Status**: ✅ DONE — interrupt controller ($D80058-$D8005F) latches and routes
+  V-Blank/H-Blank/Timer/DMA sources to the CPU's IRQ line
 
 ### Controller Input Hardware
 
@@ -132,12 +139,8 @@ These need design decisions or specifications.
 
 **System timers**
 - **Needed for**: Timed interrupts, delays, profiling
-- **Status**: NOT IMPLEMENTED (I/O space reserved at $C300)
-- **Priority**: LOW - Can use V-Blank for timing
-- **Decision needed**:
-  - Timer resolution
-  - Number of timers
-  - Auto-reload vs one-shot
+- **Status**: ✅ DONE — 8 hardware timers at $D80050-$D80052 (see CLAUDE.md
+  "Timer System")
 
 ---
 
@@ -145,36 +148,42 @@ These need design decisions or specifications.
 
 ### PPU Features
 
-- **Register select mechanism** for PPUREG_ADDR/DATA ($D80008-$D8000A)
-  - Currently I/O returns 0 (noted in cpu.cpp:1890-1897)
-  - Would allow CPU to read/write any of 64 PPU registers
+- **Register select mechanism** for PPUREG_ADDR/DATA ($D80008-$D8000A) — ✅ DONE
+  (`src/cpu.cpp` ~1708-1805)
 
-- **Hardware scrolling** (mentioned in TODO.md)
-- **Window scaling** (2×, 4×, 8×) (mentioned in TODO.md)
-- **Sprite system** (optional layer) (mentioned in TODO.md)
+- **Hardware scrolling** (mentioned in TODO.md) — still missing
+- **Window scaling** (2×, 4×, 8×) — ✅ DONE (`qt/mainwindow.cpp`, `src/window.cpp`)
+- **Sprite system** — intentionally not built as a dedicated layer; handled
+  manually on top of the tile system by design, not a gap
 
 ### APU Features
 
-- **Register select mechanism** for APUREG_ADDR/DATA ($D80018-$D80019)
-  - Currently I/O returns 0 (noted in cpu.cpp:1975-1978)
-  - Would allow CPU to read/write any of 256 APU registers
+- **Register select mechanism** for APUREG_ADDR/DATA ($D80018-$D80019) — ⚠️
+  **CORRECTION**: still NOT done, despite this doc previously (wrongly)
+  saying otherwise. `src/cpu.cpp` registers these addresses, but the read
+  handler always returns 0 and the write handler has no case for offsets
+  0x08/0x09 at all — it's a non-functional stub. This is unlike PPUREG_ADDR/
+  DATA (`$D80008-$D8000A`), which genuinely works (`src/cpu.cpp` ~1743-1805,
+  latches `ppuRegSelect` and reads/writes the selected PPU register).
 
-- **Reverb/echo effects** (registers present, algorithms not implemented - TODO.md:94)
-- **Gaussian interpolation** (currently nearest-neighbor - TODO.md:95)
-- **Sample looping refinement** (basic framework present - TODO.md:96)
+- **Reverb/echo effects** (registers present, algorithms not implemented - TODO.md:94) — still missing
+- **Interpolation quality** — upgraded from linear to Catmull-Rom cubic spline
+  (`APU::cubicInterpolate` in `src/apu.cpp`); true Gaussian windowing was not
+  pursued since the cubic curve is a much cheaper close approximation
+- **Sample looping refinement** (basic framework present - TODO.md:96) — still open
 
 ### CPU Features
 
-- **Interrupt vectors** (proper IRQ/NMI) (TODO.md:459)
+- **Interrupt vectors** (proper IRQ/NMI) — ✅ DONE (interrupt controller, $D80058-$D8005F)
 - **Memory banking implementation** (TODO.md:461)
 - **Extended test suite** (TODO.md:462)
 
 ### Development Tools
 
-- **Debugger** with PC tracing, register inspection (TODO.md:465, 471)
-- **Disassemblers** for CPU/PPU/APU (TODO.md:493)
-- **C preprocessor integration** (TODO.md:489)
-- **Compiler optimizations** (TODO.md:490)
+- **Debugger** with PC tracing, register inspection (TODO.md:465, 471) — still missing
+- **Disassemblers** for CPU/PPU/APU — ✅ DONE (`ZPdevtools/src/{cpu,ppu,apu}disasm.c`)
+- **C preprocessor integration** — ✅ DONE (`ZPdevtools/c_compiler/preprocessor.c`)
+- **Compiler optimizations** (TODO.md:490) — still open
 
 ---
 

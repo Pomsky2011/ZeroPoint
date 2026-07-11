@@ -37,7 +37,7 @@ AROM, coprocessor registers
 |---------|------|-------|-------------|
 | $D8:0000-$D8:000F | 16 bytes | PPU Control | Start, reset, status, PC, SP, DP, interrupts |
 | $D8:0010-$D8:001F | 16 bytes | APU Control | Reset, halt, PC, SP, banks |
-| $D8:0020-$D8:002F | 16 bytes | DMA Control | Transfer config, status (placeholder) |
+| $D8:0020-$D8:002F | 16 bytes | DMA Control | Transfer config, status (implemented) |
 | $D8:0040-$D8:0047 | 8 bytes | Display Status | Scanline, pixel, status, mode (read-only) |
 
 ### Banks $E0-$FF - Boot/System ROM
@@ -96,8 +96,8 @@ Security keys, boot ROM, interrupt vectors
 - DISP_STATUS: V-Blank, H-Blank, visible area flags (read-only)
 - DISP_MODE: Render mode (16-bit/32-bit, read-only)
 
-**DMA Control Block** (src/cpu.cpp:2027-2030)
-- Placeholder for future DMA integration
+**DMA Control Block** (src/cpu.cpp, `registerIORegion(IO_BANK, 0x0020, ...)`)
+- Implemented: 9-byte sequential config buffer, queues transfers via `DMAController::queueDMA`
 
 ---
 
@@ -193,13 +193,14 @@ STA $0000          ; Write to PPU memory
 
 ## What's NOT Implemented
 
-⚠️ **PPU register writes** - PPU class needs write methods for PC/SP/DP
-⚠️ **APU stack pointer access** - APU needs getSP()/setSP() methods
-⚠️ **PPU register select** - PPUREG_ADDR/DATA need state tracking
-⚠️ **APU register select** - APUREG_ADDR/DATA need state tracking
-⚠️ **DMA integration** - DMA controller exists but not connected to I/O
-
-These can be added as needed when the functionality is required.
+> Note: most of this section is stale, but with one correction to a claim
+> made in an earlier pass of this doc. `PPU::writeMemory`/`setRegister` and
+> `APU::getSP`/`setSP` exist (`include/ppu.h`, `include/apu.h`); PPUREG_ADDR/
+> DATA register-select latching genuinely works (`src/cpu.cpp` ~1743-1805);
+> the DMA controller is wired to I/O at $D80020-$D8002F (`src/cpu.cpp`).
+> **APUREG_ADDR/DATA, however, is still a non-functional stub** — the read
+> handler always returns 0 and the write handler has no case for those
+> offsets at all (`src/cpu.cpp` ~1849-1857). Don't rely on it.
 
 ---
 

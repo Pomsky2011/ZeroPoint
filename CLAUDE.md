@@ -18,26 +18,35 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Palettes**: 16-color (16-bit) / 256-color (32-bit)
 
 ### APU (Audio Processing Unit)
-- **4 MHz** (1.0 MIPS), 8-bit RISC, 32 opcodes (ISA redesigned)
-- **256 8-bit general-purpose registers** (R0/X, R1/Y, R2-R255)
+- **4.194304 MHz (2^22 Hz)** (1.0 MIPS), 8-bit RISC
+- **~47 instruction mnemonics** decoded from a 5-bit opcode field (28 of the 32
+  encodable opcode values are dispatched in `APU::executeInstruction`; many
+  opcodes further sub-decode into 2-4 mnemonics off the operand bits — e.g.
+  opcode 0x09 covers LDA/STA/STA$. The remaining 4 opcode values (0x1C-0x1F)
+  halt on execution.)
+- **256 8-bit general-purpose registers** (array size), but the ISA only
+  reaches **R0-R127** in practice: ALU source operands are hardwired to a
+  single bit selecting R0(X)/R1(Y) only, and destination-register fields are
+  7 bits (max R127). R128-R255 are unreachable through any instruction.
 - **Special registers**: PC (16-bit), SP (16-bit hardware stack), RP, DP, DB, BF, FLAGS (4-bit: Z/G/L/C)
 - **64 KiB + 448 KiB banked AROM**
-- **Instructions**: NOP, JMP, JNZ/JZ, SRP/SDP/SDB, NOR, AND, ADD, SUB, STA/STR, LDA/SCR, flags (SFR/CF/SF/STF), ZOR/ZOA, LST/LFN/BRT/BRP, ADC, SBC, BEQ/BNE, BLT/BGT, JMS/JSR/JDP/JDPS, INC/DEC, BSP/RET/PUX/PUY/POX/POY/PUDP/PODP, MOV/EXC, CME/CMN/CMG/CML, CRB, XOR
+- **Instructions**: NOP, JMP, JNZ/JZ, SRP/SDP/SDB, NOR, AND, ADD, SUB, STA/STR, LDA/SCR, flags (SFR/CF/SF/STF), ZOR/ZOA, LST/LFN/BRT/BRP, ADC, SBC, BEQ/BNE, BLT/BGT, JMS, INC/DEC, BSP/RET/PUX/PUY/POX/POY/PUDP/PODP, MOV/EXC, CME/CMN/CMG/CML, CRB, XOR
+  (JSR/JDP/JDPS were part of an earlier ISA draft and were never implemented; only JMS exists)
 - **MMP**: 16 channels with pan (pitch/volume/pan per-channel), **SST**: Sample storage with looping
 
 ### DEF88186 CPU
-- **16 MHz**, Hybrid 65C816/8086, 256 opcodes
+- **16.777216 MHz (2^24 Hz)**, Hybrid 65C816/8086, 256 opcodes
 - **24-bit address bus** (16 MB), little-endian
 - **Registers**: A, X, Y, SP, D, PC, PB, DB, P
 - Controls all system resources
 
 ### DMA Controller
-- **32 MHz**, 16 channels (max 2 concurrent)
+- **33.554432 MHz (2^25 Hz)**, 16 channels (max 2 concurrent)
 - 4 modes: DataCopy, ConstCopy, RepeatTransfer, ConstRepeat
 
 ### System Clock
 - **Master**: 67.108864 MHz (2^26 Hz, 16-cycle pattern)
-- **Frequencies**: PPU/Display (67.108864 MHz / 2^26 Hz), DMA (32 MHz), CPU (16 MHz), APU (4 MHz)
+- **Frequencies**: PPU/Display (67.108864 MHz, 2^26 Hz, master/1), DMA (33.554432 MHz, 2^25 Hz, master/2), CPU (16.777216 MHz, 2^24 Hz, master/4), APU (4.194304 MHz, 2^22 Hz, master/16)
 
 ### Platform Support
 - **Linux**: x86_64, ARM64/aarch64
@@ -49,7 +58,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 ### PPU Memory-Mapped I/O
 - **$00F0-$00FF**: VOC control registers
 - **$0100-$010B**: Pixel drawing
-- **$0200-$0207**: Tile drawing
+- **$0200-$0203**: Tile drawing (X/Y position; `$0204-$0207` are plain PPU RAM, not wired to any handler)
 - **$0300-$033F**: Tile definition buffer
 - **$E000-$FFFF**: Framebuffer (8 KiB rolling)
 
@@ -65,15 +74,22 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$80-$9F**: RAM (2 MB)
 - **$A0**: APU Window (64 KB)
 - **$B0**: PPU Window (64 KB)
-- **$D8**: I/O Registers (72 bytes)
-- **$FF**: Boot ROM (64 KB)
+- **$BE-$BF**: Shadow Work RAM (128 KB)
+- **$D8**: I/O Registers (96 bytes, $D80000-$D8005F)
+- **$FF**: Boot ROM (64 KB) — reserved but not yet mapped; nothing allocates
+  or loads into this bank, so reads currently return open-bus `$FF`. See
+  "In Progress" status below.
 
 ### I/O Registers (Bank $D8)
 - **$D80000-$D8000F**: PPU Control
 - **$D80010-$D8001F**: APU Control
 - **$D80020-$D8002F**: DMA Control
+- **$D80030-$D8003F**: Player Ports (P1 controller direction/buttons; P2 is a
+  buffered serial port with RX/TX status bits and no consumer yet — see
+  `docs/debug-protocol.md`, which is a design doc, not a shipped feature)
 - **$D80040-$D80047**: Display Status
-- **$D80048-$D8004F**: System Control
+- **$D80048-$D8004F**: System Control (only a DEV_MODE flag byte; the other
+  registers described in early planning docs were never built)
 - **$D80050-$D80057**: Timer Control
 - **$D80058-$D8005F**: Interrupt Controller
 
@@ -219,7 +235,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 
 ## Documentation
 
-- **PPU**: `docs/ppu/`, `ZPdevtools/docs/ppu/`
+- **PPU**: `docs/ppu.md`, `ZPdevtools/docs/ppu/`
 - **APU**: `ZPdevtools/docs/apu/`
 - **CPU**: `ZPdevtools/docs/cpu/`
 - **Instruction Implementation**: `docs/INSTRUCTION_IMPLEMENTATION_GUIDE.md` - Complete guide for implementing CPU/PPU/APU instructions

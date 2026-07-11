@@ -1,5 +1,23 @@
 # ZeroPoint Serial Debug Protocol
 
+> **ASPIRATIONAL — mostly not implemented.** Only three fragments of this
+> design exist today: the `$D80030`/`$D80038-$D8003A` register addresses,
+> the RX_READY/TX_EMPTY bit assignments, and a `DEV_MODE` flag at `$D80048`
+> that the `--dev` CLI flag can set. Everything else described below does
+> not exist:
+> - No boot ROM (bank $FF is unmapped/open-bus; nothing reads DEV_MODE to
+>   gate boot behavior; `CPU::reset()` just zeroes PC/PB and `System`
+>   jumps straight to the ROM header's entry point)
+> - No command processor (no register-dump/breakpoint/memory-read handling
+>   anywhere in `src/`)
+> - No TCP server on port 6502 or any port (no socket code exists at all)
+> - No `--dev-mode`/`--debug-port` CLI flags (only `--dev` and `--scale N` exist)
+> - The P2 TX buffer is explicitly marked `// TX queue; no consumer yet` in
+>   `src/cpu.cpp` — bytes written to it go nowhere
+>
+> Treat this file as a design doc for a feature that hasn't been built, not
+> documentation of current behavior.
+
 ## Overview
 
 The ZeroPoint debug interface uses **Player Port 2** as a serial communication channel between the emulator and an external debug monitor. The boot ROM detects dev mode and enters a debug loop, allowing real-time inspection and control.

@@ -1,5 +1,14 @@
 # I/O Register Mapping - ZeroPoint System
 
+> **SUPERSEDED / ASPIRATIONAL**: This is a pre-implementation proposal — it
+> ends with "Next Steps: decide on exact addresses." None of the concrete
+> addresses below were adopted (base bank $00 → actual is $D8; PPU/APU
+> windows $70/$60 → actual is $B0/$A0; multi-controller JOY1-4 design,
+> programmable-reload timers, 16-bit interrupt vector registers, and a
+> debug/profiler register block were never built). For the real, current
+> register map, see **`docs/io-usage-guide.md`**. Kept as historical design
+> intent only.
+
 This document lists all I/O slots that need memory-mapped addresses for hardware communication between the DEF88186 CPU and other system components.
 
 ## Overview

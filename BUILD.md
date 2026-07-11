@@ -34,13 +34,13 @@ build-windows.bat
 
 ```bash
 cd ../ZPdevtools
-./build-native.sh
+make
 ```
 
 **For MS-DOS 4.01+ (Turbo C / Microsoft C):**
 ```cmd
 cd ZPdevtools
-build-dos.bat
+make -f Makefile.dos
 ```
 
 ## Platform-Specific Instructions
@@ -52,23 +52,24 @@ build-dos.bat
 - GCC or Clang
 - CMake 3.16+
 - SDL2 and Qt6 development packages
+- Vulkan SDK/loader + headers (`CMakeLists.txt` calls `find_package(Vulkan REQUIRED)` unconditionally — the build fails without it, even if you only care about the SDL or Qt frontend)
 
 **Debian/Ubuntu:**
 ```bash
 sudo apt update
-sudo apt install build-essential cmake libsdl2-dev qt6-base-dev
+sudo apt install build-essential cmake libsdl2-dev qt6-base-dev libvulkan-dev
 ./build-linux.sh
 ```
 
 **Fedora:**
 ```bash
-sudo dnf install gcc-c++ make cmake SDL2-devel qt6-qtbase-devel
+sudo dnf install gcc-c++ make cmake SDL2-devel qt6-qtbase-devel vulkan-devel
 ./build-linux.sh
 ```
 
 **Arch Linux:**
 ```bash
-sudo pacman -S base-devel cmake sdl2 qt6-base
+sudo pacman -S base-devel cmake sdl2 qt6-base vulkan-headers vulkan-icd-loader
 ./build-linux.sh
 ```
 
@@ -91,9 +92,10 @@ sudo pacman -S base-devel cmake sdl2 qt6-base
 git clone https://github.com/Microsoft/vcpkg.git
 cd vcpkg
 bootstrap-vcpkg.bat
-vcpkg install sdl2:x64-windows qt6:x64-windows
+vcpkg install sdl2:x64-windows qt6:x64-windows vulkan:x64-windows
 set VCPKG_ROOT=C:\path\to\vcpkg
 ```
+(`CMakeLists.txt` requires Vulkan unconditionally — also install the [LunarG Vulkan SDK](https://vulkan.lunarg.com/) if the vcpkg port doesn't provide a usable loader.)
 
 **Build:**
 ```cmd
@@ -119,7 +121,7 @@ build-windows.bat
 **Build dev tools only (emulator cannot run on DOS):**
 ```cmd
 cd ZPdevtools
-build-dos.bat
+scripts\build-dos.bat
 ```
 
 This builds **ALL** dev tools as C89-compliant DOS executables:
@@ -148,10 +150,9 @@ This builds **ALL** dev tools as C89-compliant DOS executables:
 
 | Script | Platform | Location | Description |
 |--------|----------|----------|-------------|
-| `build-native.sh` | Linux | `ZPdevtools/` | All dev tools (native) |
-| `build-dos.bat` | MS-DOS | `ZPdevtools/` | All dev tools (DOS) |
-| `Makefile` | Linux | `ZPdevtools/` | GNU Make (native) |
-| `Makefile.dos` | MS-DOS | `ZPdevtools/` | Turbo Make / NMAKE |
+| `Makefile` | Linux | `ZPdevtools/` | GNU Make (native) — `make` |
+| `Makefile.dos` | MS-DOS | `ZPdevtools/` | Turbo Make / NMAKE — `make -f Makefile.dos` |
+| `scripts/build-dos.bat` | MS-DOS | `ZPdevtools/` | Wraps the DOS Makefile build |
 
 ## Manual Build (Advanced)
 
@@ -181,14 +182,19 @@ sudo apt install qt5-default    # Debian/Ubuntu
 ### Windows: "CMake cannot find SDL2"
 ```cmd
 # Install with vcpkg
-vcpkg install sdl2:x64-windows qt6:x64-windows
+vcpkg install sdl2:x64-windows qt6:x64-windows vulkan:x64-windows
 set VCPKG_ROOT=C:\path\to\vcpkg
 ```
+
+### "Could NOT find Vulkan" / CMake configure fails
+`CMakeLists.txt` calls `find_package(Vulkan REQUIRED)` unconditionally, even
+if you only want the SDL or Qt frontend. Install the Vulkan SDK/loader +
+headers for your platform (see the per-platform requirements above).
 
 ### DOS: "Compiler not found"
 - Install Turbo C 2.0 to `C:\TC\`
 - OR install Microsoft C 6.0 to `C:\MSC\`
-- Edit `build-dos.bat` if installed to different location
+- Edit `scripts\build-dos.bat` if installed to a different location
 
 ### Build Fails with Memory Error
 - Linux: Check `ulimit -m` and increase if needed
