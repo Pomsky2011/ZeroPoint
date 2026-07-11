@@ -106,6 +106,14 @@ void System::reset() {
     timers.microCounter = 0;
     timers.vblank60Counter = 0;
 
+    // Connect the cartridge interface now that the hard-reset above has
+    // finished (register/execution state only - RAM is untouched). Cheap to
+    // check every reset(); only actually maps once per loadROM() call.
+    if (romLoaded && !cartridgeMapped) {
+        cpu.loadROM(pendingRomData.data(), pendingRomData.size(), 0x00);
+        cartridgeMapped = true;
+    }
+
     // With a Boot ROM mapped, cpu.reset() above already landed PC/PB at the
     // Boot ROM ($E0:0000), which reads the cartridge entry point recorded
     // below and jumps there itself. Without one, jump straight to it.
@@ -120,6 +128,20 @@ void System::reset() {
     }
 }
 
+void System::powerOn() {
+    // Real hardware holds reset while power rails and clocks settle, with
+    // the cartridge/expansion bus left disconnected the whole time - only
+    // once reset is released does it become safe to expose. loadROM() has
+    // already cached the cartridge (pendingRomData) without mapping it, so
+    // the bus is still disconnected at this point regardless of how long
+    // ago loadROM() was called. This emulator has nothing meaningful to
+    // simulate happening during that delay (deterministic, zero-init'd
+    // state throughout - see POWER_ON_DELAY_CYCLES), so it isn't spent here;
+    // reset() does the hard 0 + reset-signal part and connects the
+    // cartridge right after, matching the real sequencing.
+    reset();
+}
+
 bool System::loadROM(const std::string& filename) {
     ROM rom;
     if (!rom.load(filename)) {
@@ -131,13 +153,19 @@ bool System::loadROM(const std::string& filename) {
     romDeveloper = rom.getDeveloper();
     entryPoint = rom.getEntryPoint();
 
-    // Load ROM data into CPU memory (banks $00-$7F)
-    cpu.loadROM(rom.getData(), rom.getSize(), 0x00);
+    // Cache the cartridge bytes but don't map them into CPU memory yet -
+    // powerOn() connects the cartridge interface only after the hard-reset
+    // settle sequence. (Calling reset() directly instead of powerOn() maps
+    // it immediately below, for callers that don't want the power-on delay.)
+    pendingRomData.assign(rom.getData(), rom.getData() + rom.getSize());
+    cartridgeMapped = false;
 
     romLoaded = true;
 
     // Record the entry point for the Boot ROM to read (or for reset() to
-    // jump to directly, if no Boot ROM is mapped).
+    // jump to directly, if no Boot ROM is mapped). Safe to do now - it's
+    // just bookkeeping, independent of whether the cartridge bus is
+    // actually connected yet.
     cpu.setCartridgeEntryPoint(entryPoint);
 
     std::cout << "Loaded ROM: " << romTitle << "\n";

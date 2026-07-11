@@ -31,7 +31,7 @@ bool EmulatorWidget::loadROM(const QString &path)
     if (!system.loadROM(path.toStdString())) {
         return false;
     }
-    system.reset();
+    system.powerOn();
     updateFrameBuffer();
     update();
     return true;

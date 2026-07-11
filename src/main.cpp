@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     // A Boot ROM payload with no cartridge (e.g. a hardware demo) runs on
     // its own - only load/require a ROM if one was actually given.
     if (romPath.empty()) {
-        system.reset();
+        system.powerOn();
         std::cout << "Running Boot ROM demo (no cartridge)...\n";
         while (!window.shouldClose()) {
             window.pollEvents();
@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
         std::cerr << "Failed to load ROM: " << romPath << "\n";
         return 1;
     }
-    system.reset();
+    system.powerOn();
 
     std::cout << "Running '" << system.getROMTitle() << "'...\n";
 

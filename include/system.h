@@ -10,6 +10,7 @@
 #include "interrupt_controller.h"
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ZeroPoint {
 
@@ -33,6 +34,18 @@ public:
 
     // System control
     void reset();
+
+    // Power-on-reset sequence: the cartridge interface stays disconnected
+    // (unmapped - loadROM() only parses and caches the cartridge, it no
+    // longer maps it into CPU memory directly) through a settle delay, then
+    // everything is hard-reset (reset(), same as a soft reset - register/
+    // execution state only, RAM is left as-is), and only then is the
+    // cartridge bus connected. Mirrors real hardware power sequencing: hold
+    // reset while rails/clocks stabilize, release reset, only then expose
+    // the cartridge/expansion bus. Call this once at startup instead of
+    // reset() after loadROM()/loadBootROM().
+    void powerOn();
+
     void step();                    // Execute one master clock cycle
     void run(uint64_t cycles);      // Run for N cycles
     void stepFrame();               // Run CYCLES_PER_FRAME cycles, or until the CPU halts
@@ -142,9 +155,18 @@ private:
 
     // ROM information
     bool romLoaded;
+    bool cartridgeMapped = false;  // has pendingRomData actually been mapped into bank $00-$7F yet?
+    std::vector<uint8_t> pendingRomData;
     std::string romTitle;
     std::string romDeveloper;
     uint32_t entryPoint;
+
+    // ~0.5s @ 60 fps. Not actually stepped/spent (this emulator has no
+    // meaningful "thrash" to simulate - it's deterministic and zero-init'd
+    // throughout), just documents the delay powerOn() models. Kept as a
+    // named constant in case a frontend wants to hold a blank/splash screen
+    // for this long before calling powerOn().
+    static constexpr uint64_t POWER_ON_DELAY_CYCLES = CYCLES_PER_FRAME * 30;
 
     // Cycle synchronization
     uint64_t masterCycleCount;
