@@ -1043,37 +1043,37 @@ uint32_t PPU::blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alph
     uint8_t dstG = (dst >> 16) & 0xFF;
     uint8_t dstB = (dst >> 8) & 0xFF;
 
-    uint8_t outR, outG, outB, outA;
+    uint8_t blendR, blendG, blendB, outA;
 
     // Apply translucency alpha (0-15 range mapped to 0-255)
     uint16_t alphaFull = (alpha << 4) | alpha;  // 0-15 -> 0-255
 
     switch (mode) {
         case 0:  // Multiply (darken)
-            outR = (srcR * dstR) >> 8;
-            outG = (srcG * dstG) >> 8;
-            outB = (srcB * dstB) >> 8;
+            blendR = (srcR * dstR) >> 8;
+            blendG = (srcG * dstG) >> 8;
+            blendB = (srcB * dstB) >> 8;
             outA = (srcA * alphaFull) >> 8;
             break;
 
         case 1:  // Average (50/50 blend)
-            outR = (srcR + dstR) >> 1;
-            outG = (srcG + dstG) >> 1;
-            outB = (srcB + dstB) >> 1;
+            blendR = (srcR + dstR) >> 1;
+            blendG = (srcG + dstG) >> 1;
+            blendB = (srcB + dstB) >> 1;
             outA = (srcA * alphaFull) >> 8;
             break;
 
         case 2:  // Subtract (color subtraction)
-            outR = (dstR > srcR) ? (dstR - srcR) : 0;
-            outG = (dstG > srcG) ? (dstG - srcG) : 0;
-            outB = (dstB > srcB) ? (dstB - srcB) : 0;
+            blendR = (dstR > srcR) ? (dstR - srcR) : 0;
+            blendG = (dstG > srcG) ? (dstG - srcG) : 0;
+            blendB = (dstB > srcB) ? (dstB - srcB) : 0;
             outA = (srcA * alphaFull) >> 8;
             break;
 
         case 3:  // Add (lighten/additive)
-            outR = std::min(255, srcR + dstR);
-            outG = std::min(255, srcG + dstG);
-            outB = std::min(255, srcB + dstB);
+            blendR = std::min(255, srcR + dstR);
+            blendG = std::min(255, srcG + dstG);
+            blendB = std::min(255, srcB + dstB);
             outA = (srcA * alphaFull) >> 8;
             break;
 
@@ -1081,11 +1081,11 @@ uint32_t PPU::blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alph
             return src;
     }
 
-    // Alpha blend based on output alpha
+    // Alpha blend the mode-specific result over the destination pixel.
     uint16_t blend = alphaFull;
-    outR = ((srcR * blend) + (dstR * (255 - blend))) >> 8;
-    outG = ((srcG * blend) + (dstG * (255 - blend))) >> 8;
-    outB = ((srcB * blend) + (dstB * (255 - blend))) >> 8;
+    uint8_t outR = ((blendR * blend) + (dstR * (255 - blend))) >> 8;
+    uint8_t outG = ((blendG * blend) + (dstG * (255 - blend))) >> 8;
+    uint8_t outB = ((blendB * blend) + (dstB * (255 - blend))) >> 8;
 
     return (outR << 24) | (outG << 16) | (outB << 8) | outA;
 }
