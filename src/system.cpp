@@ -2,6 +2,7 @@
 #include "default_boot_rom.h"
 #include <iostream>
 #include <fstream>
+#include <vector>
 
 namespace ZeroPoint {
 
@@ -144,6 +145,24 @@ bool System::loadROM(const std::string& filename) {
     std::cout << "  Size: " << rom.getSize() << " bytes\n";
     std::cout << "  Entry: $" << std::hex << entryPoint << std::dec << "\n";
 
+    return true;
+}
+
+bool System::loadBootROM(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error loading Boot ROM: cannot open " << filename << "\n";
+        return false;
+    }
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(file)),
+                               std::istreambuf_iterator<char>());
+    if (data.empty()) {
+        std::cerr << "Error loading Boot ROM: " << filename << " is empty\n";
+        return false;
+    }
+
+    cpu.loadBootROM(data.data(), data.size());
+    std::cout << "Loaded Boot ROM: " << filename << " (" << data.size() << " bytes)\n";
     return true;
 }
 

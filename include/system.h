@@ -38,6 +38,11 @@ public:
     void stepFrame();               // Run CYCLES_PER_FRAME cycles, or until the CPU halts
     bool loadROM(const std::string& filename);
 
+    // Replace the default Boot ROM stub (installed at construction) with an
+    // alternate payload at bank $E0 - e.g. a demo that never hands off to a
+    // cartridge at all. Call reset() afterward to actually jump into it.
+    bool loadBootROM(const std::string& filename);
+
     // Boot ROM / hot-swap: (re)load a subchip's program. The sequence is
     // notify -> let it acknowledge -> halt -> upload -> restart, so a subchip
     // that is already running gets interrupted and knows its code is being

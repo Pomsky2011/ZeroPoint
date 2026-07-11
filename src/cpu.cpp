@@ -1639,6 +1639,19 @@ void CPU::loadROM(const uint8_t* data, size_t size, uint8_t startBank) {
 }
 
 void CPU::loadBootROM(const uint8_t* data, size_t size) {
+    // Replace semantics: calling this twice (e.g. to swap in an alternate
+    // boot ROM payload after System's constructor already installed the
+    // default stub) must not leave two overlapping bank-$E0 regions behind -
+    // rebuildBankTable() would fall back to a linear scan and the stale
+    // first-pushed region would keep winning, silently discarding the new one.
+    for (auto it = memoryMap.begin(); it != memoryMap.end(); ) {
+        if (it->startBank <= 0xE0 && it->endBank >= 0xE0) {
+            delete[] it->data;
+            it = memoryMap.erase(it);
+        } else {
+            ++it;
+        }
+    }
     loadROM(data, size, 0xE0);
     bootROMLoaded = true;
 }

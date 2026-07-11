@@ -39,10 +39,11 @@ static int runTestPattern(Window& window) {
 int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
-    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N]\n";
+    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin]\n";
     std::cout << "Press ESC to exit\n\n";
 
     std::string romPath;
+    std::string bootPath;
     bool devMode = false;
     int scale = 2;
     for (int i = 1; i < argc; i++) {
@@ -54,6 +55,8 @@ int main(int argc, char** argv) {
                 std::cerr << "Invalid --scale value, using 2x\n";
                 scale = 2;
             }
+        } else if (std::strcmp(argv[i], "--boot") == 0 && i + 1 < argc) {
+            bootPath = argv[++i];
         } else if (argv[i][0] != '-') {
             romPath = argv[i];
         }
@@ -65,8 +68,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // No ROM: fall back to the static test pattern.
-    if (romPath.empty()) {
+    // No ROM and no alternate Boot ROM: fall back to the static test pattern.
+    if (romPath.empty() && bootPath.empty()) {
         return runTestPattern(window);
     }
 
@@ -75,6 +78,24 @@ int main(int argc, char** argv) {
     if (devMode) {
         system.setDevMode(true);
     }
+    if (!bootPath.empty() && !system.loadBootROM(bootPath)) {
+        std::cerr << "Failed to load Boot ROM: " << bootPath << "\n";
+        return 1;
+    }
+
+    // A Boot ROM payload with no cartridge (e.g. a hardware demo) runs on
+    // its own - only load/require a ROM if one was actually given.
+    if (romPath.empty()) {
+        system.reset();
+        std::cout << "Running Boot ROM demo (no cartridge)...\n";
+        while (!window.shouldClose()) {
+            window.pollEvents();
+            system.stepFrame();
+            window.render(system.getDisplay());
+        }
+        return 0;
+    }
+
     if (!system.loadROM(romPath)) {
         std::cerr << "Failed to load ROM: " << romPath << "\n";
         return 1;
