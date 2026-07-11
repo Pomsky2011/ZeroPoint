@@ -122,6 +122,7 @@ set(CORE_SOURCES
     src/cpu.cpp
     src/cpu_instructions.cpp
     src/system.cpp
+    src/default_boot_rom.cpp
 )
 
 set(CORE_HEADERS
@@ -252,6 +253,10 @@ endif()
 add_executable(test_cpu tools/test_cpu.cpp)
 target_link_libraries(test_cpu zeropoint_core)
 
+# Boot ROM handoff test (System -> Boot ROM stub -> cartridge)
+add_executable(test_boot_rom tools/test_boot_rom.cpp)
+target_link_libraries(test_boot_rom zeropoint_core)
+
 # White fill test (color format verification)
 add_executable(test_white_fill tools/test_white_fill.cpp)
 target_link_libraries(test_white_fill zeropoint_core)
@@ -322,6 +327,10 @@ if(PLATFORM_LINUX)
 endif()
 
 set_target_properties(test_cpu PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_boot_rom PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

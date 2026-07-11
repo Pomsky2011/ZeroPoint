@@ -139,6 +139,14 @@ public:
     void mapPPUWindow(uint8_t bank);
     void mapAPUWindow(uint8_t bank);
 
+    // Boot ROM: mapped read-only at bank $E0. When present, reset() lands the
+    // CPU there instead of bank $00; the stub reads the cartridge entry point
+    // (see setCartridgeEntryPoint) from $D80049-$D8004B and jumps to it.
+    void loadBootROM(const uint8_t* data, size_t size);
+    bool hasBootROM() const { return bootROMLoaded; }
+    void setCartridgeEntryPoint(uint32_t addr) { cartridgeEntryPoint = addr; }
+    uint32_t getCartridgeEntryPoint() const { return cartridgeEntryPoint; }
+
     // Setup all I/O registers (requires PPU, APU, Display to be set first)
     void setupIORegisters();
 
@@ -449,6 +457,10 @@ private:
     // program clears I. NMI is edge-latched and always serviced.
     bool irqPending;
     bool nmiPending;
+
+    // Boot ROM state (see loadBootROM()).
+    bool bootROMLoaded = false;
+    uint32_t cartridgeEntryPoint = 0;
 
     // Actual interrupt sequences (push state + vector). Invoked by
     // serviceInterrupts() once the interrupt is eligible to run.

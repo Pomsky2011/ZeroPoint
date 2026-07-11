@@ -76,9 +76,18 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$B0**: PPU Window (64 KB)
 - **$BE-$BF**: Shadow Work RAM (128 KB)
 - **$D8**: I/O Registers (96 bytes, $D80000-$D8005F)
-- **$FF**: Boot ROM (64 KB) — reserved but not yet mapped; nothing allocates
-  or loads into this bank, so reads currently return open-bus `$FF`. See
-  "In Progress" status below.
+- **$E0**: Boot ROM (64 KB) — read-only, mapped by `System` at construction
+  time via `CPU::loadBootROM()`. Hardware reset lands the CPU here (instead
+  of bank $00) whenever a boot ROM is loaded; a 34-byte default stub
+  (`src/default_boot_rom.cpp`, source at `examples/boot-rom/boot.asm`) reads
+  the cartridge entry point from `$D80049-$D8004B` and hands off control to
+  it. `$E1-$FF` remain unmapped/reserved. Signature verification against the
+  zplink/zpbuild-signed ROM trailer is not implemented — the stub trusts
+  whatever entry point `System::loadROM()` records. Side effects a
+  cartridge's crt0 should expect: `$80:0000-$80:0003` (start of Work RAM) is
+  used as JMP-long trampoline scratch and isn't zeroed at entry, and A/N/Z
+  hold the entry point's bank byte rather than the all-zero reset state a
+  no-boot-ROM cartridge would see (SP/X/Y/D/I are untouched).
 
 ### I/O Registers (Bank $D8)
 - **$D80000-$D8000F**: PPU Control
@@ -88,8 +97,10 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   buffered serial port with RX/TX status bits and no consumer yet — see
   `docs/debug-protocol.md`, which is a design doc, not a shipped feature)
 - **$D80040-$D80047**: Display Status
-- **$D80048-$D8004F**: System Control (only a DEV_MODE flag byte; the other
-  registers described in early planning docs were never built)
+- **$D80048-$D8004F**: System Control — offset 0: DEV_MODE flag byte; offsets
+  1-3: cartridge entry point (low/mid/bank byte, read-only), written by
+  `System::loadROM()` and read by the Boot ROM stub. The other registers
+  described in early planning docs were never built.
 - **$D80050-$D80057**: Timer Control
 - **$D80058-$D8005F**: Interrupt Controller
 
@@ -259,9 +270,12 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - **PPU instruction timing model**: multi-cycle cost per instruction (branches, MUL/DIV, palette loads, the TILEDRAW blitter). Costs are tunable constants at the top of `src/ppu.cpp`; `PPU::tick()` stalls for `cost-1` cycles after issuing.
 - **PPU batched executor** (`PPU::runBatch`): fast interpreter path that runs whole instructions and collapses stalls (1.2x-4x faster than per-cycle ticking, provably state-identical). The `--jit` flag drives this. NOTE: the "JIT" is this batched executor, **not** a native compiler — the `emit*` codegen only ever wrapped `tick()` in a native loop; real per-opcode codegen was scoped and deliberately not built.
 - **Vulkan Renderer** (28% faster than SDL, native GPU acceleration, cross-platform)
+- **Boot ROM infrastructure**: bank $E0 mapped read-only, `CPU::loadBootROM()`/`hasBootROM()`, hardware reset lands in the Boot ROM when one is loaded. Default stub hands off to the cartridge entry point via a Work-RAM JMP-long trampoline (this CPU's indirect-jump modes always source their pointer from bank $00, which is cartridge ROM). No signature verification yet — see below.
 
 ### In Progress ⏳
-- Boot ROM development
+- Boot ROM signature verification (checking the ZPSG/RSA-2048 trailer that
+  `zpbuild` writes — see `zeropoint-c-sdk` notes — before handing off to the
+  cartridge; the current stub trusts any loaded ROM)
 - System integration (CPU ↔ PPU ↔ APU communication)
 
 ### Planned 🔲

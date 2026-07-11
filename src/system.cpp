@@ -1,4 +1,5 @@
 #include "system.h"
+#include "default_boot_rom.h"
 #include <iostream>
 #include <fstream>
 
@@ -54,6 +55,10 @@ System::System()
     // Setup I/O registers at bank $D8
     cpu.setupIORegisters();
 
+    // Map the Boot ROM (bank $E0). Hardware reset lands here; the stub reads
+    // the cartridge entry point System::loadROM() records and hands off.
+    cpu.loadBootROM(kDefaultBootROM, kDefaultBootROMSize);
+
     // Connect DMA to memory system
     dma.setMemoryCallbacks(dmaReadCallback, dmaWriteCallback);
 
@@ -63,6 +68,7 @@ System::System()
     std::cout << "  PPU Window: Bank $B0\n";
     std::cout << "  APU Window: Bank $A0\n";
     std::cout << "  I/O Regs:   Bank $D8\n";
+    std::cout << "  Boot ROM:   Bank $E0\n";
     std::cout << "  DMA:        16 channels, 32 MHz\n";
 }
 
@@ -99,12 +105,17 @@ void System::reset() {
     timers.microCounter = 0;
     timers.vblank60Counter = 0;
 
-    // If ROM is loaded, set CPU to entry point
+    // With a Boot ROM mapped, cpu.reset() above already landed PC/PB at the
+    // Boot ROM ($E0:0000), which reads the cartridge entry point recorded
+    // below and jumps there itself. Without one, jump straight to it.
     if (romLoaded) {
-        cpu.setPC(entryPoint & 0xFFFF);
-        cpu.setPB((entryPoint >> 16) & 0xFF);
+        if (!cpu.hasBootROM()) {
+            cpu.setPC(entryPoint & 0xFFFF);
+            cpu.setPB((entryPoint >> 16) & 0xFF);
+        }
         std::cout << "System reset - Entry point: $" << std::hex
-                  << (int)cpu.getPB() << ":" << cpu.getPC() << std::dec << "\n";
+                  << (int)((entryPoint >> 16) & 0xFF) << ":" << (entryPoint & 0xFFFF)
+                  << std::dec << "\n";
     }
 }
 
@@ -124,14 +135,14 @@ bool System::loadROM(const std::string& filename) {
 
     romLoaded = true;
 
+    // Record the entry point for the Boot ROM to read (or for reset() to
+    // jump to directly, if no Boot ROM is mapped).
+    cpu.setCartridgeEntryPoint(entryPoint);
+
     std::cout << "Loaded ROM: " << romTitle << "\n";
     std::cout << "  Developer: " << romDeveloper << "\n";
     std::cout << "  Size: " << rom.getSize() << " bytes\n";
     std::cout << "  Entry: $" << std::hex << entryPoint << std::dec << "\n";
-
-    // Set CPU to entry point
-    cpu.setPC(entryPoint & 0xFFFF);
-    cpu.setPB((entryPoint >> 16) & 0xFF);
 
     return true;
 }

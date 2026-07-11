@@ -40,8 +40,10 @@ void CPU::reset() {
     Y = 0;
     SP = 0x01FF;
     D = 0;
+    // With a Boot ROM mapped, hardware reset lands there ($E0:0000) instead
+    // of jumping straight into the cartridge at bank $00.
     PC = 0;
-    PB = 0;
+    PB = bootROMLoaded ? 0xE0 : 0x00;
     DB = 0;
     P = CPUFlags();
     P.M = true;  // 8-bit accumulator
@@ -1636,6 +1638,11 @@ void CPU::loadROM(const uint8_t* data, size_t size, uint8_t startBank) {
     rebuildBankTable();   // refresh bank index (push_back may have realloc'd)
 }
 
+void CPU::loadBootROM(const uint8_t* data, size_t size) {
+    loadROM(data, size, 0xE0);
+    bootROMLoaded = true;
+}
+
 void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
     MemoryRegion region;
     region.type = MemoryRegion::RAM;
@@ -2110,10 +2117,16 @@ void CPU::setupIORegisters() {
 
     registerIORegion(IO_BANK, 0x0048, 8,
         // Read handler
-        [](uint16_t offset) -> uint8_t {
+        [this](uint16_t offset) -> uint8_t {
             switch (offset) {
                 case 0x00: // DEV_MODE flag
                     return devModeFlag ? 0x01 : 0x00;
+                case 0x01: // CART_ENTRY low byte (set by System::loadROM)
+                    return cartridgeEntryPoint & 0xFF;
+                case 0x02: // CART_ENTRY mid byte
+                    return (cartridgeEntryPoint >> 8) & 0xFF;
+                case 0x03: // CART_ENTRY bank byte
+                    return (cartridgeEntryPoint >> 16) & 0xFF;
                 default:
                     return 0x00;
             }
