@@ -1,7 +1,7 @@
 # CPU-PPU-APU integration demo (alternate Boot ROM payload)
 
 Runs entirely from bank $E0 (Boot ROM) with no cartridge: the CPU copies a
-beam-synced PPU gradient program and a small APU "heartbeat" counter into
+beam-synced PPU color-bar program and a small APU "heartbeat" counter into
 their respective memory windows, starts both, and then idles in an infinite
 loop while the two coprocessors run independently in the background.
 
@@ -36,12 +36,34 @@ attached (`System::loadBootROM` + `System::reset()`, see `src/main.cpp`).
 
 ## What to expect
 
-- A full-screen gradient (16-scanline beam-synced repaint via an H-blank
-  ISR - see `ppu-gradient.asm`, which is `beam_gradient.asm` from
-  `ZPdevtools/examples/ppu/`).
+- A colored vertical bar along the left 16 pixels of the screen, one shade
+  per scanline (`ppu-gradient.asm`, beam-synced via an H-blank ISR).
 - The APU counts X from 0 to 60 and writes its progress to $1000 each pass,
   then halts - inspect via a debugger/test harness, there's no audio output
   in this version (see `apu-heartbeat.asm`).
+
+## Why only a 16px bar, not a full-screen gradient
+
+`ppu-gradient.asm` started as `ZPdevtools/examples/ppu/beam_gradient.asm`,
+whose H-blank ISR repaints all 256 pixels of a scanline (16x-unrolled inner
+loop, repeated 16 times) on every H-blank. That's ~1024 cycles of MOVDP/ADD
+alone under this PPU's real per-instruction costs (`CYC_MEM=3`,
+`CYC_BASE=1`) - but a scanline (one H-blank period) is only
+`TOTAL_PIXELS_PER_LINE`=340 master cycles. The ISR never finishes a single
+pass before the next H-blank preempts it and re-enters it from the top,
+leaking 2 bytes of PPU stack (SP) every interrupt - confirmed via
+cycle-by-cycle tracing (X frozen at 1, SP climbing +2 every H-blank, never
+-2). After ~60 frames SP/DP wrap and corrupt the render: a brief flash of
+the first partial paint, then black - reproduced identically in the real
+`zeropoint_sdl --boot` run before this fix.
+
+`ppu-gradient.asm` here is the *same* setup/slot-computation logic but does
+one pass of the 16-pixel unrolled block (no outer INC-X/CMP/JNZ repeat) -
+~113 cycles measured, comfortably under 340. Verified stable for 600 frames
+(10s) with `SP` pinned at a constant value the whole time (no leak). Fixing
+`beam_gradient.asm` itself (or the PPU's interrupt re-entry protection so
+an overrunning ISR can't leak) is a separate, out-of-scope task - flagged,
+not touched.
 
 ## Known limitations (not fixed here, out of scope for this demo)
 
