@@ -371,7 +371,18 @@ public:
     uint16_t A;      // Accumulator (16-bit or 8-bit based on M flag)
     uint16_t X;      // Index X (16-bit or 8-bit based on X flag)
     uint16_t Y;      // Index Y (16-bit or 8-bit based on X flag)
-    uint16_t SP;     // Stack Pointer (16-bit, grows downward)
+    uint16_t SP;     // Stack Pointer (16-bit offset, grows downward)
+
+    // Bank the stack physically lives in. Real 65C816 hardwires the stack to
+    // bank $00, but this system maps bank $00 as cartridge ROM (or leaves it
+    // unmapped with no cartridge) - either way, not writable - so a plain
+    // push8()/pull8() using bank $00 silently no-ops every write and reads
+    // back open-bus garbage on every pull (confirmed: RTS decoding a pulled
+    // return address of $FFFF and restarting execution from $0000). Point
+    // the stack at Work RAM (banks $80-$9F, see System::powerOn's
+    // cpu.allocateRAM(0x80, 32)) instead, which is guaranteed backed by RAM
+    // regardless of whether a cartridge is loaded.
+    static constexpr uint32_t STACK_BANK = 0x80;
     uint16_t D;      // Direct Page (16-bit base for direct page addressing)
     uint16_t PC;     // Program Counter (16-bit)
     uint8_t PB;      // Program Bank (8-bit)

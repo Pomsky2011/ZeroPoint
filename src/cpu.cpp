@@ -172,7 +172,7 @@ uint32_t CPU::fetch24() {
 
 // Stack operations
 void CPU::push8(uint8_t value) {
-    writeByte(SP, value);
+    writeByte((STACK_BANK << 16) | SP, value);
     SP--;
 }
 
@@ -189,7 +189,7 @@ void CPU::push24(uint32_t value) {
 
 uint8_t CPU::pull8() {
     SP++;
-    return readByte(SP);
+    return readByte((STACK_BANK << 16) | SP);
 }
 
 uint16_t CPU::pull16() {
@@ -329,12 +329,12 @@ uint32_t CPU::addrDirectPageIndirectLongIndexedY() {
 
 uint32_t CPU::addrStackRelative() {
     uint8_t offset = fetch();
-    return (SP + offset) & 0xFFFF;
+    return (STACK_BANK << 16) | ((SP + offset) & 0xFFFF);
 }
 
 uint32_t CPU::addrStackRelativeIndirectIndexedY() {
     uint8_t offset = fetch();
-    uint16_t spAddr = (SP + offset) & 0xFFFF;
+    uint32_t spAddr = (STACK_BANK << 16) | ((SP + offset) & 0xFFFF);
     uint16_t pointer = readWord(spAddr);
     uint16_t effectiveAddr = pointer + (P.X ? (Y & 0xFF) : Y);
     return (DB << 16) | effectiveAddr;
@@ -2293,16 +2293,13 @@ void CPU::serviceIRQ() {
     // Vector: $00:FFFE-FFFF (16-bit address, PB set to 0)
 
     // 1. Push PB to stack
-    writeByte(SP, PB);
-    SP--;
+    push8(PB);
 
     // 2. Push PC high byte to stack
-    writeByte(SP, (PC >> 8) & 0xFF);
-    SP--;
+    push8((PC >> 8) & 0xFF);
 
     // 3. Push PC low byte to stack
-    writeByte(SP, PC & 0xFF);
-    SP--;
+    push8(PC & 0xFF);
 
     // 4. Push P (processor status) to stack
     uint8_t statusByte = 0;
@@ -2314,8 +2311,7 @@ void CPU::serviceIRQ() {
     if (P.I) statusByte |= 0x04;
     if (P.Z) statusByte |= 0x02;
     if (P.C) statusByte |= 0x01;
-    writeByte(SP, statusByte);
-    SP--;
+    push8(statusByte);
 
     // 5. Set I flag (disable further IRQs)
     P.I = true;
@@ -2342,16 +2338,13 @@ void CPU::serviceNMI() {
     // NMI cannot be masked - always executes
 
     // 1. Push PB to stack
-    writeByte(SP, PB);
-    SP--;
+    push8(PB);
 
     // 2. Push PC high byte to stack
-    writeByte(SP, (PC >> 8) & 0xFF);
-    SP--;
+    push8((PC >> 8) & 0xFF);
 
     // 3. Push PC low byte to stack
-    writeByte(SP, PC & 0xFF);
-    SP--;
+    push8(PC & 0xFF);
 
     // 4. Push P (processor status) to stack
     uint8_t statusByte = 0;
@@ -2363,8 +2356,7 @@ void CPU::serviceNMI() {
     if (P.I) statusByte |= 0x04;
     if (P.Z) statusByte |= 0x02;
     if (P.C) statusByte |= 0x01;
-    writeByte(SP, statusByte);
-    SP--;
+    push8(statusByte);
 
     // 5. I flag NOT modified (NMI ignores I flag)
     // (No change to P.I)
