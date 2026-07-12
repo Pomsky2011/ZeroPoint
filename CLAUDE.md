@@ -11,14 +11,14 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Backends**: SDL2, Qt, Vulkan (native GPU acceleration)
 
 ### PPU (Picture Processing Unit)
-- **67.108864 MHz (2^26 Hz)**, 1 instruction/cycle
+- **68.011355 MHz** (master/1), 1 instruction/cycle
 - **64 × 16-bit registers** (R0-R63): R59 (VBlank INT), R60 (HBlank INT), R61 (SP), R62 (PC), R63 (DP)
 - **64 KiB memory**, 15 basic + 16 extended opcodes
 - **Tiles**: 8×8 pixels, 256 max, 4 modes (16/32-bit, 4/8bpp)
 - **Palettes**: 16-color (16-bit) / 256-color (32-bit)
 
 ### APU (Audio Processing Unit)
-- **4.194304 MHz (2^22 Hz)** (1.0 MIPS), 8-bit RISC
+- **4.250710 MHz** (master/16, ~1.0 MIPS), 8-bit RISC
 - **~47 instruction mnemonics** decoded from a 5-bit opcode field (28 of the 32
   encodable opcode values are dispatched in `APU::executeInstruction`; many
   opcodes further sub-decode into 2-4 mnemonics off the operand bits — e.g.
@@ -35,18 +35,26 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **MMP**: 16 channels with pan (pitch/volume/pan per-channel), **SST**: Sample storage with looping
 
 ### DEF88186 CPU
-- **16.777216 MHz (2^24 Hz)**, Hybrid 65C816/8086, 256 opcodes
+- **17.002839 MHz** (master/4), Hybrid 65C816/8086, 256 opcodes
 - **24-bit address bus** (16 MB), little-endian
 - **Registers**: A, X, Y, SP, D, PC, PB, DB, P
 - Controls all system resources
 
 ### DMA Controller
-- **33.554432 MHz (2^25 Hz)**, 16 channels (max 2 concurrent)
+- **34.005678 MHz** (master/2), 16 channels (max 2 concurrent)
 - 4 modes: DataCopy, ConstCopy, RepeatTransfer, ConstRepeat
 
 ### System Clock
-- **Master**: 67.108864 MHz (2^26 Hz, 16-cycle pattern)
-- **Frequencies**: PPU/Display (67.108864 MHz, 2^26 Hz, master/1), DMA (33.554432 MHz, 2^25 Hz, master/2), CPU (16.777216 MHz, 2^24 Hz, master/4), APU (4.194304 MHz, 2^22 Hz, master/16)
+- **Master**: 68.011355 MHz (16-cycle pattern). Derived from the standard NTSC
+  colorburst crystal, 3.579545 MHz, x19 — the same style of small-integer
+  colorburst multiplier real 16-bit hardware used (SNES's video crystal is
+  colorburst x6, Genesis's master is colorburst x15); x19 lands closest to
+  this system's target speed, with the difference from a round number
+  chalked up to this design's more aggressive cooling. The `% 16` scheduling
+  pattern in `System::tickComponents()` (`src/system.cpp`) is index-based,
+  not derived from dividing the Hz value, so it doesn't require the master
+  clock to be evenly divisible by 16 the way the old 2^26 Hz figure was.
+- **Frequencies**: PPU/Display (68.011355 MHz, master/1), DMA (34.005678 MHz, master/2), CPU (17.002839 MHz, master/4), APU (4.250710 MHz, master/16)
 
 ### Platform Support
 - **Linux**: x86_64, ARM64/aarch64

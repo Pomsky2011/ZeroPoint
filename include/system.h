@@ -120,15 +120,34 @@ public:
     void setDevMode(bool enabled);
     bool isDevMode() const { return devMode; }
 
-    // Timer periods (in master clock cycles at 67.108864 MHz)
-    static constexpr uint64_t TIMER_VBLANK_PERIOD = 4194304;      // ~16.67ms (60Hz)
-    static constexpr uint64_t TIMER_HBLANK_PERIOD = 16384;        // One scanline
-    static constexpr uint64_t TIMER_SECOND_PERIOD = 67108864;     // 1 second
-    static constexpr uint64_t TIMER_QUARTER_SEC_PERIOD = 16777216;// 1/4 second
-    static constexpr uint64_t TIMER_EIGHTH_SEC_PERIOD = 8388608;  // 1/8 second
-    static constexpr uint64_t TIMER_K1024_PERIOD = 65536;         // 1/1024 second
-    static constexpr uint64_t TIMER_MICRO_PERIOD = 67109;         // 16777/16777216 second
-    static constexpr uint64_t TIMER_VBLANK60_PERIOD = TIMER_VBLANK_PERIOD * 60; // 60 V-blanks
+    // Timer periods, in master clock cycles. Master clock is 68,011,355 Hz
+    // (68.011355 MHz) - the standard NTSC colorburst crystal, 3,579,545 Hz,
+    // times 19 (same style of small-integer colorburst multiplier real
+    // hardware used - SNES's video crystal is colorburst x6, Genesis's
+    // master is colorburst x15; x19 here lands closest to this system's
+    // target speed).
+    //
+    // Every period below belongs to the general-purpose 8-timer peripheral
+    // (TIMER_DEFS in system.cpp) and is wall-clock-scaled: chosen so N master
+    // cycles at the master Hz value approximates a real-world duration
+    // (1 second, 1/4 second, one NTSC-ish scanline, etc), then rounded to
+    // the nearest whole cycle since colorburst-derived Hz isn't a clean
+    // divisor of a real second (same tradeoff real NTSC hardware timers had
+    // - see the SNES's actual 60.0988Hz "60Hz"). None of these are tied to
+    // the *real* display geometry (TOTAL_SCANLINES/TOTAL_PIXELS_PER_LINE in
+    // display.h, which drive System::CYCLES_PER_FRAME and the actual
+    // VBlank/HBlank IRQ edge detection in checkInterrupts()) - HBLANK and
+    // VBLANK here are just periodic timers that happen to be named after
+    // the display events they approximate; verify against TIMER_DEFS in
+    // system.cpp before assuming otherwise.
+    static constexpr uint64_t TIMER_VBLANK_PERIOD = 1133523;      // ~16.667ms / 60Hz (master/60, rounded)
+    static constexpr uint64_t TIMER_HBLANK_PERIOD = 16604;        // ~244us, approximating one scanline (master/4096, rounded)
+    static constexpr uint64_t TIMER_SECOND_PERIOD = 68011355;     // 1 second (= master Hz)
+    static constexpr uint64_t TIMER_QUARTER_SEC_PERIOD = 17002839;// 1/4 second (master/4, rounded)
+    static constexpr uint64_t TIMER_EIGHTH_SEC_PERIOD = 8501419;  // 1/8 second (master/8, rounded)
+    static constexpr uint64_t TIMER_K1024_PERIOD = 66417;         // 1/1024 second (master/1024, rounded)
+    static constexpr uint64_t TIMER_MICRO_PERIOD = 68010;         // ~1ms (master x 16777/16777216, rounded)
+    static constexpr uint64_t TIMER_VBLANK60_PERIOD = TIMER_VBLANK_PERIOD * 60; // 60 V-blanks, ~1 second
 
     // Interrupt controller (public for I/O register access). Aggregates all
     // IRQ sources onto the CPU's single maskable line and lets the ISR read

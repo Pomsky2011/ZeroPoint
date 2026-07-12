@@ -6,18 +6,18 @@ The ZeroPoint DMA (Direct Memory Access) controller enables efficient data trans
 
 ## Clock Synchronization
 
-The DMA controller runs at 33.554432 MHz (2^25 Hz), half the speed of the master clock:
+The DMA controller runs at 34.005678 MHz, half the speed of the master clock:
 
-- **Master clock**: 67.108864 MHz (2^26 Hz)
-- **DMA clock**: 33.554432 MHz (2^25 Hz, every 2 master cycles)
+- **Master clock**: 68.011355 MHz (NTSC colorburst x19)
+- **DMA clock**: 34.005678 MHz (every 2 master cycles)
 - **Execution pattern**: Executes on odd master cycles (1, 3, 5, 7, 9, 11, 13, 15)
 
 This allows the DMA to run efficiently without competing with the PPU for every cycle.
 
 Other system components:
-- **PPU**: 67.108864 MHz (every cycle)
-- **CPU**: 16.777216 MHz (every 4 cycles)
-- **APU**: 4.194304 MHz (every 16 cycles)
+- **PPU**: 68.011355 MHz (every cycle)
+- **CPU**: 17.002839 MHz (every 4 cycles)
+- **APU**: 4.250710 MHz (every 16 cycles)
 
 ## Configuration
 

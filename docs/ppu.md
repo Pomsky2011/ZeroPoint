@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ZeroPoint PPU is a microcode-based graphics processor with its own instruction set, running at 67.108864 MHz (2^26 Hz). It executes 1 instruction per cycle, though some instructions (branches, MUL/DIV, palette loads, TILEDRAW) cost extra cycles — see `PPU::tick()` and the `CYC_*` constants in `src/ppu.cpp`.
+The ZeroPoint PPU is a microcode-based graphics processor with its own instruction set, running at 68.011355 MHz (the system's master clock, master/1). It executes 1 instruction per cycle, though some instructions (branches, MUL/DIV, palette loads, TILEDRAW) cost extra cycles — see `PPU::tick()` and the `CYC_*` constants in `src/ppu.cpp`.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ The ZeroPoint PPU is a microcode-based graphics processor with its own instructi
 - Contains both microcode and data
 
 ### Execution
-- **Clock**: 67.108864 MHz (2^26 Hz, master clock, executes every cycle)
+- **Clock**: 68.011355 MHz (master clock, executes every cycle)
 - **Instruction time**: 1 base cycle; some instructions stall for extra cycles (see `src/ppu.cpp` `CYC_*` constants)
 - **Instruction format**: 16 bits (4-bit opcode + 12-bit operand)
 
@@ -24,11 +24,11 @@ The ZeroPoint PPU is a microcode-based graphics processor with its own instructi
 
 The PPU runs at the master clock rate, synchronized via `System::tickComponents()` (`src/system.cpp`):
 
-- **Master clock**: 67.108864 MHz (2^26 Hz)
-- **PPU clock**: 67.108864 MHz (every master cycle, master/1)
-- **DMA**: 33.554432 MHz (2^25 Hz, master/2)
-- **CPU**: 16.777216 MHz (2^24 Hz, master/4)
-- **APU**: 4.194304 MHz (2^22 Hz, master/16)
+- **Master clock**: 68.011355 MHz (NTSC colorburst 3.579545 MHz x19)
+- **PPU clock**: 68.011355 MHz (every master cycle, master/1)
+- **DMA**: 34.005678 MHz (master/2)
+- **CPU**: 17.002839 MHz (master/4)
+- **APU**: 4.250710 MHz (master/16)
 
 ## Initialization Sequence
 
@@ -178,11 +178,11 @@ MOV R6          ; R6 = value at (DP)
 
 ## Timing
 
-At 67.108864 MHz with (at minimum) 1 cycle per instruction:
+At 68.011355 MHz with (at minimum) 1 cycle per instruction:
 
-- **Instructions per second**: ~67 million (fewer if branches/MUL/DIV/TILEDRAW/palette loads dominate — those cost extra cycles, see `src/ppu.cpp` `CYC_*` constants)
-- **Instructions per scanline** (at 261 scanlines/frame, ~60 Hz): ~4285
-- **Instructions per frame**: ~1,118,481
+- **Instructions per second**: ~68 million (fewer if branches/MUL/DIV/TILEDRAW/palette loads dominate — those cost extra cycles, see `src/ppu.cpp` `CYC_*` constants)
+- **Instructions per scanline** (at 261 scanlines/frame, ~60 Hz): ~4344
+- **Instructions per frame**: ~1,133,523
 
 This gives plenty of time for complex rendering operations.
 

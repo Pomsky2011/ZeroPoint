@@ -20,8 +20,8 @@ void audioCallback(void* userdata, Uint8* stream, int len) {
 
     for (int i = 0; i < samples; i++) {
         // Run APU for appropriate number of cycles per sample
-        // At 4.2 MHz and 48kHz sample rate: 4,200,000 / 48,000 = 87.5 cycles/sample
-        ctx->apu->run(88);
+        // At 4.250710 MHz and 48kHz sample rate: 4,250,710 / 48,000 = 88.56 cycles/sample
+        ctx->apu->run(89);
 
         // Update MMP and get mixed audio
         ctx->apu->updateMMP();

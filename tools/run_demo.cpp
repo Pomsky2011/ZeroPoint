@@ -90,27 +90,31 @@ int main(int argc, char* argv[]) {
     // Main loop
     long long cycles = 0;  // 64-bit: this runner loops until the window closes
 
-    // Frame timing: 1,119,600 + 2/3 PPU cycles per frame
-    // PPU clock: 67,108,864 Hz (2^26 Hz)
-    // At 67,108,864 Hz: 1,119,600.666... cycles = ~16.68 ms per frame (59.94 Hz NTSC)
+    // Frame timing: 1,134,656 PPU cycles per frame
+    // PPU clock: 68,011,355 Hz (NTSC colorburst 3.579545 MHz x19)
+    // At 68,011,355 Hz: 1,134,656.106 cycles = ~16.68 ms per frame (59.94 Hz NTSC)
     //
-    // Scanline timing: 4289.65772669 cycles/scanline (261 scanlines = 1,119,600.666... cycles)
-    // Pixel timing: 4289.65772669 / 340 = 12.616640372617647... cycles/pixel
+    // Scanline timing: 4347.34 cycles/scanline (261 scanlines = 1,134,656.106 cycles)
+    // Pixel timing: 4347.34 / 340 = 12.786298 cycles/pixel
     //
     // Integer-based fractional timing to avoid floating point errors:
-    // 12.616640372617647 PPU cycles per display tick (pixel)
-    // 1 PPU cycle = 1/12.616640372617647 = 0.0792452830188679... display ticks
-    // Scale by 1,000,000,000: add 79,245,283 per PPU cycle
+    // 12.786298 PPU cycles per display tick (pixel)
+    // 1 PPU cycle = 1/12.786298 = 0.078210719... display ticks
+    // Scale by 1,000,000,000: add 78,208,719 per PPU cycle
     // When accumulator >= 1,000,000,000, tick display once and subtract 1,000,000,000
+    //
+    // (Rounded to the nearest cycle rather than kept exact via a repeating
+    // multi-frame pattern like the old 67,108,864 Hz clock allowed - that
+    // clock's cycles/frame happened to have a clean 2/3 fractional part;
+    // this one's fractional part doesn't reduce to a small denominator, and
+    // sub-cycle-per-frame drift here is imperceptible for a demo viewer.)
 
     int64_t displayCycleAccumulator = 0;
     const int64_t DISPLAY_TICK_THRESHOLD = 1000000000;  // 1 billion (scale factor)
-    const int64_t DISPLAY_TICK_INCREMENT = 79245283;    // Per PPU cycle
+    const int64_t DISPLAY_TICK_INCREMENT = 78208719;    // Per PPU cycle
 
     int renderCycleCounter = 0;
-    int frameCount = 0;
-    // Frame 1 & 2: 1,119,601 cycles, Frame 3: 1,119,600 cycles
-    int CYCLES_PER_RENDER = 1119601;
+    const int CYCLES_PER_RENDER = 1134656;
 
     while (!window.shouldClose() && ppu.getState() == PPUState::Running) {
         // Execute the PPU with per-cycle display sync. Beam-synced firmware
@@ -136,7 +140,7 @@ int main(int argc, char* argv[]) {
         auto ppuEnd = std::chrono::high_resolution_clock::now();
         ppuExecutionTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(ppuEnd - ppuStart).count();
 
-        // Render once per frame (~57.16 Hz) to avoid bottleneck
+        // Render once per frame (~59.94 Hz NTSC) to avoid bottleneck
         if (renderCycleCounter >= CYCLES_PER_RENDER) {
             auto renderStart = std::chrono::high_resolution_clock::now();
             window.render(display);
@@ -144,11 +148,6 @@ int main(int argc, char* argv[]) {
             auto renderEnd = std::chrono::high_resolution_clock::now();
             renderTimeNs += std::chrono::duration_cast<std::chrono::nanoseconds>(renderEnd - renderStart).count();
             renderCycleCounter = 0;
-            frameCount++;
-
-            // Alternate frame lengths: 1,119,601, 1,119,601, 1,119,600 (repeating)
-            // This maintains exactly 1,119,600 + 2/3 cycles per frame on average
-            CYCLES_PER_RENDER = (frameCount % 3 == 0) ? 1119600 : 1119601;
         }
 
         // Print progress with performance stats
@@ -159,7 +158,7 @@ int main(int argc, char* argv[]) {
             double mhz = (cyclesDone / 1000000.0) / (elapsed / 1000.0);  // Mega = million
 
             std::cout << "Cycles: " << cycles << " | Scanline: " << display.getCurrentScanline()
-                      << " | Speed: " << mhz << " MHz (target: 67.108864 MHz)\n";
+                      << " | Speed: " << mhz << " MHz (target: 68.011355 MHz)\n";
 
             lastReportCycles = cycles;
             lastReportTime = now;
@@ -177,8 +176,8 @@ int main(int argc, char* argv[]) {
     std::cout << "\n=== Demo Complete ===\n";
     std::cout << "Total cycles: " << cycles << "\n";
     std::cout << "Total time: " << totalTime << " ms\n";
-    std::cout << "Average speed: " << avgMhz << " MHz (target: 67.108864 MHz)\n";
-    std::cout << "Efficiency: " << (avgMhz / 67.108864 * 100.0) << "%\n";
+    std::cout << "Average speed: " << avgMhz << " MHz (target: 68.011355 MHz)\n";
+    std::cout << "Efficiency: " << (avgMhz / 68.011355 * 100.0) << "%\n";
     std::cout << "Final state: ";
 
     switch (ppu.getState()) {

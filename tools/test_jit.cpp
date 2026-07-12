@@ -107,8 +107,8 @@ int main(int argc, char* argv[]) {
     std::cout << "\n=== Test Complete ===\n";
     std::cout << "Total cycles: " << cycles << "\n";
     std::cout << "Total time: " << totalTime << " ms\n";
-    std::cout << "Average speed: " << avgMhz << " MHz (target: 67.108864 MHz)\n";
-    std::cout << "Efficiency: " << (avgMhz / 67.108864 * 100.0) << "%\n";
+    std::cout << "Average speed: " << avgMhz << " MHz (target: 68.011355 MHz)\n";
+    std::cout << "Efficiency: " << (avgMhz / 68.011355 * 100.0) << "%\n";
     std::cout << "Final state: ";
 
     switch (ppu.getState()) {

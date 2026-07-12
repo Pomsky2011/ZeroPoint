@@ -19,16 +19,16 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 ## Features
 
 ### System Clock Synchronization
-- **Master Clock**: 67.108864 MHz (2^26 Hz, PPU pixel clock)
+- **Master Clock**: 68.011355 MHz (NTSC colorburst x19, PPU pixel clock)
 - **Integer-based**: Deterministic 16-cycle execution pattern
-- **PPU**: 67.108864 MHz (every cycle) - Graphics microcode
-- **DMA**: 33.554432 MHz (every 2 cycles) - Memory transfers
-- **CPU**: 16.777216 MHz (every 4 cycles) - System master
-- **APU**: 4.194304 MHz (every 16 cycles) - Audio synthesis
-- **Display**: 67.108864 MHz (every cycle) - Video output
+- **PPU**: 68.011355 MHz (every cycle) - Graphics microcode
+- **DMA**: 34.005678 MHz (every 2 cycles) - Memory transfers
+- **CPU**: 17.002839 MHz (every 4 cycles) - System master
+- **APU**: 4.250710 MHz (every 16 cycles) - Audio synthesis
+- **Display**: 68.011355 MHz (every cycle) - Video output
 
 ### DEF88186 Main CPU ✨
-- **Hybrid 65C816/8086 16-bit processor** @ 16.777216 MHz
+- **Hybrid 65C816/8086 16-bit processor** @ 17.002839 MHz
 - **ALL 256 opcodes implemented** - Production ready!
 - **24-bit addressing** - 16 MB addressable (256 banks × 64 KB)
 - **8/16-bit modes** - Configurable via M and X flags
@@ -42,8 +42,8 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - Test suite: 5/5 tests passing ✅
 
 ### PPU (Picture Processing Unit)
-- **Microcode-based graphics processor** @ 67.108864 MHz
-- **1 instruction per cycle** - 67.1 million instructions/second
+- **Microcode-based graphics processor** @ 68.011355 MHz
+- **1 instruction per cycle** - 68.0 million instructions/second
 - **35 instructions** (15 basic + 16 extended Preset F + 4 extended Preset E)
 - **256×256 display** with dual color modes (16-bit/32-bit RGBA)
 - **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation ✨ **FULLY FUNCTIONAL**
@@ -55,7 +55,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **Batched executor (`--jit`)** - Fast interpreter path that runs whole instructions and collapses timing stalls, 1.2x-4x faster than per-cycle ticking (not native code generation, despite the flag name)
 
 ### APU (Audio Processing Unit)
-- **8-bit RISC processor** @ 4 MHz (1.0 MIPS)
+- **8-bit RISC processor** @ 4.25 MHz (~1.06 MIPS)
 - **4 cycles per instruction** - 1 million instructions/second
 - **47 instructions** (5-bit opcode + 11-bit operands)
 - **16-bit stack** with push/pop operations and function calls
@@ -72,7 +72,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - Signature verification against the zplink-signed ROM trailer is not implemented yet - the stub trusts whatever entry point is loaded
 
 ### DMA Controller ✅ COMPLETE!
-- **16 independent channels** @ 33.554432 MHz
+- **16 independent channels** @ 34.005678 MHz
 - **4 transfer modes** - DataCopy (3 cyc/byte), ConstCopy (1 cyc/byte), RepeatTransfer (3 cyc/byte), ConstRepeat (2 cyc/byte)
 - **Max 2 channels active** - Simultaneous transfers with automatic queueing
 - **Interrupt-aware** - Pauses during CPU interrupts, resumes automatically
@@ -87,7 +87,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **Bit pattern** - 0bVHSQETAR for easy multi-timer control
 - **IRQ integration** - Automatic CPU interrupt on timer expiration
 - **Status flags** - Read timer state, write 1 to clear
-- **Master clock based** - Precise timing at 67.108864 MHz
+- **Master clock based** - Precise timing at 68.011355 MHz
 
 ### Display & Rendering ✨ NEW!
 - **Vulkan Renderer** - Native GPU acceleration (28% faster than SDL)

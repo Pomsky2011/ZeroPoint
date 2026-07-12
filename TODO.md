@@ -63,7 +63,7 @@
 - Added `updateTimers()` method called every master cycle
 - Added System pointer to CPU for I/O register access
 - Timers integrated with existing CPU IRQ system
-- All timer periods calculated based on 67.108864 MHz master clock
+- All timer periods calculated based on 68.011355 MHz master clock
 
 **Files Modified**:
 - `include/system.h`: Added timer state structure and constants

@@ -71,7 +71,7 @@ System::System()
     std::cout << "  APU Window: Bank $A0\n";
     std::cout << "  I/O Regs:   Bank $D8\n";
     std::cout << "  Boot ROM:   Bank $E0\n";
-    std::cout << "  DMA:        16 channels, 32 MHz\n";
+    std::cout << "  DMA:        16 channels, 34 MHz\n";
 }
 
 System::~System() {
@@ -304,7 +304,7 @@ void System::tickComponents(bool& outVBlank, bool& outHBlank) {
         dma.tick();
     }
 
-    // CPU runs at master/4 (16 MHz). Accrue one CPU cycle of budget every
+    // CPU runs at master/4 (~17 MHz). Accrue one CPU cycle of budget every
     // 4 master cycles, then execute whole instructions while budget remains,
     // debiting each instruction's real cycle cost. This makes a 7-cycle
     // instruction actually take 7 CPU cycles worth of wall-clock pacing
@@ -318,7 +318,7 @@ void System::tickComponents(bool& outVBlank, bool& outHBlank) {
         cpuCycleBudget -= static_cast<int64_t>(cpu.cycleCount - before);
     }
 
-    // APU runs at master/16 (4 MHz). Same cycle-debited pacing; each APU
+    // APU runs at master/16 (~4.25 MHz). Same cycle-debited pacing; each APU
     // instruction costs 4 APU cycles, so it now runs at its rated ~1 MIPS
     // instead of ~4x too fast.
     if (cyclePhase == 15 && !apu.isHalted()) {

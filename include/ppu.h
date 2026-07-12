@@ -10,9 +10,9 @@ namespace ZeroPoint {
 // Forward declaration
 class Display;
 
-// PPU operates at 64 MHz (64*1024*1024 Hz)
+// PPU operates at 68.011355 MHz (master clock, NTSC colorburst x19)
 // Executes 1 instruction per cycle
-constexpr uint32_t PPU_CLOCK_HZ = 64 * 1024 * 1024;
+constexpr uint32_t PPU_CLOCK_HZ = 68011355;
 constexpr uint32_t PPU_CYCLES_PER_INSTRUCTION = 1;
 
 // PPU opcodes (4-bit)

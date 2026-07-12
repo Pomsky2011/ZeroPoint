@@ -7,7 +7,7 @@
 #include <array>
 
 // ZeroPoint Audio Processing Unit (APU)
-// 8-bit RISC processor @ 4.2 MHz, 4 CPI
+// 8-bit RISC processor @ 4.250710 MHz (master/16), 4 CPI
 // Instruction set: 47 instructions (5-bit opcode + 11-bit operands)
 class APU {
 public:
