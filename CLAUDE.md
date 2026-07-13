@@ -199,7 +199,7 @@ cmake --build . -j
 - **Linux** (Arch): `sudo pacman -S sdl2 qt6-base cmake base-devel`
 - **Windows**: Install [vcpkg](https://vcpkg.io), then `vcpkg install sdl2:x64-windows qt6:x64-windows`
 
-**Executables**: `bin/run_demo`, `bin/test_*`, `bin/zeropoint_sdl`, `bin/zeropoint_qt`
+**Executables**: `bin/run_demo`, `bin/test_*`, `bin/zeropoint_sdl`, `bin/zeropoint_qt`, `bin/debugger`
 
 ### Platform Support
 
@@ -279,6 +279,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - **PPU batched executor** (`PPU::runBatch`): fast interpreter path that runs whole instructions and collapses stalls (1.2x-4x faster than per-cycle ticking, provably state-identical). The `--jit` flag drives this. NOTE: the "JIT" is this batched executor, **not** a native compiler — the `emit*` codegen only ever wrapped `tick()` in a native loop; real per-opcode codegen was scoped and deliberately not built.
 - **Vulkan Renderer** (28% faster than SDL, native GPU acceleration, cross-platform)
 - **Boot ROM infrastructure**: bank $E0 mapped read-only, `CPU::loadBootROM()`/`hasBootROM()`, hardware reset lands in the Boot ROM when one is loaded. Default stub hands off to the cartridge entry point via a Work-RAM JMP-long trampoline (this CPU's indirect-jump modes always source their pointer from bank $00, which is cartridge ROM). No signature verification yet — see below.
+- **Basic CLI debugger** (`bin/debugger`, `tools/debugger.cpp`): headless REPL over `System` (no SDL/Qt/Vulkan). CPU/PPU/APU register inspection, single-instruction stepping (advances the whole master clock until one CPU instruction retires, so PPU/APU/DMA/Display stay in sync), CPU-PC breakpoints, `continue` (Ctrl-C to break back to the prompt), and raw memory read/write for all three address spaces. Annotates the opcode at PC with its mnemonic via a table pulled from the generated `src/cpu_instructions.cpp` comments (authoritative, unlike ZPdevtools' own `cpudisasm.c` table, which only covers ~80/256 opcodes) — it decodes only the single opcode at PC, not a multi-instruction listing, since several addressing modes are 8/16-bit depending on the live M/X flags.
 
 ### In Progress ⏳
 - Boot ROM signature verification (checking the ZPSG/RSA-2048 trailer that
@@ -287,7 +288,6 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - System integration (CPU ↔ PPU ↔ APU communication)
 
 ### Planned 🔲
-- Debugger with register inspection
 - Hardware scrolling
 - Window scaling options
 - **JIT for additional architectures**: ARMv8/7/6 (Switch/Vita/3DS), PPC32 (Wii/U), PPC64 (Xbox 360/PS3)

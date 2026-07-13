@@ -257,6 +257,14 @@ target_link_libraries(test_cpu zeropoint_core)
 add_executable(test_boot_rom tools/test_boot_rom.cpp)
 target_link_libraries(test_boot_rom zeropoint_core)
 
+# Basic interactive debugger (CPU/PPU/APU register inspection, stepping,
+# breakpoints, memory read/write). Headless - no SDL/Qt/Vulkan.
+add_executable(debugger tools/debugger.cpp)
+target_link_libraries(debugger zeropoint_core)
+set_target_properties(debugger PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # Hardware self-test Boot ROM runner (examples/boot-rom/tester/)
 add_executable(test_diag_rom tools/test_diag_rom.cpp)
 target_link_libraries(test_diag_rom zeropoint_core)
