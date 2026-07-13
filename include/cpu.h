@@ -106,9 +106,11 @@ public:
     // Interrupt handling
     void triggerIRQ();                  // Assert maskable interrupt line (latched)
     void triggerNMI();                  // Assert non-maskable interrupt line (latched)
+    void triggerAbort();                // Assert abort-class exception (latched, highest priority)
     void serviceInterrupts();          // Service any pending interrupts (at instruction boundary)
     bool isIRQPending() const { return irqPending; }
     bool isNMIPending() const { return nmiPending; }
+    bool isAbortPending() const { return abortPending; }
 
     // Memory interface
     void setMemory(uint8_t* mem, size_t size);  // Legacy interface
@@ -465,9 +467,13 @@ private:
 
     // Interrupt line latches. Assertions are held pending until serviced,
     // so a maskable IRQ raised while I=1 is not lost — it fires once the
-    // program clears I. NMI is edge-latched and always serviced.
+    // program clears I. NMI and ABORT are edge-latched and always serviced.
     bool irqPending;
     bool nmiPending;
+    // Modeled x86-style (an abort-class exception, not the restartable
+    // bus-fault the 65C816 pin implies): not maskable, not expected to
+    // resume the interrupted instruction. See serviceAbort().
+    bool abortPending;
 
     // Boot ROM state (see loadBootROM()).
     bool bootROMLoaded = false;
@@ -477,6 +483,7 @@ private:
     // serviceInterrupts() once the interrupt is eligible to run.
     void serviceIRQ();
     void serviceNMI();
+    void serviceAbort();
 
     // Execution
     void executeInstruction();

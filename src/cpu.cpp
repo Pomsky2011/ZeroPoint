@@ -20,7 +20,7 @@ CPU::CPU()
       p1Direction(0), p1Control(PlayerInput::CTRL_CONNECTION), p1Buttons(0),
       state(CPUState::Running),
       instructionCount(0),
-      irqPending(false), nmiPending(false)
+      irqPending(false), nmiPending(false), abortPending(false)
 {
     // Initialize with 8-bit mode, interrupts disabled
     P.M = true;
@@ -56,6 +56,7 @@ void CPU::reset() {
     instructionCount = 0;
     irqPending = false;
     nmiPending = false;
+    abortPending = false;
 }
 
 void CPU::setMemory(uint8_t* mem, size_t size) {
@@ -483,6 +484,27 @@ void CPU::opADC(uint32_t addr) {
         uint16_t value = readWord(addr);
         uint32_t result = A + value + (P.C ? 1 : 0);
 
+        if (P.D) {
+            // BCD mode - apply the same nibble-pair correction as the 8-bit
+            // path to the low and high bytes in turn, carrying between them.
+            uint8_t aLo = A & 0xFF, aHi = (A >> 8) & 0xFF;
+            uint8_t vLo = value & 0xFF, vHi = (value >> 8) & 0xFF;
+
+            uint16_t lo = (aLo & 0x0F) + (vLo & 0x0F) + (P.C ? 1 : 0);
+            if (lo > 0x09) lo += 0x06;
+            lo = (aLo & 0xF0) + (vLo & 0xF0) + (lo > 0x0F ? 0x10 : 0) + (lo & 0x0F);
+            if (lo > 0x9F) lo += 0x60;
+            bool carryLo = lo > 0xFF;
+
+            uint16_t hi = (aHi & 0x0F) + (vHi & 0x0F) + (carryLo ? 1 : 0);
+            if (hi > 0x09) hi += 0x06;
+            hi = (aHi & 0xF0) + (vHi & 0xF0) + (hi > 0x0F ? 0x10 : 0) + (hi & 0x0F);
+            if (hi > 0x9F) hi += 0x60;
+
+            result = ((hi & 0xFF) << 8) | (lo & 0xFF);
+            if (hi > 0xFF) result |= 0x10000;
+        }
+
         P.C = result > 0xFFFF;
         P.V = ((A ^ result) & (value ^ result) & 0x8000) != 0;
         A = result & 0xFFFF;
@@ -515,6 +537,28 @@ void CPU::opSBC(uint32_t addr) {
         // 16-bit mode
         uint16_t value = readWord(addr);
         uint32_t result = A - value - (P.C ? 0 : 1);
+
+        if (P.D) {
+            // BCD mode - apply the same nibble-pair correction as the 8-bit
+            // path to the low and high bytes in turn, borrowing between them.
+            uint8_t aLo = A & 0xFF, aHi = (A >> 8) & 0xFF;
+            uint8_t vLo = value & 0xFF, vHi = (value >> 8) & 0xFF;
+
+            uint16_t lo = (aLo & 0x0F) - (vLo & 0x0F) - (P.C ? 0 : 1);
+            if (lo & 0x10) lo = ((lo - 0x06) & 0x0F) | ((aLo & 0xF0) - (vLo & 0xF0) - 0x10);
+            else lo = (lo & 0x0F) | ((aLo & 0xF0) - (vLo & 0xF0));
+            bool borrowLo = (lo & 0x100) != 0;
+            if (borrowLo) lo -= 0x60;
+
+            uint16_t hi = (aHi & 0x0F) - (vHi & 0x0F) - (borrowLo ? 1 : 0);
+            if (hi & 0x10) hi = ((hi - 0x06) & 0x0F) | ((aHi & 0xF0) - (vHi & 0xF0) - 0x10);
+            else hi = (hi & 0x0F) | ((aHi & 0xF0) - (vHi & 0xF0));
+            bool borrowHi = (hi & 0x100) != 0;
+            if (borrowHi) hi -= 0x60;
+
+            result = ((hi & 0xFF) << 8) | (lo & 0xFF);
+            if (borrowHi) result |= 0x10000;
+        }
 
         P.C = result < 0x10000;
         P.V = ((A ^ value) & (A ^ result) & 0x8000) != 0;
@@ -1016,7 +1060,6 @@ void CPU::opCALL() {
     uint32_t addr = fetch24();
     push8(PB);
     push16(PC);
-    push8(P.toByte());
     PC = addr & 0xFFFF;
     PB = (addr >> 16) & 0xFF;
     cycleCount += 16;
@@ -2272,7 +2315,27 @@ void CPU::triggerNMI() {
     }
 }
 
+void CPU::triggerAbort() {
+    // Assert (latch) the abort-class exception. Modeled x86-style: this is
+    // not the restartable 65C816 bus-fault pin (which must preempt an
+    // in-flight instruction and later resume it via RTI). It's simply the
+    // highest-priority vector, serviced at the next instruction boundary
+    // like BRK/COP, for conditions the emulator itself judges unrecoverable.
+    abortPending = true;
+
+    if (state == CPUState::Waiting) {
+        state = CPUState::Running;
+    }
+}
+
 void CPU::serviceInterrupts() {
+    // ABORT preempts everything, including NMI.
+    if (abortPending) [[unlikely]] {
+        abortPending = false;
+        serviceAbort();
+        return;
+    }
+
     // NMI has priority and cannot be masked.
     if (nmiPending) [[unlikely]] {
         nmiPending = false;
@@ -2366,6 +2429,52 @@ void CPU::serviceNMI() {
 
     // 7. Read NMI vector from $00:FFFA-FFFB
     uint32_t vectorAddr = 0x00FFFA;
+    uint16_t handlerAddr = readWord(vectorAddr);
+
+    // 8. Set PC to handler address, PB to 0
+    PC = handlerAddr;
+    PB = 0x00;
+
+    // Add interrupt overhead cycles
+    cycleCount += 7;  // Interrupt acknowledge + stack ops + vector fetch
+}
+
+void CPU::serviceAbort() {
+    // ABORT - abort-class exception, x86-style (see triggerAbort()): not
+    // maskable, not restartable. Dispatches like NMI/BRK/COP rather than
+    // trying to reproduce the 65C816 pin's mid-instruction bus-fault retry.
+    // Vector: $00:FFF8-FFF9 (16-bit address, PB set to 0) — the same
+    // address native-mode 65C816 hardware reserves for ABORT.
+
+    // 1. Push PB to stack
+    push8(PB);
+
+    // 2. Push PC high byte to stack
+    push8((PC >> 8) & 0xFF);
+
+    // 3. Push PC low byte to stack
+    push8(PC & 0xFF);
+
+    // 4. Push P (processor status) to stack
+    uint8_t statusByte = 0;
+    if (P.N) statusByte |= 0x80;
+    if (P.V) statusByte |= 0x40;
+    if (P.M) statusByte |= 0x20;
+    if (P.X) statusByte |= 0x10;
+    if (P.D) statusByte |= 0x08;
+    if (P.I) statusByte |= 0x04;
+    if (P.Z) statusByte |= 0x02;
+    if (P.C) statusByte |= 0x01;
+    push8(statusByte);
+
+    // 5. I flag NOT modified (ABORT ignores I flag, same as NMI)
+    // (No change to P.I)
+
+    // 6. Clear D flag (binary mode)
+    P.D = false;
+
+    // 7. Read ABORT vector from $00:FFF8-FFF9
+    uint32_t vectorAddr = 0x00FFF8;
     uint16_t handlerAddr = readWord(vectorAddr);
 
     // 8. Set PC to handler address, PB to 0

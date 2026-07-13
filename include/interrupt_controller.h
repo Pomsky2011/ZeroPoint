@@ -31,7 +31,7 @@ enum class IRQSource : uint8_t {
     VBlank = 1u << 0,  // Display entered vertical blank
     HBlank = 1u << 1,  // Display entered horizontal blank
     Timer  = 1u << 2,  // A hardware timer expired (read TIMER_STATUS for which)
-    DMA    = 1u << 3,  // DMA transfer complete (reserved for future use)
+    DMA    = 1u << 3,  // DMA transfer complete (raised by System::dmaCompleteCallback)
 };
 
 class InterruptController {

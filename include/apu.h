@@ -85,10 +85,7 @@ private:
     void execSUB(uint16_t operand);
     void execSTA(uint16_t operand);
     void execSTR(uint16_t operand);
-    void execSBF(uint16_t operand);
     void execSCR(uint16_t operand);
-    void execIOO(uint16_t operand);
-    void execIOI(uint16_t operand);
     void execZOR(uint16_t operand);
     void execZOA(uint16_t operand);
     void execLST(uint16_t operand);

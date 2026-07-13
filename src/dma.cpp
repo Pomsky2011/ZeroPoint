@@ -206,6 +206,9 @@ void DMAController::processChannel(uint8_t channel) {
                         transfer.state = DMAState::Complete;
                         transfer.cyclesRemaining = 0;
                         busyChannels--;  // channel left the active set
+                        if (onComplete) {
+                            onComplete(channel);
+                        }
                     } else {
                         // Set up for next byte
                         transfer.cyclesRemaining = getCyclesPerByte(transfer.config.getMode());
@@ -248,7 +251,8 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
             break;
 
         case DMAMode::RepeatTransfer:
-            // Write pattern[currentByte % patternSize] to same target address
+            // Cycle through the whole S+1-byte pattern, writing it
+            // repeatedly to the same (non-incrementing) target address.
             value = transfer.patternBuffer[currentByte % patternSize];
             if (memoryWrite) {
                 memoryWrite(targetAddr, value);
@@ -256,8 +260,10 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
             break;
 
         case DMAMode::ConstRepeat:
-            // Write pattern[currentByte % patternSize] to same target address
-            value = transfer.patternBuffer[currentByte % patternSize];
+            // Write a single constant byte (pattern[0], loaded during init) to
+            // the same target address every time -- unlike RepeatTransfer,
+            // which cycles through the whole S+1-byte pattern.
+            value = transfer.patternBuffer[0];
             if (memoryWrite) {
                 memoryWrite(targetAddr, value);
             }

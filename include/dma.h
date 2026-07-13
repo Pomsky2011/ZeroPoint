@@ -104,6 +104,14 @@ public:
         memoryWrite = write;
     }
 
+    // Callback fired when a channel's transfer finishes (used to raise the
+    // DMA-complete IRQ). Takes the completed channel's index.
+    using CompleteCallback = void(*)(uint8_t channel);
+
+    void setCompleteCallback(CompleteCallback cb) {
+        onComplete = cb;
+    }
+
 private:
     // 16 DMA channels
     std::array<DMATransfer, 16> channels;
@@ -114,6 +122,9 @@ private:
     // Memory access callbacks
     MemoryReadCallback memoryRead;
     MemoryWriteCallback memoryWrite;
+
+    // Transfer-complete callback (nullptr if unset)
+    CompleteCallback onComplete = nullptr;
 
     // Interrupt state - when active, all DMA is paused
     bool interruptActive;

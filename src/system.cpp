@@ -63,6 +63,7 @@ System::System()
 
     // Connect DMA to memory system
     dma.setMemoryCallbacks(dmaReadCallback, dmaWriteCallback);
+    dma.setCompleteCallback(dmaCompleteCallback);
 
     std::cout << "ZeroPoint System initialized\n";
     std::cout << "  Work RAM:   Banks $80-$9F (2 MB)\n";
@@ -519,6 +520,12 @@ uint8_t System::dmaReadCallback(uint32_t address) {
 void System::dmaWriteCallback(uint32_t address, uint8_t value) {
     if (currentSystem) {
         currentSystem->cpu.writeByte(address, value);
+    }
+}
+
+void System::dmaCompleteCallback(uint8_t /*channel*/) {
+    if (currentSystem) {
+        currentSystem->signalIRQ(IRQSource::DMA);
     }
 }
 

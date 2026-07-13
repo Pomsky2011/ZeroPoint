@@ -636,25 +636,10 @@ void APU::execSTR(uint16_t operand) {
     }
 }
 
-void APU::execSBF(uint16_t operand) {
-    // reserved - opcode 0x09 available for redesign
-    (void)operand;
-}
-
 void APU::execSCR(uint16_t operand) {
     uint8_t reg = (operand >> 10) & 0x01;
     uint8_t value = operand & 0xFF;
     registers[reg] = value;
-}
-
-void APU::execIOO(uint16_t operand) {
-    // reserved - opcode 0x0B available for redesign
-    (void)operand;
-}
-
-void APU::execIOI(uint16_t operand) {
-    // reserved - opcode 0x0B available for redesign
-    (void)operand;
 }
 
 void APU::execZOR(uint16_t operand) {

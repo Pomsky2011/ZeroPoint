@@ -182,6 +182,7 @@ private:
     // Static wrappers for DMA callbacks (need to access CPU instance)
     static uint8_t dmaReadCallback(uint32_t address);
     static void dmaWriteCallback(uint32_t address, uint8_t value);
+    static void dmaCompleteCallback(uint8_t channel);
     static System* currentSystem;  // Pointer to current system for callbacks
 
     // ROM information

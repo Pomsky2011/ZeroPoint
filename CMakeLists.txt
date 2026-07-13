@@ -257,6 +257,10 @@ target_link_libraries(test_cpu zeropoint_core)
 add_executable(test_boot_rom tools/test_boot_rom.cpp)
 target_link_libraries(test_boot_rom zeropoint_core)
 
+# Hardware self-test Boot ROM runner (examples/boot-rom/tester/)
+add_executable(test_diag_rom tools/test_diag_rom.cpp)
+target_link_libraries(test_diag_rom zeropoint_core)
+
 # White fill test (color format verification)
 add_executable(test_white_fill tools/test_white_fill.cpp)
 target_link_libraries(test_white_fill zeropoint_core)
@@ -331,6 +335,10 @@ set_target_properties(test_cpu PROPERTIES
 )
 
 set_target_properties(test_boot_rom PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_diag_rom PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
