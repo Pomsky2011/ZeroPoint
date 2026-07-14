@@ -59,6 +59,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 ### Platform Support
 - **Linux**: x86_64, ARM64/aarch64
 - **Windows**: x64, ARM64 (MSVC, MinGW-w64)
+- **macOS**: ARM64/Apple Silicon (native), x86_64/Intel (CI cross-compiles
+  via Rosetta Homebrew on an Apple Silicon runner — no dev machine to
+  verify locally; see `.github/workflows/build.yml`)
 - **JIT**: x86-64, ARM64 (stable, use `--jit` flag)
 
 ## Memory Maps
@@ -197,7 +200,8 @@ cmake --build . -j
 - **Linux** (Debian/Ubuntu): `sudo apt install libsdl2-dev qt6-base-dev cmake build-essential`
 - **Linux** (Fedora): `sudo dnf install SDL2-devel qt6-qtbase-devel cmake gcc-c++`
 - **Linux** (Arch): `sudo pacman -S sdl2 qt6-base cmake base-devel`
-- **Windows**: Install [vcpkg](https://vcpkg.io), then `vcpkg install sdl2:x64-windows qt6:x64-windows`
+- **Windows**: Install [vcpkg](https://vcpkg.io), then `vcpkg install sdl2:x64-windows` (Qt6 is easier via [jurplel/install-qt-action](https://github.com/jurplel/install-qt-action) in CI, or the official Qt online installer locally — vcpkg's port is named `qtbase`, not `qt6`/`qt6-base`)
+- **macOS**: `brew install sdl2 qt vulkan-headers vulkan-loader molten-vk cmake`
 
 **Executables**: `bin/run_demo`, `bin/test_*`, `bin/zeropoint_sdl`, `bin/zeropoint_qt`, `bin/debugger`
 
@@ -205,6 +209,9 @@ cmake --build . -j
 
 - **Linux**: x86_64, ARM64/aarch64
 - **Windows**: x64, ARM64 (MSVC, MinGW-w64)
+- **macOS**: ARM64/Apple Silicon (native), x86_64/Intel (CI cross-compiles
+  via Rosetta Homebrew on an Apple Silicon runner — no dev machine to
+  verify locally; see `.github/workflows/build.yml`)
 - **JIT**: x86-64, ARM64 (experimental, use `--jit` flag)
 
 ## ZPdevtools

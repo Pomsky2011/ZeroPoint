@@ -21,9 +21,21 @@ jobs:
       with:
         vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
 
-    - name: Install dependencies
+    - name: Install SDL2 (vcpkg)
       run: |
-        vcpkg install sdl2:x64-windows qt6-base:x64-windows
+        vcpkg install sdl2:x64-windows
+
+    - name: Install Qt6
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.8.*'
+        arch: 'win64_msvc2022_64'
+
+    - name: Install Vulkan SDK
+      uses: jakoch/install-vulkan-sdk-action@v1
+      with:
+        install_runtime: true
+        cache: true
 
     - name: Configure CMake
       run: |
@@ -44,7 +56,11 @@ jobs:
 
   build-windows-arm64:
     name: Windows Build (ARM64)
-    runs-on: windows-latest
+    # Native ARM64 runner — cross-compiling from an x64 host (via `-A ARM64`)
+    # would need ARM64 Qt host-tool binaries and an ARM64 Vulkan SDK that
+    # neither install-qt-action nor install-vulkan-sdk-action can produce
+    # from an x64 host. Building natively sidesteps both problems.
+    runs-on: windows-11-arm
 
     steps:
     - name: Checkout code
@@ -55,13 +71,25 @@ jobs:
       with:
         vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
 
-    - name: Install dependencies
+    - name: Install SDL2 (vcpkg)
       run: |
-        vcpkg install sdl2:arm64-windows qt6-base:arm64-windows
+        vcpkg install sdl2:arm64-windows
+
+    - name: Install Qt6
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.8.*'
+        arch: 'win64_msvc2022_arm64'
+
+    - name: Install Vulkan SDK
+      uses: jakoch/install-vulkan-sdk-action@v1
+      with:
+        install_runtime: true
+        cache: true
 
     - name: Configure CMake
       run: |
-        cmake -B build -A ARM64 -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+        cmake -B build -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
 
     - name: Build
       run: |
@@ -134,6 +162,7 @@ jobs:
               build-essential \
               cmake \
               libsdl2-dev \
+              libvulkan-dev \
               qt6-base-dev \
               qt6-base-dev-tools && \
             cmake -B build -DCMAKE_BUILD_TYPE=Release && \
@@ -149,23 +178,34 @@ jobs:
 
   build-macos-intel:
     name: macOS Build (Intel x86_64)
-    runs-on: macos-13  # Intel-based runner
+    # GitHub retired free-tier Intel macOS hosted runners (macos-13 no longer
+    # schedules — confirmed by a 24h queue timeout). The remaining Intel
+    # labels (macos-15-intel etc.) are billed "Larger Runners", not enabled
+    # on this repo. Instead: cross-compile x86_64 on a normal Apple Silicon
+    # runner using a Rosetta-based x86_64 Homebrew. Experimental — x86_64
+    # bottles for Qt/MoltenVK may not always be available; if this job is
+    # flaky, it's a known tradeoff of this approach, not a regression.
+    runs-on: macos-15
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Install x86_64 dependencies (Rosetta Homebrew)
       run: |
-        brew install sdl2 qt cmake
+        softwareupdate --install-rosetta --agree-to-license
+        arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        arch -x86_64 /usr/local/bin/brew install sdl2 qt vulkan-headers vulkan-loader molten-vk
 
-    - name: Configure CMake
+    - name: Configure CMake (cross x86_64)
       run: |
-        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        arch -x86_64 cmake -B build -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+          -DCMAKE_PREFIX_PATH="/usr/local;/usr/local/opt/qt"
 
     - name: Build
       run: |
-        cmake --build build -j$(sysctl -n hw.ncpu)
+        arch -x86_64 cmake --build build -j$(sysctl -n hw.ncpu)
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -176,7 +216,7 @@ jobs:
 
   build-macos-arm64:
     name: macOS Build (Apple Silicon ARM64)
-    runs-on: macos-14  # Apple Silicon runner
+    runs-on: macos-15  # Apple Silicon runner (macos-14 is deprecated)
 
     steps:
     - name: Checkout code
@@ -184,11 +224,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        brew install sdl2 qt cmake
+        brew install sdl2 qt cmake vulkan-headers vulkan-loader molten-vk
 
     - name: Configure CMake
       run: |
-        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix);$(brew --prefix qt)"
 
     - name: Build
       run: |
