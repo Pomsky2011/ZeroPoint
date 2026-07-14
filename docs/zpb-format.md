@@ -33,19 +33,39 @@ When a .zpb ROM is loaded:
 ## Signature Verification
 
 The emulator's loader (`src/rom.cpp`) does **not** perform any signature
-verification — it only checks the magic bytes, `version == 1`, header size,
-and ROM size, then loads unconditionally. There is no signature field in
-this 64-byte header at all.
+verification itself — it only checks the magic bytes, `version` (1 or 2),
+header size, and ROM size, then loads unconditionally either way. Verifying
+the signature is the Boot ROM's job (see `ZPbootROM/def88186/rsa.def`), not
+something `ROM::load()` enforces.
 
-This is a different (and currently incompatible) format from the *signed*
-`.zpb` produced by `ZPdevtools/zpbuild` — that tool writes `version = 2` and
-appends a "ZPSG" trailer (32-byte SHA-256 digest + 256-byte RSA-2048
-signature) after the ROM payload. Since `src/rom.cpp:46` rejects any
-`version != 1`, the emulator currently refuses to load a zpbuild-signed ROM
-at all. Verifying that trailer is meant to be the boot ROM's job (see
-`ZPbootROM/def88186/rsa.def`), not something the emulator's loader enforces
-today — but the version check needs to accept 2 (and ignore/skip the
-trailer) before a signed ROM will even load.
+`version == 1` is the plain (unsigned) format described above: header
+immediately followed by `romSize` bytes of payload, nothing else.
+
+`version == 2` is the *signed* format produced by `ZPdevtools/zpbuild` (or
+`zplink`'s signed output mode): the same 64-byte header (with `flags` bit 0
+set) and payload, followed by a "ZPSG" trailer:
+
+| Offset (from end of payload) | Size | Description                          |
+|-------------------------------|------|--------------------------------------|
+| +0                             | 4    | Magic: "ZPSG"                         |
+| +4                             | 1    | Trailer version (currently 1)         |
+| +5                             | 1    | Key size in 64-bit words (32 = 2048-bit) |
+| +6                             | 2    | Signature length in bytes, little-endian (256) |
+| +8                             | 32   | SHA-256 digest of `header \|\| payload` |
+| +40                            | 256  | RSA-2048 signature (PKCS#1 v1.5), big-endian |
+
+For `version == 2`, `ROM::load()` reads and shape-checks this trailer
+(magic + sane siglen) but does not verify the signature. `System::loadROM()`
+then caches the raw 64-byte header and the trailer verbatim
+(`ROM::getRawHeader()` / `ROM::getTrailer()`), and `System::reset()` maps
+them read-only into CPU memory at bank `$E1` (right after the Boot ROM at
+`$E0`) once the cartridge bus connects - `$E1:0000-003F` is the header,
+`$E1:0040-` is the trailer (magic/version/keysize/siglen, then the 32-byte
+digest, then the 256-byte signature). This is what lets the Boot ROM's
+`rsa_verify` (see `ZPbootROM/def88186/rsa.def`) re-hash the header and
+payload (payload is already visible at bank `$00`) and check the signature
+without any of it passing through the cartridge's own read/write window.
+Loading an unsigned (`version == 1`) ROM leaves bank `$E1` unmapped.
 
 ## Example
 

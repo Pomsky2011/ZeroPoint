@@ -149,6 +149,15 @@ public:
     void setCartridgeEntryPoint(uint32_t addr) { cartridgeEntryPoint = addr; }
     uint32_t getCartridgeEntryPoint() const { return cartridgeEntryPoint; }
 
+    // Signed-ROM metadata: mapped read-only at bank $E1 (reserved, right
+    // after the Boot ROM at $E0) whenever a zpbuild-signed (version 2) ROM
+    // is loaded - the raw 64-byte ZPB header followed by the "ZPSG" trailer
+    // (see ROM::getRawHeader/getTrailer), so the Boot ROM's RSA verify
+    // (ZPbootROM/def88186/rsa.def) can read the bytes it needs to re-hash
+    // and check without them ever being visible through the cartridge's own
+    // bank-$00 window. Pass data=nullptr/size=0 to clear it (unsigned ROM).
+    void loadSignedROMMetadata(const uint8_t* data, size_t size);
+
     // Setup all I/O registers (requires PPU, APU, Display to be set first)
     void setupIORegisters();
 

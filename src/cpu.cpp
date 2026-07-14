@@ -1699,6 +1699,26 @@ void CPU::loadBootROM(const uint8_t* data, size_t size) {
     bootROMLoaded = true;
 }
 
+void CPU::loadSignedROMMetadata(const uint8_t* data, size_t size) {
+    // Same replace-semantics reasoning as loadBootROM(): clear any stale
+    // bank-$E1 region first so reloading (or loading an unsigned ROM after
+    // a signed one) never leaves two overlapping regions for
+    // rebuildBankTable() to silently mis-resolve.
+    for (auto it = memoryMap.begin(); it != memoryMap.end(); ) {
+        if (it->startBank <= 0xE1 && it->endBank >= 0xE1) {
+            delete[] it->data;
+            it = memoryMap.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (data && size > 0) {
+        loadROM(data, size, 0xE1);
+    } else {
+        rebuildBankTable();
+    }
+}
+
 void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
     MemoryRegion region;
     region.type = MemoryRegion::RAM;

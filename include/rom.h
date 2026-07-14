@@ -44,6 +44,24 @@ public:
     const std::string& getDeveloper() const { return developer; }
     uint32_t getEntryPoint() const { return entryPoint; }
 
+    // True for a version-2 (zpbuild-signed) ROM: a "ZPSG" trailer (32-byte
+    // SHA-256 digest + 256-byte RSA-2048 signature) follows the payload on
+    // disk. The loader only checks the trailer's shape (magic/siglen) - it
+    // does not verify the signature itself; that is the boot ROM's job
+    // (ZPbootROM/def88186/rsa.def), using the raw header and trailer bytes
+    // below (which System maps into CPU memory at bank $E1).
+    bool isSigned() const { return signedRom; }
+
+    // Exact 64 bytes read from disk, verbatim - the boot ROM re-hashes these
+    // (not the parsed fields) together with the payload.
+    const uint8_t* getRawHeader() const { return rawHeader; }
+    static constexpr size_t RAW_HEADER_SIZE = 64;
+
+    // "ZPSG" trailer as read from disk: magic(4)+version(1)+keysize(1)+
+    // siglen(2) [8 bytes], then a 32-byte digest, then a 256-byte RSA
+    // signature (296 bytes total). Empty when isSigned() is false.
+    const std::vector<uint8_t>& getTrailer() const { return trailer; }
+
     // Get last error message
     const std::string& getError() const { return errorMessage; }
 
@@ -54,6 +72,9 @@ private:
     std::string developer;
     uint32_t entryPoint;
     std::string errorMessage;
+    bool signedRom = false;
+    uint8_t rawHeader[RAW_HEADER_SIZE] = {};
+    std::vector<uint8_t> trailer;
 
     void setError(const std::string& error);
 };

@@ -20,6 +20,9 @@ bool ROM::load(const std::string& filename) {
     developer.clear();
     entryPoint = 0;
     errorMessage.clear();
+    signedRom = false;
+    std::memset(rawHeader, 0, sizeof(rawHeader));
+    trailer.clear();
 
     // Open file
     std::ifstream file(filename, std::ios::binary);
@@ -35,6 +38,8 @@ bool ROM::load(const std::string& filename) {
         setError("Failed to read ROM header");
         return false;
     }
+    static_assert(sizeof(header) == RAW_HEADER_SIZE, "ZPBHeader must be 64 bytes");
+    std::memcpy(rawHeader, &header, RAW_HEADER_SIZE);
 
     // Validate magic number
     if (std::memcmp(header.magic, "ZPB", 3) != 0 || header.magic[3] != '\0') {
@@ -42,8 +47,9 @@ bool ROM::load(const std::string& filename) {
         return false;
     }
 
-    // Check version
-    if (header.version != 1) {
+    // Check version - 1 is unsigned, 2 is zpbuild-signed (ZPSG trailer
+    // follows the payload; verified by the boot ROM, not here).
+    if (header.version != 1 && header.version != 2) {
         setError("Unsupported ROM version: " + std::to_string(header.version));
         return false;
     }
@@ -73,6 +79,41 @@ bool ROM::load(const std::string& filename) {
         setError("Failed to read ROM data");
         data.clear();
         return false;
+    }
+
+    if (header.version == 2) {
+        // "ZPSG" trailer: magic(4) + version(1) + keysize(1) + siglen(2),
+        // then a 32-byte digest, then the RSA signature (siglen bytes).
+        // Layout/sizes must match ZPdevtools/src/zpbuild.c exactly.
+        const size_t TRAILER_FIXED_SIZE = 8 + 32;
+        uint8_t fixedPart[TRAILER_FIXED_SIZE];
+        file.read(reinterpret_cast<char*>(fixedPart), TRAILER_FIXED_SIZE);
+        if (!file) {
+            setError("Failed to read ROM signature trailer");
+            data.clear();
+            return false;
+        }
+        if (std::memcmp(fixedPart, "ZPSG", 4) != 0) {
+            setError("Invalid ROM file: missing ZPSG trailer for signed ROM");
+            data.clear();
+            return false;
+        }
+        uint16_t sigLen = static_cast<uint16_t>(fixedPart[6] | (fixedPart[7] << 8));
+        if (sigLen == 0 || sigLen > 4096) {
+            setError("Invalid ROM signature length: " + std::to_string(sigLen));
+            data.clear();
+            return false;
+        }
+        trailer.assign(fixedPart, fixedPart + TRAILER_FIXED_SIZE);
+        trailer.resize(TRAILER_FIXED_SIZE + sigLen);
+        file.read(reinterpret_cast<char*>(trailer.data() + TRAILER_FIXED_SIZE), sigLen);
+        if (!file) {
+            setError("Failed to read ROM signature");
+            data.clear();
+            trailer.clear();
+            return false;
+        }
+        signedRom = true;
     }
 
     loaded = true;

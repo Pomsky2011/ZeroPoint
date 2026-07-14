@@ -115,6 +115,8 @@ void System::reset() {
     // check every reset(); only actually maps once per loadROM() call.
     if (romLoaded && !cartridgeMapped) {
         cpu.loadROM(pendingRomData.data(), pendingRomData.size(), 0x00);
+        cpu.loadSignedROMMetadata(pendingSignedMetadata.empty() ? nullptr : pendingSignedMetadata.data(),
+                                   pendingSignedMetadata.size());
         cartridgeMapped = true;
     }
 
@@ -163,6 +165,16 @@ bool System::loadROM(const std::string& filename) {
     // it immediately below, for callers that don't want the power-on delay.)
     pendingRomData.assign(rom.getData(), rom.getData() + rom.getSize());
     cartridgeMapped = false;
+
+    // Same "not mapped until reset()" deferral as pendingRomData - see the
+    // cartridge-bus comment below. Empty (and bank $E1 cleared at reset)
+    // for an unsigned ROM.
+    pendingSignedMetadata.clear();
+    if (rom.isSigned()) {
+        pendingSignedMetadata.assign(rom.getRawHeader(), rom.getRawHeader() + ROM::RAW_HEADER_SIZE);
+        const std::vector<uint8_t>& trailer = rom.getTrailer();
+        pendingSignedMetadata.insert(pendingSignedMetadata.end(), trailer.begin(), trailer.end());
+    }
 
     romLoaded = true;
 
