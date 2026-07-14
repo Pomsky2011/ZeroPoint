@@ -16,14 +16,17 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # No vcpkgGitCommitId pin: this repo has no vcpkg.json, and the previous
-    # pin (Nov 2023) had gone stale — MSYS2 mirrors had GC'd a package
-    # version its era of the sdl2 port depended on, and its vcpkg-cmake
-    # helper scripts predated solid arm64-windows toolchain detection.
-    # Floating to vcpkg's current default branch avoids re-pinning to
-    # another commit that will eventually rot the same way.
+    # run-vcpkg requires *some* baseline (this repo has no vcpkg.json to
+    # supply one) — it errors outright if vcpkgGitCommitId is omitted, it
+    # doesn't float to a branch tip. The previous pin (Nov 2023) had gone
+    # stale: MSYS2 mirrors had GC'd a package version that era's sdl2 port
+    # depended on, and its vcpkg-cmake helper scripts predated solid
+    # arm64-windows toolchain detection. Re-pinned to a current commit
+    # (2026-07-14); this will need bumping again eventually.
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'db4723bd0a99eab031f1a3dee4336dca43049c87'
 
     # run-vcpkg points VCPKG_BINARY_SOURCES at the GHA cache (x-gha), but the
     # ACTIONS_CACHE_URL/ACTIONS_RUNTIME_TOKEN env vars it needs aren't exposed
@@ -80,14 +83,17 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # No vcpkgGitCommitId pin: this repo has no vcpkg.json, and the previous
-    # pin (Nov 2023) had gone stale — MSYS2 mirrors had GC'd a package
-    # version its era of the sdl2 port depended on, and its vcpkg-cmake
-    # helper scripts predated solid arm64-windows toolchain detection.
-    # Floating to vcpkg's current default branch avoids re-pinning to
-    # another commit that will eventually rot the same way.
+    # run-vcpkg requires *some* baseline (this repo has no vcpkg.json to
+    # supply one) — it errors outright if vcpkgGitCommitId is omitted, it
+    # doesn't float to a branch tip. The previous pin (Nov 2023) had gone
+    # stale: MSYS2 mirrors had GC'd a package version that era's sdl2 port
+    # depended on, and its vcpkg-cmake helper scripts predated solid
+    # arm64-windows toolchain detection. Re-pinned to a current commit
+    # (2026-07-14); this will need bumping again eventually.
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'db4723bd0a99eab031f1a3dee4336dca43049c87'
 
     - name: Export GHA cache credentials for vcpkg
       uses: actions/github-script@v7
