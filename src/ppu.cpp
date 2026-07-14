@@ -287,7 +287,7 @@ void PPU::executeInstruction() {
             // Encoding: 0001 D 00000 XXXXXX
             // D=0: movxp X - copy execution pointer + 2 to register X
             // D=1: nop - do nothing
-            if (__builtin_expect((operand & 0x800) == 0, 1)) {  // Likely MOVXP
+            if ((operand & 0x800) == 0) [[likely]] {  // Likely MOVXP
                 // MOVXP X - copy EP+2 to register X
                 registers[regY] = executionPointer + 2;  // Uses regY (lower 6 bits)
             }
@@ -377,7 +377,7 @@ void PPU::executeInstruction() {
 
         case PPUOpcode::INTDIV: {
             // intdiv X Y - X = X / Y (regX, regY pre-extracted)
-            if (__builtin_expect(registers[regY] != 0, 1)) {  // Division by zero is unlikely
+            if (registers[regY] != 0) [[likely]] {  // Division by zero is unlikely
                 registers[regX] /= registers[regY];
             }
             instrCycles = CYC_DIV;

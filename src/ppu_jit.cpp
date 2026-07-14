@@ -286,8 +286,14 @@ JITBlock* PPUJIT::compileBlock(PPU* ppu, uint16_t startAddr, size_t maxInstructi
 
     // Flush instruction cache on ARM64 (required for self-modifying code)
 #if defined(__aarch64__) || defined(_M_ARM64)
-    // Use compiler builtin to flush instruction cache
-    __builtin___clear_cache((char*)execMem, (char*)execMem + code.size());
+    #if defined(_WIN32)
+        // MSVC has no __builtin___clear_cache; FlushInstructionCache is the
+        // portable Win32 equivalent (works on ARM64, a no-op-safe call on x64).
+        FlushInstructionCache(GetCurrentProcess(), execMem, code.size());
+    #else
+        // Compiler builtin to flush instruction cache (GCC/Clang)
+        __builtin___clear_cache((char*)execMem, (char*)execMem + code.size());
+    #endif
 #endif
 
     // Make it executable

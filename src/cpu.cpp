@@ -2053,7 +2053,7 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // Port 1: $D80030-$D80037 (Player 1 controller)
     // Port 2: $D80038-$D8003F (Player 2 / Debug serial interface)
-    static uint8_t p2_tx_buffer[256] __attribute__((unused));  // TX queue; no consumer yet
+    [[maybe_unused]] static uint8_t p2_tx_buffer[256];  // TX queue; no consumer yet
     static uint8_t p2_rx_buffer[256];
     static uint8_t p2_tx_head = 0;
     static uint8_t p2_tx_tail = 0;
