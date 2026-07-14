@@ -89,12 +89,16 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$D8**: I/O Registers (96 bytes, $D80000-$D8005F)
 - **$E0**: Boot ROM (64 KB) — read-only, mapped by `System` at construction
   time via `CPU::loadBootROM()`. Hardware reset lands the CPU here (instead
-  of bank $00) whenever a boot ROM is loaded; a 34-byte default stub
+  of bank $00) whenever a boot ROM is loaded; a 35-byte default stub
   (`src/default_boot_rom.cpp`, source at `examples/boot-rom/boot.asm`) reads
   the cartridge entry point from `$D80049-$D8004B` and hands off control to
-  it. `$E1-$FF` remain unmapped/reserved. Signature verification against the
-  zplink/zpbuild-signed ROM trailer is not implemented — the stub trusts
-  whatever entry point `System::loadROM()` records. Side effects a
+  it. `$E1`: signed-ROM metadata (read-only, mapped only when a zpbuild-signed
+  v2 ROM is loaded) — raw 64-byte ZPB header + "ZPSG" trailer, via
+  `CPU::loadSignedROMMetadata()`; see `docs/zpb-format.md`. `$E2-$FF` remain
+  unmapped/reserved. Signature verification of that trailer (RSA-2048/
+  SHA-256, see `ZPbootROM/def88186/rsa.def`) is in progress but not yet
+  implemented — the default stub trusts whatever entry point
+  `System::loadROM()` records. Side effects a
   cartridge's crt0 should expect: `$80:0000-$80:0003` (start of Work RAM) is
   used as JMP-long trampoline scratch and isn't zeroed at entry, and A/N/Z
   hold the entry point's bank byte rather than the all-zero reset state a

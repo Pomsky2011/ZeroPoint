@@ -52,9 +52,12 @@ int main() {
     cpu.reset();
 
     // Write program: LDA #$42, HLT
+    // #const immediates are always a fixed 3 bytes (opcode + 16-bit operand)
+    // regardless of M/X - see CPU::addrImmediate()'s comment in src/cpu.cpp.
     memory[0] = 0x37;  // LDA immediate
-    memory[1] = 0x42;  // Value
-    memory[2] = 0xFF;  // HLT
+    memory[1] = 0x42;  // Value low byte
+    memory[2] = 0x00;  // Value high byte (ignored in 8-bit/M=1 mode)
+    memory[3] = 0xFF;  // HLT
 
     printCPUState(cpu);
 
@@ -111,10 +114,12 @@ int main() {
 
     // Write program: LDA #$30, ADC #$10, HLT
     memory[0] = 0x37;  // LDA immediate
-    memory[1] = 0x30;  // Value
-    memory[2] = 0xB6;  // ADC immediate
-    memory[3] = 0x10;  // Value
-    memory[4] = 0xFF;  // HLT
+    memory[1] = 0x30;  // Value low byte
+    memory[2] = 0x00;  // Value high byte
+    memory[3] = 0xB6;  // ADC immediate
+    memory[4] = 0x10;  // Value low byte
+    memory[5] = 0x00;  // Value high byte
+    memory[6] = 0xFF;  // HLT
 
     printCPUState(cpu);
 
@@ -145,14 +150,16 @@ int main() {
     // LPEND
     // HLT
     memory[0] = 0x37;  // LDA immediate
-    memory[1] = 0x00;  // Value = 0
-    memory[2] = 0x13;  // LOOP
-    memory[3] = 0x05;  // Count low
-    memory[4] = 0x00;  // Count high (5 iterations)
-    memory[5] = 0xB6;  // ADC immediate
-    memory[6] = 0x01;  // Value = 1
-    memory[7] = 0x14;  // LPEND
-    memory[8] = 0xFF;  // HLT
+    memory[1] = 0x00;  // Value = 0, low byte
+    memory[2] = 0x00;  // Value high byte
+    memory[3] = 0x13;  // LOOP
+    memory[4] = 0x05;  // Count low
+    memory[5] = 0x00;  // Count high (5 iterations)
+    memory[6] = 0xB6;  // ADC immediate
+    memory[7] = 0x01;  // Value = 1, low byte
+    memory[8] = 0x00;  // Value high byte
+    memory[9] = 0x14;  // LPEND
+    memory[10] = 0xFF; // HLT
 
     printCPUState(cpu);
 

@@ -21,14 +21,16 @@ using namespace ZeroPoint;
 //   start:  LDA #$42
 //           STA $800010
 //   loop:   JMP loop
+// #const immediates are always a fixed 3 bytes (opcode + 16-bit operand)
+// regardless of M/X - see CPU::addrImmediate()'s comment in src/cpu.cpp.
 static const uint8_t kCartCode[] = {
-    0x37, 0x42,                   // LDA #$42
+    0x37, 0x42, 0x00,             // LDA #$42
     0x55, 0x10, 0x00, 0x80,       // STA $800010
-    0x0F, 0x09, 0x02,             // JMP $0209 (loop)
+    0x0F, 0x0A, 0x02,             // JMP $020A (loop)
 };
 static const uint32_t kCartOrg = 0x0203;       // where kCartCode is placed
 static const uint32_t kCartEntry = kCartOrg;   // low=0x03 mid=0x02 hi=0x00
-static const uint16_t kExpectedLoopPC = 0x0209;
+static const uint16_t kExpectedLoopPC = 0x020A;
 
 int main() {
     std::vector<uint8_t> payload(kCartOrg, 0x00);

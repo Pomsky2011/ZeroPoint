@@ -229,10 +229,21 @@ void CPU::run(uint64_t cycles) {
 }
 
 // Addressing modes implementation
+//
+// Always a fixed 2-byte operand (3-byte instruction total), regardless of
+// M/X. This used to vary with P.M alone - but LDX/LDY route through this
+// same helper for their fetch width while opLDX/opLDY interpret the result
+// width using P.X, so an M=1/X=0 (or M=0/X=1) combination - entirely legal,
+// real 65816 code commonly runs 8-bit accumulator with 16-bit index - would
+// desync the fetch from the interpretation: e.g. LDX #$1234 with M=1,X=0
+// would only consume 1 operand byte but then opLDX would readWord() across
+// it into the next instruction's opcode byte. Fixed width sidesteps that
+// class of bug entirely: 8-bit mode (M=1 or X=1) simply reads the low byte
+// of the 2-byte operand and ignores the high byte, which is always safe to
+// fetch since it's still part of this instruction's own encoding.
 uint32_t CPU::addrImmediate() {
     uint32_t addr = (PB << 16) | PC;
-    PC++;
-    if (!P.M) PC++;  // 16-bit mode reads 2 bytes
+    PC += 2;
     return addr;
 }
 
@@ -1049,10 +1060,16 @@ void CPU::opJMP(uint32_t addr) {
 }
 
 void CPU::opJSR(uint32_t addr) {
+    // JSR addr / JSR (addr,X) are same-bank calls (3-byte encodings, no bank
+    // in the operand) paired with RTS, which only ever pops a 16-bit PC and
+    // never restores a bank byte. addr's top byte here is DB-derived
+    // (addrAbsolute/addrAbsoluteIndexedIndirect), not a real target bank, so
+    // it must never be written to PB - doing so used to leave execution
+    // stranded in the wrong bank the moment RTS returned to a PB that JSR
+    // had silently overwritten (usually DB, which is unrelated to PB).
     uint16_t returnAddr = PC - 1;
     push16(returnAddr);
     PC = addr & 0xFFFF;
-    PB = (addr >> 16) & 0xFF;
     cycleCount += 4;
 }
 
