@@ -2,6 +2,7 @@
 #include <fstream>
 #include <vector>
 #include <cstdint>
+#include <string>
 #include "apu.h"
 
 void printUsage(const char* progName) {
