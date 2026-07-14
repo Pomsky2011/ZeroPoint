@@ -8,7 +8,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 
 ## The Story
 
-**This story is not AI-written, unlike the emulator code and dev tools. The included Boot ROM isn't either.**
+**This story is not AI-written, unlike the emulator code and dev tools.**
 - In 1992, PowerGame developed and released the ZeroPoint, which was the most powerful console of its
 - generation. However, because of its late start and difficult development cycle, it sold very badly and
 - was discontinued in only 1994 once it was no longer the most powerful system on the market. PowerGame
@@ -231,4 +231,6 @@ cd ../ZeroPoint/build
 
 ## License
 
-To be determined.
+Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) — see [LICENSE](LICENSE).
+
+The AGPL's network-use clause means that if you run a modified version of this emulator as a network-accessible service, you must also offer that modified source to its users. Games/ROMs built with the ZPdevtools toolchain (licensed separately under MPL-2.0) are not derivative works of the emulator and are unaffected by this.
