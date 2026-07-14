@@ -16,10 +16,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # No vcpkgGitCommitId pin: this repo has no vcpkg.json, and the previous
+    # pin (Nov 2023) had gone stale — MSYS2 mirrors had GC'd a package
+    # version its era of the sdl2 port depended on, and its vcpkg-cmake
+    # helper scripts predated solid arm64-windows toolchain detection.
+    # Floating to vcpkg's current default branch avoids re-pinning to
+    # another commit that will eventually rot the same way.
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
 
     # run-vcpkg points VCPKG_BINARY_SOURCES at the GHA cache (x-gha), but the
     # ACTIONS_CACHE_URL/ACTIONS_RUNTIME_TOKEN env vars it needs aren't exposed
@@ -76,10 +80,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # No vcpkgGitCommitId pin: this repo has no vcpkg.json, and the previous
+    # pin (Nov 2023) had gone stale — MSYS2 mirrors had GC'd a package
+    # version its era of the sdl2 port depended on, and its vcpkg-cmake
+    # helper scripts predated solid arm64-windows toolchain detection.
+    # Floating to vcpkg's current default branch avoids re-pinning to
+    # another commit that will eventually rot the same way.
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
 
     - name: Export GHA cache credentials for vcpkg
       uses: actions/github-script@v7
