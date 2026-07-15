@@ -27,7 +27,9 @@ Starting at offset 0x40 (64 bytes), the ROM data follows. This is loaded into th
 
 When a .zpb ROM is loaded:
 - ROM is mapped starting at address 0x000000
-- Maximum ROM size: 2 MB (to fit in main RAM)
+- Maximum ROM size: 8 MB (`ROM::load`'s `MAX_ROM_SIZE`, `src/rom.cpp`) -
+  matches the CPU's addressable ROM window, banks $00-$7F (see
+  `CLAUDE.md`'s CPU Memory Map)
 - Entry point specifies where execution begins
 
 ## Signature Verification

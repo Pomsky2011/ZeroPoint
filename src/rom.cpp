@@ -60,8 +60,8 @@ bool ROM::load(const std::string& filename) {
         return false;
     }
 
-    // Check ROM size (max 2 MB)
-    const uint32_t MAX_ROM_SIZE = 2 * 1024 * 1024;
+    // Check ROM size (max 8 MB)
+    const uint32_t MAX_ROM_SIZE = 8 * 1024 * 1024;
     if (header.romSize == 0 || header.romSize > MAX_ROM_SIZE) {
         setError("Invalid ROM size: " + std::to_string(header.romSize));
         return false;
