@@ -98,6 +98,7 @@ bool ROM::load(const std::string& filename) {
             data.clear();
             return false;
         }
+        uint8_t trailerVersion = fixedPart[4];
         uint16_t sigLen = static_cast<uint16_t>(fixedPart[6] | (fixedPart[7] << 8));
         if (sigLen == 0 || sigLen > 4096) {
             setError("Invalid ROM signature length: " + std::to_string(sigLen));
@@ -112,6 +113,25 @@ bool ROM::load(const std::string& filename) {
             data.clear();
             trailer.clear();
             return false;
+        }
+
+        // Trailer version 2 (code/data-split signing, see
+        // docs/zpb-format.md) appends a 4-byte little-endian codeSize
+        // field after the signature - the boot ROM's rsa_verify uses it to
+        // split the payload into a SHA-256/RSA-signed code region and a
+        // BLAKE2s-hashed data region. Appended AFTER the signature (not
+        // inserted earlier in the trailer) so the fixed offsets rsa_verify
+        // already hardcodes for the digest/signature don't move.
+        if (trailerVersion >= 2) {
+            uint8_t codeSizeBytes[4];
+            file.read(reinterpret_cast<char*>(codeSizeBytes), 4);
+            if (!file) {
+                setError("Failed to read ROM trailer codeSize field");
+                data.clear();
+                trailer.clear();
+                return false;
+            }
+            trailer.insert(trailer.end(), codeSizeBytes, codeSizeBytes + 4);
         }
         signedRom = true;
     }

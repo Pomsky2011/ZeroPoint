@@ -50,24 +50,61 @@ set) and payload, followed by a "ZPSG" trailer:
 | Offset (from end of payload) | Size | Description                          |
 |-------------------------------|------|--------------------------------------|
 | +0                             | 4    | Magic: "ZPSG"                         |
-| +4                             | 1    | Trailer version (currently 1)         |
+| +4                             | 1    | Trailer version (1 or 2)              |
 | +5                             | 1    | Key size in 64-bit words (32 = 2048-bit) |
 | +6                             | 2    | Signature length in bytes, little-endian (256) |
-| +8                             | 32   | SHA-256 digest of `header \|\| payload` |
+| +8                             | 32   | SHA-256 digest (meaning depends on trailer version, see below) |
 | +40                            | 256  | RSA-2048 signature (PKCS#1 v1.5), big-endian |
+| +296                           | 4    | **Trailer version 2 only:** codeSize, little-endian u32 |
 
-For `version == 2`, `ROM::load()` reads and shape-checks this trailer
-(magic + sane siglen) but does not verify the signature. `System::loadROM()`
-then caches the raw 64-byte header and the trailer verbatim
-(`ROM::getRawHeader()` / `ROM::getTrailer()`), and `System::reset()` maps
-them read-only into CPU memory at bank `$E1` (right after the Boot ROM at
-`$E0`) once the cartridge bus connects - `$E1:0000-003F` is the header,
-`$E1:0040-` is the trailer (magic/version/keysize/siglen, then the 32-byte
-digest, then the 256-byte signature). This is what lets the Boot ROM's
-`rsa_verify` (see `ZPbootROM/def88186/rsa.def`) re-hash the header and
-payload (payload is already visible at bank `$00`) and check the signature
-without any of it passing through the cartridge's own read/write window.
-Loading an unsigned (`version == 1`) ROM leaves bank `$E1` unmapped.
+**Trailer version 1** (single-region signing, `zpbuild`'s default): the
+digest is `SHA256(header || payload)` - the whole payload is hashed as one
+blob and RSA-signed. This is fast to verify for small payloads but scales
+linearly with payload size (see the boot-time discussion in
+`ZPbootROM`'s `rsa.def`).
+
+**Trailer version 2** (code/data-split composite signing, opt-in via
+`zpbuild --codesize N`): the payload is split into `payload[0..codeSize)`
+("code") and `payload[codeSize..payload_size)` ("data"). The digest field
+is a *composite* hash, not a hash of the raw payload:
+
+```
+code_digest   = SHA256(header || payload[0..codeSize))
+data_digest   = BLAKE2s(payload[codeSize..payload_size))
+digest        = SHA256(header || code_digest || data_digest)
+```
+
+`digest` is what gets RSA-signed. The point of the split is that BLAKE2s
+is substantially cheaper per byte than SHA-256 on the boot ROM's 16-bit
+CPU (see `ZPbootROM/def88186/blake2s.def`), so a large bulk-data region
+verifies much faster than hashing it with SHA-256 directly - while still
+being just as tamper-resistant as version 1, because `data_digest` is
+folded into the same signed hash `code_digest` is, not compared separately
+against an unsigned stored value (which would give zero tamper
+resistance - an attacker could just recompute a fresh, correct BLAKE2s
+digest for whatever they swap in). `codeSize` itself is not separately
+bound into the signed hash, but this is fail-safe rather than fail-open:
+tampering `codeSize` shifts which bytes land in `code_digest` vs
+`data_digest`, changing the composite digest and failing the signature
+check exactly like tampering any other byte would.
+
+For either version, `ROM::load()` reads and shape-checks the trailer
+(magic + sane siglen, plus the extra codeSize field for version 2) but
+does not verify the signature. `System::loadROM()` then caches the raw
+64-byte header and the trailer verbatim (`ROM::getRawHeader()` /
+`ROM::getTrailer()`), and `System::reset()` maps them read-only into CPU
+memory at bank `$E1` (right after the Boot ROM at `$E0`) once the
+cartridge bus connects - `$E1:0000-003F` is the header, `$E1:0040-` is the
+trailer (magic/version/keysize/siglen, the 32-byte digest, the 256-byte
+signature, and - for version 2 - the 4-byte codeSize at `$E1:0168`). This
+is what lets the Boot ROM's `rsa_verify` (see `ZPbootROM/def88186/rsa.def`)
+re-hash the header and payload (payload is already visible at bank `$00`)
+and check the signature without any of it passing through the cartridge's
+own read/write window. `rsa_verify` dispatches on the trailer version byte
+at `$E1:0044` to pick the version-1 or version-2 (composite) path.
+Loading an unsigned (`version == 1`) ROM leaves bank `$E1` unmapped (note:
+this is the *header's* `version` field, distinct from the *trailer's*
+version byte discussed above, which only exists for signed ROMs).
 
 ## Example
 

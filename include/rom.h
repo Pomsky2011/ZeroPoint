@@ -59,7 +59,12 @@ public:
 
     // "ZPSG" trailer as read from disk: magic(4)+version(1)+keysize(1)+
     // siglen(2) [8 bytes], then a 32-byte digest, then a 256-byte RSA
-    // signature (296 bytes total). Empty when isSigned() is false.
+    // signature (296 bytes total for trailer version 1). Trailer version 2
+    // (code/data-split composite signing, see docs/zpb-format.md) appends
+    // a further 4-byte little-endian codeSize field after the signature
+    // (300 bytes total) - ZPbootROM/def88186/rsa.def's rsa_verify_composite
+    // uses it to split the payload into a SHA-256-signed code region and a
+    // BLAKE2s-hashed data region. Empty when isSigned() is false.
     const std::vector<uint8_t>& getTrailer() const { return trailer; }
 
     // Get last error message
