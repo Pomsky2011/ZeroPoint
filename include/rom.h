@@ -64,7 +64,13 @@ public:
     // a further 4-byte little-endian codeSize field after the signature
     // (300 bytes total) - ZPbootROM/def88186/rsa.def's rsa_verify_composite
     // uses it to split the payload into a SHA-256-signed code region and a
-    // BLAKE2s-hashed data region. Empty when isSigned() is false.
+    // BLAKE2s-hashed data region. Trailer version 3 (code + chunked-data-
+    // manifest signing) appends a further per-16384-byte-chunk BLAKE2s
+    // manifest after codeSize (chunkCount derived from codeSize/romSize,
+    // not stored) - ZPbootROM/def88186/rsa.def's
+    // rsa_verify_composite_manifest verifies the manifest itself
+    // synchronously at boot, deferring each chunk's own check to whenever
+    // cartridge code is about to load it. Empty when isSigned() is false.
     const std::vector<uint8_t>& getTrailer() const { return trailer; }
 
     // Get last error message

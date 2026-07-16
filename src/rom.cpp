@@ -132,6 +132,41 @@ bool ROM::load(const std::string& filename) {
                 return false;
             }
             trailer.insert(trailer.end(), codeSizeBytes, codeSizeBytes + 4);
+
+            // Trailer version 3 (code + chunked-data-manifest signing, see
+            // docs/zpb-format.md) appends a per-chunk BLAKE2s manifest right
+            // after codeSize: one 32-byte digest per CHUNK_SIZE-byte data
+            // chunk (last chunk short), covering payload[codeSize..romSize).
+            // chunkCount is NOT itself stored - it's derived here exactly
+            // the way zpbuild.c and rsa_verify_composite_manifest do, from
+            // codeSize and romSize, so it can't be tampered independently
+            // of the digest that actually gets re-checked at boot.
+            if (trailerVersion >= 3) {
+                const uint32_t codeSize = static_cast<uint32_t>(codeSizeBytes[0])
+                    | (static_cast<uint32_t>(codeSizeBytes[1]) << 8)
+                    | (static_cast<uint32_t>(codeSizeBytes[2]) << 16)
+                    | (static_cast<uint32_t>(codeSizeBytes[3]) << 24);
+                if (codeSize > header.romSize) {
+                    setError("Invalid ROM trailer: codeSize exceeds romSize");
+                    data.clear();
+                    trailer.clear();
+                    return false;
+                }
+                const uint32_t CHUNK_SIZE = 16384;
+                const uint32_t dataSize = header.romSize - codeSize;
+                const uint32_t chunkCount = (dataSize + CHUNK_SIZE - 1) / CHUNK_SIZE;
+                if (chunkCount > 0) {
+                    std::vector<uint8_t> manifest(static_cast<size_t>(chunkCount) * 32);
+                    file.read(reinterpret_cast<char*>(manifest.data()), manifest.size());
+                    if (!file) {
+                        setError("Failed to read ROM trailer manifest");
+                        data.clear();
+                        trailer.clear();
+                        return false;
+                    }
+                    trailer.insert(trailer.end(), manifest.begin(), manifest.end());
+                }
+            }
         }
         signedRom = true;
     }
