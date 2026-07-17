@@ -24,6 +24,12 @@ struct DMAConfig {
     uint8_t sizeMultiplier; // Byte 7: size multiplier
     uint8_t interrupt;      // Byte 8: interrupt/trigger byte
 
+    // Not part of the wire format - captured by DMAController::queueDMA()
+    // at the moment this transfer is queued/triggered (see its own comment
+    // for why trigger-time capture, not a live re-check, is what closes the
+    // ROP-style bypass described in docs/zpb-format.md).
+    bool privileged = false;
+
     // Parsed fields
     uint8_t getSizeBits() const { return (mode >> 6) & 0x03; }
     DMAMode getMode() const { return static_cast<DMAMode>((mode >> 4) & 0x03); }
@@ -96,12 +102,30 @@ public:
 
     // Callback for memory access (to be set by memory controller)
     // For now we'll just track what would happen
-    using MemoryReadCallback = uint8_t(*)(uint32_t address);
+    //
+    // MemoryReadCallback takes the per-transfer `privileged` bit captured at
+    // queue time (see DMAConfig::privileged/queueDMA()) alongside the
+    // address - the CPU's read gate uses it instead of a live PB check,
+    // since a DMA transfer's bytes are read one at a time across many
+    // ticks, decoupled from whatever the CPU happens to be executing at
+    // each tick.
+    using MemoryReadCallback = uint8_t(*)(uint32_t address, bool privileged);
     using MemoryWriteCallback = void(*)(uint32_t address, uint8_t value);
 
     void setMemoryCallbacks(MemoryReadCallback read, MemoryWriteCallback write) {
         memoryRead = read;
         memoryWrite = write;
+    }
+
+    // Queried once per queueDMA() call, at the exact moment a transfer is
+    // queued/triggered, to capture whether the CPU was executing in a
+    // privileged (Boot ROM verify_chunk) context right then - see
+    // DMAConfig::privileged's comment. Wired by System to
+    // `cpu.getPB() == 0xE0`.
+    using PrivilegeQueryCallback = bool(*)();
+
+    void setPrivilegeQuery(PrivilegeQueryCallback cb) {
+        privilegeQuery = cb;
     }
 
     // Callback fired when a channel's transfer finishes (used to raise the
@@ -122,6 +146,7 @@ private:
     // Memory access callbacks
     MemoryReadCallback memoryRead;
     MemoryWriteCallback memoryWrite;
+    PrivilegeQueryCallback privilegeQuery = nullptr;
 
     // Transfer-complete callback (nullptr if unset)
     CompleteCallback onComplete = nullptr;

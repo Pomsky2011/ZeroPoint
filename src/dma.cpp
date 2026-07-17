@@ -49,6 +49,14 @@ bool DMAController::queueDMA(const uint8_t config[9]) {
     // Parse interrupt/trigger byte
     dmaConfig.interrupt = config[8];
 
+    // Capture privilege *now*, at the exact instant this transfer is
+    // queued/triggered (the 9th config byte just landed) - not later, when
+    // its bytes actually get ticked. A cartridge can only ever call
+    // queueDMA() (by writing this 9-byte sequence) from its own bank
+    // (0x00-0x7F), so this is false for any transfer it sets up, regardless
+    // of what it jumps to afterward - see MemoryReadCallback's comment.
+    dmaConfig.privileged = privilegeQuery ? privilegeQuery() : false;
+
     uint8_t channel = dmaConfig.getChannel();
 
     // Check if channel is valid
@@ -168,7 +176,7 @@ void DMAController::processChannel(uint8_t channel) {
                             for (uint32_t i = 0; i < patternSize && i < 4; i++) {
                                 if (memoryRead) {
                                     transfer.patternBuffer[i] = memoryRead(
-                                        transfer.config.sourceAddr + i
+                                        transfer.config.sourceAddr + i, transfer.config.privileged
                                     );
                                 }
                             }
@@ -178,7 +186,7 @@ void DMAController::processChannel(uint8_t channel) {
                             for (uint32_t i = 0; i < patternSize && i < 4; i++) {
                                 if (memoryRead) {
                                     transfer.patternBuffer[i] = memoryRead(
-                                        transfer.config.sourceAddr + i
+                                        transfer.config.sourceAddr + i, transfer.config.privileged
                                     );
                                 }
                             }
@@ -235,7 +243,7 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
         case DMAMode::DataCopy:
             // Read from source + offset, write to target + offset
             if (memoryRead) {
-                value = memoryRead(sourceAddr + currentByte);
+                value = memoryRead(sourceAddr + currentByte, transfer.config.privileged);
             }
             if (memoryWrite) {
                 memoryWrite(targetAddr + currentByte, value);

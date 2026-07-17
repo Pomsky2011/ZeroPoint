@@ -163,17 +163,64 @@ chunk is a cheap no-op (it checks the bit first) rather than a re-hash.
 global payload offset reads as `0xDE`, an odd offset as `0xAF` - so a
 naturally-aligned word read comes back as the bytes `DE AF` in memory order.
 This applies uniformly to direct CPU reads and to DMA transfers sourced from
-ROM, since both go through the same gated read path.
+ROM, since both go through the same gated read path - but the two paths
+check different things, for a reason worth spelling out (this took two
+passes to get right):
 
-**Why it can't be forged**: the per-chunk verified/unverified state lives in
-a small bitmap exposed at bank `$E1`, immediately after the trailer/manifest
-blob (i.e. at offset `$016C + chunkCount*32`, one bit per chunk). Reads of
-it always return the live bitmap, but *writes only take effect while the
-CPU is executing from bank `$E0`* (the Boot ROM itself, mid `verify_chunk`
-call) - a write attempted from anywhere else (ordinary cartridge code, an
-ISR, whatever) is silently dropped, the same way writes to ROM itself are
-dropped. A cartridge therefore has no path to mark a chunk "verified" other
-than asking the Boot ROM to actually check it.
+**Why "PB == 0xE0" alone is not a sound privilege check.** This ISA has no
+execute-privilege/ring concept - bank `$E0` is just ordinary mapped,
+executable ROM, so *any* code can reach `PB == 0xE0` with a plain `JML`, not
+just a genuine `COP #$FF` call. Two consequences, both closed:
+
+- *Read side, exploited via DMA*: DMA transfers run across many
+  master-clock ticks, asynchronously from CPU execution. A cartridge could
+  queue a transfer sourced from the poisoned region (while `PB` is still its
+  own bank - queuing requires writing the 9-byte `$D80020-$D8028` sequence,
+  which only cartridge code can do), then immediately `JML` into *any*
+  Boot ROM code (not `verify_chunk` - literally anywhere) purely to hold
+  `PB == 0xE0` while the transfer's later ticks fired, reading real
+  unverified bytes out through a channel that never checked anything. Fixed
+  by capturing a `privileged` flag on `DMAConfig` *once*, at the exact
+  moment `DMAController::queueDMA()` runs (`CPU::getPB() == 0xE0` at that
+  instant) - a cartridge can never make this true for a transfer it queues
+  itself, and nothing it does afterward can retroactively change an
+  already-captured flag. `CPU::readByteForDMA()` checks this captured value
+  instead of live `PB`; ordinary CPU reads (`CPU::readByte()`) still check
+  live `PB`, which is safe there since a single instruction's read has no
+  time-of-check/time-of-use gap. `verify_chunk`'s own hash computation
+  legitimately depends on DMA too (`blake2s_hash_multibank` stages the chunk
+  through WRAM via a real DMA transfer it queues itself, at `PB == 0xE0`),
+  which is exactly why this couldn't just be "DMA reads of the gated region
+  are never exempt, full stop" - that would have broken verification
+  entirely.
+- *Write side, exploited directly, no DMA needed*: a cartridge can `JML`
+  straight into `verify_chunk`'s own bit-setting tail, with attacker-chosen
+  `BITMAP_BYTE_IDX`/`BIT_MASK` already sitting in WRAM (ordinary, cartridge-
+  writable scratch), and reach the `STA` that sets a chunk's bit *without
+  the hash/compare ever running*. Fixed with a second signal alongside
+  `PB == 0xE0`: `CPU::bootServiceActive`, a flag set true only by `opCOP()`'s
+  own `COP #$FF` dispatch branch and cleared unconditionally by `opRTI()`.
+  A raw jump into the Boot ROM never sets it, so it can't be forged that
+  way either. (This flag is a plain bool, not a properly nested
+  push/pull-style save - sound only because nothing in this codebase
+  currently triggers NMI/ABORT automatically or lets guest code trigger
+  them, and maskable IRQ is blocked by `opCOP()` setting `P.I` for the
+  call's duration, so `verify_chunk` cannot currently be interrupted or
+  re-entered. If NMI/ABORT ever become reachable from guest code, this
+  needs to become part of the properly nested interrupt state instead.)
+
+The per-chunk verified/unverified state itself lives in a small bitmap
+exposed at bank `$E1`, immediately after the trailer/manifest blob (i.e. at
+offset `$016C + chunkCount*32`, one bit per chunk). Reads of it always
+return the live bitmap; writes take effect only when both `PB == 0xE0` *and*
+`bootServiceActive` hold - and separately, `CPU::writeByteForDMA()` (the
+path any DMA-driven write goes through) refuses to write there *at all*,
+unconditionally, regardless of any privilege signal, since there is no
+legitimate reason for DMA to ever write this region (`verify_chunk`'s own
+bit-set is always a plain `STA`, never DMA) - simpler and more robust than
+trying to reuse the read side's trigger-time-privilege mechanism for a case
+that has no legitimate use to preserve. A cartridge therefore has no path to
+mark a chunk "verified" other than asking the Boot ROM to actually check it.
 
 This needs no RSA: per-chunk verification is sound precisely *because* the
 checker runs from inside the already-RSA-verified Boot ROM and `manifest[]`

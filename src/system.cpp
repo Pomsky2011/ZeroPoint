@@ -63,6 +63,7 @@ System::System()
 
     // Connect DMA to memory system
     dma.setMemoryCallbacks(dmaReadCallback, dmaWriteCallback);
+    dma.setPrivilegeQuery(dmaPrivilegeQuery);
     dma.setCompleteCallback(dmaCompleteCallback);
 
     std::cout << "ZeroPoint System initialized\n";
@@ -538,17 +539,21 @@ void System::setTimerControl(uint8_t value) {
 }
 
 // Static DMA callback wrappers
-uint8_t System::dmaReadCallback(uint32_t address) {
+uint8_t System::dmaReadCallback(uint32_t address, bool privileged) {
     if (currentSystem) {
-        return currentSystem->cpu.readByte(address);
+        return currentSystem->cpu.readByteForDMA(address, privileged);
     }
     return 0xFF;
 }
 
 void System::dmaWriteCallback(uint32_t address, uint8_t value) {
     if (currentSystem) {
-        currentSystem->cpu.writeByte(address, value);
+        currentSystem->cpu.writeByteForDMA(address, value);
     }
+}
+
+bool System::dmaPrivilegeQuery() {
+    return currentSystem && currentSystem->cpu.getPB() == 0xE0;
 }
 
 void System::dmaCompleteCallback(uint8_t /*channel*/) {

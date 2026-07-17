@@ -116,6 +116,27 @@ public:
     void setMemory(uint8_t* mem, size_t size);  // Legacy interface
     uint8_t readByte(uint32_t address);
     void writeByte(uint32_t address, uint8_t value);
+
+    // DMA-facing variants (used only by System::dmaReadCallback/
+    // dmaWriteCallback) - see docs/zpb-format.md's runtime chunk
+    // verification section for why these differ from the plain CPU-
+    // instruction path. DMA runs asynchronously across many master-clock
+    // ticks, so checking the CPU's *live* PB at each tick is unsound: a
+    // cartridge could queue a transfer from the poisoned region, then jump
+    // into the Boot ROM (PB=0xE0) purely to hold that exemption open while
+    // the transfer's later ticks fire. `transferPrivileged` is instead
+    // captured once, by DMAController, at the moment the transfer was
+    // queued/triggered - which a cartridge can only ever do from its own
+    // bank (0x00-0x7F), so it can never be true for a transfer it set up
+    // itself, regardless of what it jumps to afterward. verify_chunk's own
+    // legitimate hash-staging DMA is queued by the Boot ROM itself (PB=0xE0
+    // at queue time), so it correctly captures true.
+    uint8_t readByteForDMA(uint32_t address, bool transferPrivileged);
+    // No privilege parameter: there is no legitimate reason for a DMA
+    // transfer to ever write the verified-bitmap region (verify_chunk's own
+    // bit-set is always a plain STA, never DMA), so this refuses outright
+    // rather than reusing the read side's trigger-time-privilege mechanism.
+    void writeByteForDMA(uint32_t address, uint8_t value);
     uint16_t readWord(uint32_t address);
     void writeWord(uint32_t address, uint16_t value);
     uint32_t readLong(uint32_t address);
@@ -498,6 +519,10 @@ private:
     void writeMapped(uint32_t address, uint8_t value);
     MemoryRegion* findRegion(uint32_t address);
 
+    // Shared implementation behind readByte()/readByteForDMA() - see their
+    // comments for what exemptFromGating means for each caller.
+    uint8_t readByteGated(uint32_t address, bool exemptFromGating);
+
     // State
     CPUState state;
     uint64_t instructionCount;
@@ -523,6 +548,31 @@ private:
     bool dataGatingActive = false;
     uint32_t gatedCodeSize = 0;
     std::vector<uint8_t> chunkVerified;  // one bit per 16 KiB data chunk
+    // Bank-$E1 offset range of the verified-bitmap IO region (see
+    // configureDataGating()), used by writeByteForDMA() to refuse DMA
+    // writes there outright - see writeByteForDMA()'s own comment.
+    uint16_t gatedBitmapOffset = 0;
+    uint16_t gatedBitmapSize = 0;
+
+    // Set true only by opCOP()'s COP #$FF branch (a genuine boot-ROM-service
+    // dispatch), cleared unconditionally by opRTI(). Distinguishes "the CPU
+    // is genuinely inside verify_chunk" from "PB happens to equal 0xE0" -
+    // the latter is also true of a plain JML straight into any $E0 address
+    // (this ISA has no execute-permission/privilege-ring concept; bank $E0
+    // is just ordinary mapped, executable ROM), which would otherwise let a
+    // cartridge jump directly into verify_chunk's bit-setting tail with
+    // attacker-chosen WRAM scratch (BITMAP_BYTE_IDX/BIT_MASK) and forge a
+    // "verified" bit without ever hashing anything. See the bitmap ioWrite
+    // gate in configureDataGating(). A flat bool (rather than a proper
+    // save/restore stack entry alongside PB/PC/P) is sound only because nothing
+    // in this codebase currently triggers NMI or ABORT automatically or lets
+    // a cartridge trigger them (grep CPU::triggerNMI/triggerAbort - neither
+    // is ever called outside their own definitions), and maskable IRQ is
+    // blocked the whole time by opCOP setting P.I - so verify_chunk cannot
+    // currently be interrupted/re-entered. If NMI/ABORT ever become
+    // reachable from guest code, this needs to become part of the properly
+    // nested push/pull state instead.
+    bool bootServiceActive = false;
 
     // Actual interrupt sequences (push state + vector). Invoked by
     // serviceInterrupts() once the interrupt is eligible to run.

@@ -74,6 +74,19 @@ void CPU::setMemory(uint8_t* mem, size_t size) {
 
 // Memory access with 24-bit addressing
 uint8_t CPU::readByte(uint32_t address) {
+    // Direct CPU-instruction reads are synchronous with the current
+    // instruction, so checking live PB has no time-of-check/time-of-use gap
+    // - unlike the DMA path (see readByteForDMA()), there's no window
+    // between "decide if this is privileged" and "do the read" for a
+    // cartridge to exploit.
+    return readByteGated(address, PB == 0xE0);
+}
+
+uint8_t CPU::readByteForDMA(uint32_t address, bool transferPrivileged) {
+    return readByteGated(address, transferPrivileged);
+}
+
+uint8_t CPU::readByteGated(uint32_t address, bool exemptFromGating) {
     // If memory mapping is enabled, use it (optimized flag check)
     if (useMemoryMap) [[likely]] {
         // Fast path: a bank served by a single full-range ROM/RAM region maps
@@ -91,14 +104,13 @@ uint8_t CPU::readByte(uint32_t address) {
             // Runtime chunk-verification gate (trailer version 3 only, see
             // configureDataGating()/docs/zpb-format.md): bank <= 0x7F is the
             // cartridge's own ROM region - distinct from the Boot ROM ($E0)
-            // and signed-metadata ($E1) regions, which are never gated. PB ==
-            // 0xE0 (the Boot ROM itself, mid boot-service call) is exempt so
-            // its verify routine can actually read the bytes it hashes;
-            // everything else - direct cartridge reads and DMA transfers
-            // alike, since DMAController reads through this same readByte() -
-            // is gated identically.
+            // and signed-metadata ($E1) regions, which are never gated.
+            // exemptFromGating lets the Boot ROM's own verify routine (and
+            // its legitimately-queued staging DMA) actually read the bytes
+            // it hashes; everything else - direct cartridge reads and any
+            // DMA transfer a cartridge itself queued - is gated identically.
             if (dataGatingActive && bank <= 0x7F && dataOffset >= gatedCodeSize &&
-                PB != 0xE0) [[unlikely]] {
+                !exemptFromGating) [[unlikely]] {
                 size_t chunkIndex = (dataOffset - gatedCodeSize) / CHUNK_SIZE;
                 size_t byteIdx = chunkIndex / 8;
                 uint8_t bitMask = static_cast<uint8_t>(1u << (chunkIndex % 8));
@@ -1127,6 +1139,10 @@ void CPU::opRTI() {
     P.fromByte(pull8());
     PC = pull16();
     PB = pull8();
+    // Unconditionally leaving whatever interrupt-class context was active -
+    // see bootServiceActive's declaration comment for why a flat clear
+    // (rather than a nested push/pull) is sound here today.
+    bootServiceActive = false;
     cycleCount += 6;
 }
 
@@ -1497,6 +1513,10 @@ void CPU::opCOP() {
     if (bootROMLoaded && sig == BOOT_SVC_VERIFY_CHUNK) {
         PC = BOOT_SVC_ENTRY;
         PB = 0xE0;
+        // Marks this as a genuine boot-service dispatch, not just "PB
+        // happens to be 0xE0" - see this flag's declaration comment. Cleared
+        // by opRTI() when verify_chunk actually returns.
+        bootServiceActive = true;
         cycleCount += 7;
         return;
     }
@@ -1814,13 +1834,21 @@ void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
         }
     }
     if (foundMetadataRegion) {
-        registerIORegion(0xE1, static_cast<uint16_t>(metadataSize),
-            static_cast<uint16_t>(chunkVerified.size()),
+        gatedBitmapOffset = static_cast<uint16_t>(metadataSize);
+        gatedBitmapSize = static_cast<uint16_t>(chunkVerified.size());
+        registerIORegion(0xE1, gatedBitmapOffset, gatedBitmapSize,
             [this](uint16_t off) -> uint8_t {
                 return (off < chunkVerified.size()) ? chunkVerified[off] : 0xFF;
             },
             [this](uint16_t off, uint8_t value) {
-                if (PB != 0xE0) return;  // un-forgeable outside the Boot ROM
+                // Both must hold: PB==0xE0 alone isn't enough - a cartridge
+                // can plain-JML directly into verify_chunk's tail (this ISA
+                // has no execute-privilege concept), landing at PB==0xE0
+                // without ever having run the actual hash/compare.
+                // bootServiceActive is only set by a genuine COP #$FF
+                // dispatch (opCOP) and cleared on RTI, so it can't be
+                // faked by jumping to an arbitrary $E0 address.
+                if (PB != 0xE0 || !bootServiceActive) return;
                 if (off < chunkVerified.size()) chunkVerified[off] = value;
             });
     }
@@ -1830,6 +1858,27 @@ void CPU::clearDataGating() {
     dataGatingActive = false;
     gatedCodeSize = 0;
     chunkVerified.clear();
+    gatedBitmapOffset = 0;
+    gatedBitmapSize = 0;
+}
+
+void CPU::writeByteForDMA(uint32_t address, uint8_t value) {
+    // Refuse DMA writes to the verified-bitmap region outright, full stop -
+    // no privilege exception at all, unlike the read side. There is no
+    // legitimate reason for a DMA transfer to ever write there: verify_chunk
+    // always sets a chunk's bit with a plain STA (see docs/zpb-format.md),
+    // never DMA, so any DMA-sourced write landing here is definitionally an
+    // attempt to forge a verified chunk rather than a real use case to
+    // preserve.
+    if (dataGatingActive) {
+        uint8_t bank = (address >> 16) & 0xFF;
+        uint16_t offset = address & 0xFFFF;
+        if (bank == 0xE1 && offset >= gatedBitmapOffset &&
+            offset < static_cast<uint32_t>(gatedBitmapOffset) + gatedBitmapSize) {
+            return;
+        }
+    }
+    writeByte(address, value);
 }
 
 void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {

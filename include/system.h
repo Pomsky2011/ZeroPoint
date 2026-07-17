@@ -180,8 +180,11 @@ private:
     Display display;
 
     // Static wrappers for DMA callbacks (need to access CPU instance)
-    static uint8_t dmaReadCallback(uint32_t address);
+    static uint8_t dmaReadCallback(uint32_t address, bool privileged);
     static void dmaWriteCallback(uint32_t address, uint8_t value);
+    // Queried by DMAController::queueDMA() at trigger time - see
+    // DMAConfig::privileged's comment.
+    static bool dmaPrivilegeQuery();
     static void dmaCompleteCallback(uint8_t channel);
     static System* currentSystem;  // Pointer to current system for callbacks
 
