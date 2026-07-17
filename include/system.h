@@ -193,6 +193,12 @@ private:
     // read-only at bank $E1 in lockstep with pendingRomData/cartridgeMapped
     // (see ROM::getRawHeader/getTrailer) - empty for an unsigned (v1) ROM.
     std::vector<uint8_t> pendingSignedMetadata;
+    // Trailer version 3 gating info (see CPU::configureDataGating), applied
+    // in lockstep with pendingSignedMetadata/cartridgeMapped. trailerVersion
+    // 0/1/2 mean no chunk gating for this ROM.
+    uint8_t pendingTrailerVersion = 0;
+    uint32_t pendingCodeSize = 0;
+    uint32_t pendingChunkCount = 0;
     std::string romTitle;
     std::string romDeveloper;
     uint32_t entryPoint;

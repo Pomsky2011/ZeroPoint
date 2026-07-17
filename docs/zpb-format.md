@@ -131,26 +131,57 @@ Once the boot ROM has verified `code_digest` and `manifest_digest` and
 jumped to the cartridge entry point, `manifest[]` sits at bank `$E1`
 offset `$016C` (right after `codeSize`, per the table above) and stays
 memory-mapped read-only for the CPU's whole lifetime - ordinary cartridge
-code can read it directly, no privileged call needed. Before loading (DMA-
-ing) any 16384-byte data chunk `i` out of ROM, cartridge code should:
+code can read it directly, no privileged call needed. Each 16384-byte data
+chunk `i` in `[codeSize, romSize)` is hardware-gated: reads of it (whether a
+direct `LDA` or a DMA transfer - both go through the same memory-access path)
+return a poison pattern until the chunk has been verified, and the only way
+to verify one is a GBA-SWI-style call into the boot ROM itself. This isn't
+advisory - a cartridge cannot opt out of it, and cannot forge a "verified"
+result, because the verified/unverified state isn't ordinary writable memory.
 
-1. Compute `BLAKE2s` over the 16384 bytes about to be loaded (the same
-   algorithm as `ZPbootROM/def88186/blake2s.def` - the RFC 7693 spec in
-   that file's header comment is the reference; a cartridge can compile
-   its own copy, or link against the SDK's, since none of this needs the
-   private key).
-2. Compare the result, byte-for-byte, against `manifest[i]` at bank `$E1`
-   offset `$016C + i*32`.
-3. Refuse to load (or otherwise abort) on mismatch, same as the boot ROM
-   does for a bad signature.
+**Calling convention**: `COP #$FF` with the chunk index in `X` (16-bit index
+mode, i.e. `P.X` clear). `$FF` is a reserved signature byte recognized only
+when a Boot ROM is mapped; every other `COP #imm` value keeps the normal
+65C816-style behavior (vectors through the cartridge's own `$00:FFE4`
+handler, untouched by any of this). The call vectors to a fixed address,
+`$E0:0004`, analogous to GBA's fixed SWI vector - a permanently-stable slot
+distinct from the `$E0:0000` hardware-reset entry, so it never drifts as the
+Boot ROM's own code grows. Control returns via a normal `RTI`, using the same
+pushed `(PB, PC, P)` convention as any other `COP`/`BRK`.
 
-This needs no RSA and no call into the boot ROM: chunk verification is
-sound precisely *because* the checker runs from inside the already-
-RSA-verified code region and `manifest[]` is only trusted once its own
-signed digest has checked out - not because the check itself carries any
-new cryptographic authority. Deferring this to load time (rather than
-hashing everything at boot) is what makes an 8 MB cartridge with a modest
-code region boot in seconds instead of minutes.
+**What the call does** (see `ZPbootROM/def88186/rsa.def`'s `verify_chunk`):
+compute `BLAKE2s` over the 16384 bytes at `codeSize + i*16384` (reusing the
+same `blake2s_hash` routine already used for `code_digest`/
+`manifest_digest` - no separate crypto implementation), compare against
+`manifest[i]`, and on a match, mark chunk `i` verified. On mismatch, the
+routine just returns without marking it - there's no separate error/status
+channel; a still-unverified chunk simply keeps reading as poison afterward,
+which *is* the failure signal. Calling it again for an already-verified
+chunk is a cheap no-op (it checks the bit first) rather than a re-hash.
+
+**The poison pattern**: within `[codeSize, romSize)`, a byte at an even
+global payload offset reads as `0xDE`, an odd offset as `0xAF` - so a
+naturally-aligned word read comes back as the bytes `DE AF` in memory order.
+This applies uniformly to direct CPU reads and to DMA transfers sourced from
+ROM, since both go through the same gated read path.
+
+**Why it can't be forged**: the per-chunk verified/unverified state lives in
+a small bitmap exposed at bank `$E1`, immediately after the trailer/manifest
+blob (i.e. at offset `$016C + chunkCount*32`, one bit per chunk). Reads of
+it always return the live bitmap, but *writes only take effect while the
+CPU is executing from bank `$E0`* (the Boot ROM itself, mid `verify_chunk`
+call) - a write attempted from anywhere else (ordinary cartridge code, an
+ISR, whatever) is silently dropped, the same way writes to ROM itself are
+dropped. A cartridge therefore has no path to mark a chunk "verified" other
+than asking the Boot ROM to actually check it.
+
+This needs no RSA: per-chunk verification is sound precisely *because* the
+checker runs from inside the already-RSA-verified Boot ROM and `manifest[]`
+is only trusted once its own signed `manifest_digest` has checked out - not
+because the check itself carries any new cryptographic authority. Deferring
+this to load time (rather than hashing everything at boot) is what makes an
+8 MB cartridge with a modest code region boot in seconds instead of minutes,
+while still making it impossible to consume unverified data undetected.
 
 For any version, `ROM::load()` reads and shape-checks the trailer
 (magic + sane siglen, plus the extra codeSize field for version 2 and 3,
@@ -162,6 +193,11 @@ ROM at `$E0`) once the cartridge bus connects - `$E1:0000-003F` is the
 header, `$E1:0040-` is the trailer (magic/version/keysize/siglen, the
 32-byte digest, the 256-byte signature, the 4-byte codeSize at `$E1:0168`
 for version 2/3, and the manifest starting at `$E1:016C` for version 3).
+For version 3, the chunk-verified bitmap from the previous section
+immediately follows the manifest, at `$016C + chunkCount*32` -
+`CPU::configureDataGating()` registers it as a distinct read/privileged-write
+region rather than part of the plain ROM-backed header/trailer bytes, which
+is what enforces the write restriction described above.
 This is what lets the Boot ROM's `rsa_verify` (see
 `ZPbootROM/def88186/rsa.def`) re-hash the header and payload (payload is
 already visible at bank `$00`) and check the signature without any of it

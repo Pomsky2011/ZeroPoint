@@ -73,6 +73,14 @@ public:
     // cartridge code is about to load it. Empty when isSigned() is false.
     const std::vector<uint8_t>& getTrailer() const { return trailer; }
 
+    // Trailer version byte (fixedPart[4] above): 0 when unsigned, 1/2/3 for
+    // the single-region/composite/chunked-manifest signing schemes in
+    // docs/zpb-format.md. codeSize/chunkCount are only meaningful for
+    // trailerVersion >= 2/3 respectively (0 otherwise).
+    uint8_t getTrailerVersion() const { return trailerVersion; }
+    uint32_t getCodeSize() const { return codeSize; }
+    uint32_t getChunkCount() const { return chunkCount; }
+
     // Get last error message
     const std::string& getError() const { return errorMessage; }
 
@@ -86,6 +94,9 @@ private:
     bool signedRom = false;
     uint8_t rawHeader[RAW_HEADER_SIZE] = {};
     std::vector<uint8_t> trailer;
+    uint8_t trailerVersion = 0;
+    uint32_t codeSize = 0;
+    uint32_t chunkCount = 0;
 
     void setError(const std::string& error);
 };

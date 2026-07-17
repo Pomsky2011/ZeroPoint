@@ -5,6 +5,7 @@
 #include "dma.h"
 #include "display.h"
 #include "system.h"
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
@@ -57,6 +58,13 @@ void CPU::reset() {
     irqPending = false;
     nmiPending = false;
     abortPending = false;
+
+    // Fresh boot ⇒ nothing verified yet, even if a chunk was verified before
+    // this reset (chunkVerified.size() is left as configureDataGating() set
+    // it - only the bits, not the gating configuration itself, are cleared).
+    if (dataGatingActive) {
+        std::fill(chunkVerified.begin(), chunkVerified.end(), 0);
+    }
 }
 
 void CPU::setMemory(uint8_t* mem, size_t size) {
@@ -79,7 +87,26 @@ uint8_t CPU::readByte(uint32_t address) {
         if (r && r->data) [[likely]] {
             size_t dataOffset =
                 static_cast<size_t>(bank - r->startBank) * 65536 + (address & 0xFFFF);
-            return (dataOffset < r->dataSize) ? r->data[dataOffset] : 0xFF;
+            if (dataOffset >= r->dataSize) return 0xFF;
+            // Runtime chunk-verification gate (trailer version 3 only, see
+            // configureDataGating()/docs/zpb-format.md): bank <= 0x7F is the
+            // cartridge's own ROM region - distinct from the Boot ROM ($E0)
+            // and signed-metadata ($E1) regions, which are never gated. PB ==
+            // 0xE0 (the Boot ROM itself, mid boot-service call) is exempt so
+            // its verify routine can actually read the bytes it hashes;
+            // everything else - direct cartridge reads and DMA transfers
+            // alike, since DMAController reads through this same readByte() -
+            // is gated identically.
+            if (dataGatingActive && bank <= 0x7F && dataOffset >= gatedCodeSize &&
+                PB != 0xE0) [[unlikely]] {
+                size_t chunkIndex = (dataOffset - gatedCodeSize) / CHUNK_SIZE;
+                size_t byteIdx = chunkIndex / 8;
+                uint8_t bitMask = static_cast<uint8_t>(1u << (chunkIndex % 8));
+                if (byteIdx >= chunkVerified.size() || !(chunkVerified[byteIdx] & bitMask)) {
+                    return (dataOffset & 1) ? 0xAF : 0xDE;
+                }
+            }
+            return r->data[dataOffset];
         }
         return readMapped(address);
     }
@@ -1452,13 +1479,28 @@ void CPU::opBRK() {
 }
 
 void CPU::opCOP() {
-    fetch();  // Skip signature byte (software-readable by the handler via the
-              // pushed PC, same convention as BRK; hardware doesn't act on it)
+    uint8_t sig = fetch();  // Signature byte (software-readable by the
+              // handler via the pushed PC, same convention as BRK; hardware
+              // doesn't act on it) - except one reserved value below.
     push8(PB);
     push16(PC);
     push8(P.toByte());
     P.I = true;
     P.D = false;
+
+    // GBA-SWI-style call into the Boot ROM (chunk index in X) - see
+    // docs/zpb-format.md's runtime chunk verification section. Only taken
+    // with a Boot ROM actually mapped; otherwise sig == BOOT_SVC_VERIFY_CHUNK
+    // falls through to the ordinary cartridge-vectored COP below like any
+    // other value, since $00:FFE4 is the cartridge's own vector to define (or
+    // leave as garbage) as it sees fit.
+    if (bootROMLoaded && sig == BOOT_SVC_VERIFY_CHUNK) {
+        PC = BOOT_SVC_ENTRY;
+        PB = 0xE0;
+        cycleCount += 7;
+        return;
+    }
+
     // Vector through the COP handler at $00:FFE4-FFE5 (native 65C816), one
     // slot below BRK's $00:FFE6 in the same vector table. Like BRK, this is a
     // direct CPU-internal software trap — it does not go through the shared
@@ -1731,9 +1773,63 @@ void CPU::loadSignedROMMetadata(const uint8_t* data, size_t size) {
     }
     if (data && size > 0) {
         loadROM(data, size, 0xE1);
+        // loadROM() always registers a full 0x0000-0xFFFF offset range, but
+        // the metadata blob (header+trailer[+manifest]) is only ever a few
+        // KiB - shrink endOffset down to the real length so
+        // configureDataGating() below can register the chunk-verified
+        // bitmap right after it in the same bank without findRegion()'s
+        // linear scan matching this (now non-"full") ROM region first for
+        // every offset in the bank.
+        memoryMap.back().endOffset = static_cast<uint16_t>(size - 1);
+        rebuildBankTable();
     } else {
         rebuildBankTable();
     }
+}
+
+void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
+    dataGatingActive = true;
+    gatedCodeSize = codeSize;
+    // Byte-packed, one bit per chunk - all clear (unverified), matching a
+    // fresh boot where nothing has been checked yet.
+    chunkVerified.assign((static_cast<size_t>(chunkCount) + 7) / 8, 0);
+
+    // Expose the bitmap at bank $E1 right after the metadata blob
+    // loadSignedROMMetadata() just mapped (its endOffset was shrunk to
+    // dataSize-1 for exactly this reason). Reads always return the live
+    // bitmap; writes only take effect with PB == 0xE0 (the Boot ROM itself),
+    // so a cartridge can't just poke a chunk "verified" without the real
+    // boot-ROM service call actually checking its hash.
+    //
+    // Find the bank's dataSize first and finish iterating *before* calling
+    // registerIORegion() below - it push_back()s into this same memoryMap,
+    // which would invalidate an in-progress iterator/reference over it.
+    size_t metadataSize = 0;
+    bool foundMetadataRegion = false;
+    for (const auto& region : memoryMap) {
+        if (region.startBank == 0xE1 && region.endBank == 0xE1 && region.type == MemoryRegion::ROM) {
+            metadataSize = region.dataSize;
+            foundMetadataRegion = true;
+            break;
+        }
+    }
+    if (foundMetadataRegion) {
+        registerIORegion(0xE1, static_cast<uint16_t>(metadataSize),
+            static_cast<uint16_t>(chunkVerified.size()),
+            [this](uint16_t off) -> uint8_t {
+                return (off < chunkVerified.size()) ? chunkVerified[off] : 0xFF;
+            },
+            [this](uint16_t off, uint8_t value) {
+                if (PB != 0xE0) return;  // un-forgeable outside the Boot ROM
+                if (off < chunkVerified.size()) chunkVerified[off] = value;
+            });
+    }
+}
+
+void CPU::clearDataGating() {
+    dataGatingActive = false;
+    gatedCodeSize = 0;
+    chunkVerified.clear();
 }
 
 void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {

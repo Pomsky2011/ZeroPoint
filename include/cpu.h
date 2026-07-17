@@ -158,6 +158,34 @@ public:
     // bank-$00 window. Pass data=nullptr/size=0 to clear it (unsigned ROM).
     void loadSignedROMMetadata(const uint8_t* data, size_t size);
 
+    // Runtime chunk verification gating for a trailer-version-3 signed ROM
+    // (see docs/zpb-format.md). While active, readByte() poisons any byte in
+    // [codeSize, romSize) whose containing CHUNK_SIZE-byte chunk hasn't been
+    // verified yet (0xDE/0xAF by offset parity), for both direct CPU reads
+    // and DMA (DMAController reads through this same readByte()). The only
+    // way to clear a chunk's bit is the boot-ROM service call below - never
+    // a plain memory write - so it can't be forged by cartridge code.
+    // chunkCount is derived by the caller the same way ROM::load() and the
+    // boot ROM do, from codeSize and the loaded ROM's total size.
+    void configureDataGating(uint32_t codeSize, uint32_t chunkCount);
+    void clearDataGating();
+    bool isDataGatingActive() const { return dataGatingActive; }
+
+    // 16 KiB, matching ROM::load()'s/zpbuild's/rsa_verify_composite_manifest's
+    // chunk size for the trailer-version-3 manifest.
+    static constexpr uint32_t CHUNK_SIZE = 16384;
+
+    // COP #imm signature byte reserved for a GBA-SWI-style call into the
+    // Boot ROM (chunk index in X, 16-bit index mode) instead of vectoring
+    // through the cartridge's own $00:FFE4 handler - see opCOP() and
+    // docs/zpb-format.md. Any other immediate keeps today's behavior.
+    static constexpr uint8_t BOOT_SVC_VERIFY_CHUNK = 0xFF;
+    // Fixed entry offset within bank $E0 for that call - permanently fixed
+    // (unlike "main", a label reached only via jml) so it never drifts as
+    // the Boot ROM's own code grows, the same way GBA's SWI vector is a
+    // fixed BIOS address rather than something callers resolve dynamically.
+    static constexpr uint16_t BOOT_SVC_ENTRY = 0x0004;
+
     // Setup all I/O registers (requires PPU, APU, Display to be set first)
     void setupIORegisters();
 
@@ -487,6 +515,14 @@ private:
     // Boot ROM state (see loadBootROM()).
     bool bootROMLoaded = false;
     uint32_t cartridgeEntryPoint = 0;
+
+    // v3-trailer runtime chunk-verification gating (see configureDataGating()
+    // and docs/zpb-format.md's "Runtime chunk verification" section). Only
+    // active for a trailer-version-3 signed ROM; false/empty otherwise, in
+    // which case readByte()'s gating check is a single no-op comparison.
+    bool dataGatingActive = false;
+    uint32_t gatedCodeSize = 0;
+    std::vector<uint8_t> chunkVerified;  // one bit per 16 KiB data chunk
 
     // Actual interrupt sequences (push state + vector). Invoked by
     // serviceInterrupts() once the interrupt is eligible to run.

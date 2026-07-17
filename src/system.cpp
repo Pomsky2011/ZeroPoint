@@ -117,6 +117,16 @@ void System::reset() {
         cpu.loadROM(pendingRomData.data(), pendingRomData.size(), 0x00);
         cpu.loadSignedROMMetadata(pendingSignedMetadata.empty() ? nullptr : pendingSignedMetadata.data(),
                                    pendingSignedMetadata.size());
+        // Runtime chunk-verification gating (see CPU::configureDataGating) -
+        // only trailer version 3 has a manifest to gate against. Done once
+        // here, in lockstep with the metadata mapping above, not on every
+        // reset: CPU::reset() re-locks all chunks itself on each subsequent
+        // reset without needing this re-run.
+        if (pendingTrailerVersion == 3) {
+            cpu.configureDataGating(pendingCodeSize, pendingChunkCount);
+        } else {
+            cpu.clearDataGating();
+        }
         cartridgeMapped = true;
     }
 
@@ -170,10 +180,16 @@ bool System::loadROM(const std::string& filename) {
     // cartridge-bus comment below. Empty (and bank $E1 cleared at reset)
     // for an unsigned ROM.
     pendingSignedMetadata.clear();
+    pendingTrailerVersion = 0;
+    pendingCodeSize = 0;
+    pendingChunkCount = 0;
     if (rom.isSigned()) {
         pendingSignedMetadata.assign(rom.getRawHeader(), rom.getRawHeader() + ROM::RAW_HEADER_SIZE);
         const std::vector<uint8_t>& trailer = rom.getTrailer();
         pendingSignedMetadata.insert(pendingSignedMetadata.end(), trailer.begin(), trailer.end());
+        pendingTrailerVersion = rom.getTrailerVersion();
+        pendingCodeSize = rom.getCodeSize();
+        pendingChunkCount = rom.getChunkCount();
     }
 
     romLoaded = true;

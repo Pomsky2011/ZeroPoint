@@ -23,6 +23,9 @@ bool ROM::load(const std::string& filename) {
     signedRom = false;
     std::memset(rawHeader, 0, sizeof(rawHeader));
     trailer.clear();
+    trailerVersion = 0;
+    codeSize = 0;
+    chunkCount = 0;
 
     // Open file
     std::ifstream file(filename, std::ios::binary);
@@ -98,7 +101,7 @@ bool ROM::load(const std::string& filename) {
             data.clear();
             return false;
         }
-        uint8_t trailerVersion = fixedPart[4];
+        trailerVersion = fixedPart[4];
         uint16_t sigLen = static_cast<uint16_t>(fixedPart[6] | (fixedPart[7] << 8));
         if (sigLen == 0 || sigLen > 4096) {
             setError("Invalid ROM signature length: " + std::to_string(sigLen));
@@ -142,7 +145,7 @@ bool ROM::load(const std::string& filename) {
             // codeSize and romSize, so it can't be tampered independently
             // of the digest that actually gets re-checked at boot.
             if (trailerVersion >= 3) {
-                const uint32_t codeSize = static_cast<uint32_t>(codeSizeBytes[0])
+                codeSize = static_cast<uint32_t>(codeSizeBytes[0])
                     | (static_cast<uint32_t>(codeSizeBytes[1]) << 8)
                     | (static_cast<uint32_t>(codeSizeBytes[2]) << 16)
                     | (static_cast<uint32_t>(codeSizeBytes[3]) << 24);
@@ -154,7 +157,7 @@ bool ROM::load(const std::string& filename) {
                 }
                 const uint32_t CHUNK_SIZE = 16384;
                 const uint32_t dataSize = header.romSize - codeSize;
-                const uint32_t chunkCount = (dataSize + CHUNK_SIZE - 1) / CHUNK_SIZE;
+                chunkCount = (dataSize + CHUNK_SIZE - 1) / CHUNK_SIZE;
                 if (chunkCount > 0) {
                     std::vector<uint8_t> manifest(static_cast<size_t>(chunkCount) * 32);
                     file.read(reinterpret_cast<char*>(manifest.data()), manifest.size());
