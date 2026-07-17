@@ -55,6 +55,7 @@ PPU::PPU()
     , instrCycles(CYC_BASE)
     , display(nullptr)
     , currentTileId(0)
+    , currentTileBank(0)
     , currentTileMode(0)
 {
     reset();
@@ -97,11 +98,17 @@ void PPU::reset() {
     callTable.fill(0);
 
     // Reset tile system
-    for (auto& tile : tileStorage) {
-        tile.fill(0);
+    for (auto& bank : tileStorage) {
+        for (auto& tile : bank) {
+            tile.fill(0);
+        }
     }
     currentTileId = 0;
+    currentTileBank = 0;
     currentTileMode = 0;
+    for (auto& ch : blitChannels) {
+        ch = BlitChannel();
+    }
 
     // Initialize palette system (default grayscale palettes)
     for (int i = 0; i < 16; i++) {
@@ -209,10 +216,15 @@ void PPU::tick() {
         return;
     }
 
+    // Blit channels run concurrently with the main instruction stream (see
+    // BlitChannel's comment in ppu.h) - advance them every cycle regardless
+    // of whether the PPU itself is stalled on something else.
+    advanceBlitChannels(1);
+
     // Busy finishing a multi-cycle instruction: burn one cycle and wait. This
-    // is what makes MUL/DIV, branches, palette loads and the TILEDRAW blitter
-    // actually occupy the PPU for their full duration. Interrupts are only
-    // recognized at instruction boundaries, so they wait too.
+    // is what makes MUL/DIV, branches, and palette loads actually occupy the
+    // PPU for their full duration. Interrupts are only recognized at
+    // instruction boundaries, so they wait too.
     if (stallCycles > 0) {
         stallCycles--;
         return;
@@ -233,23 +245,28 @@ uint32_t PPU::runBatch(uint32_t cycles) {
     uint32_t remaining = cycles;
     while (remaining > 0 && state == PPUState::Running) {
         // Collapse a multi-cycle stall in one step instead of spinning one
-        // iteration per cycle (a TILEDRAW's 263 idle cycles become a subtract).
+        // iteration per cycle. Blit channels must see the same elapsed time
+        // as tick() would have given them one cycle at a time, so advance
+        // them by the same `consumed` amount here.
         if (stallCycles > 0) {
             uint32_t consumed = stallCycles < remaining ? stallCycles : remaining;
             stallCycles -= consumed;
             remaining -= consumed;
+            advanceBlitChannels(consumed);
             continue;
         }
 
         // Instruction boundary: same interrupt/issue logic as tick(), one cycle.
         if (serviceInterrupts()) {
             remaining--;
+            advanceBlitChannels(1);
             continue;
         }
 
         executeInstruction();
         stallCycles = instrCycles - 1;
         remaining--;
+        advanceBlitChannels(1);
     }
     return cycles - remaining;
 }
@@ -577,9 +594,11 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
         }
 
         case PresetFOpcode::CLRTILE: {
-            // clrtile - clear tile storage
-            for (auto& tile : tileStorage) {
-                tile.fill(0);
+            // clrtile - clear tile storage (all banks)
+            for (auto& bank : tileStorage) {
+                for (auto& tile : bank) {
+                    tile.fill(0);
+                }
             }
             instrCycles = CYC_CLRTILE;  // bulk fixed-function clear
             break;
@@ -599,131 +618,67 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
         }
 
         case PresetFOpcode::TILEDRAW: {
-            // tiledraw - draw tile using position from SETPOS and tile from SETTILE
-            // Position stored at memory-mapped I/O (similar to pixel drawing)
-            if (display != nullptr) {
-                // Get position from memory-mapped region (0x0200-0x0203)
-                uint16_t x = memory[0x0200] | (memory[0x0201] << 8);
-                uint16_t y = memory[0x0202] | (memory[0x0203] << 8);
-
-                // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp
-                bool is4bpp = (currentTileMode & 0x02) == 0;
-                bool is32bit = (currentTileMode & 0x01) != 0;
-
-                // Draw 8x8 tile
-                for (int ty = 0; ty < 8; ty++) {
-                    for (int tx = 0; tx < 8; tx++) {
-                        uint32_t color = 0;
-
-                        if (is4bpp) {
-                            // 4bpp mode: 2 pixels per byte, use palette lookup
-                            uint8_t byteIndex = (ty * 8 + tx) / 2;
-                            uint8_t pixelByte = tileStorage[currentTileId][byteIndex];
-
-                            // Get 4-bit palette index (high nibble for even pixels, low nibble for odd)
-                            uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
-
-                            // Both is32bit and !is32bit draw from the 16-color
-                            // palette; the entry is always 16-bit, so expansion
-                            // to 32-bit RGBA is identical either way.
-                            color = expandPalette16(palette16[paletteIndex]);
-                        } else {
-                            // 8bpp mode: 1 pixel per byte, use palette lookup
-                            uint8_t paletteIndex = tileStorage[currentTileId][ty * 8 + tx];
-
-                            if (is32bit) {
-                                // 32-bit RGBA mode with 256-color palette
-                                color = palette256[paletteIndex];
-                            } else {
-                                // 16-bit mode with 256-color palette
-                                // Use lower 16 entries or convert to 16-bit format
-                                if (paletteIndex < 16) {
-                                    color = expandPalette16(palette16[paletteIndex]);
-                                } else {
-                                    // Fallback: grayscale for palette indices >= 16
-                                    color = (paletteIndex << 24) | (paletteIndex << 16) |
-                                           (paletteIndex << 8) | 0xFF;
-                                }
-                            }
-                        }
-
-                        // Apply translucency to the color
-                        color = applyTranslucency(color, currentTileId);
-
-                        // Apply blending if mode is set and we have a non-zero blend mode
-                        if (tileBlendMode != 0) {
-                            // Calculate framebuffer address for this pixel
-                            uint16_t pixelX = x + tx;
-                            uint16_t pixelY = y + ty;
-
-                            // Read existing pixel from framebuffer
-                            uint32_t dstColor = 0;
-
-                            if (display->getRenderMode() == RenderMode::RGBA32) {
-                                // 32-bit: 4 bytes/pixel. The rolling buffer only
-                                // holds 8 scanlines, so index by (pixelY % 8) to
-                                // stay within the $E000-$FFFF window.
-                                uint16_t row = pixelY % FB_SCANLINES_32BIT;
-                                uint16_t fbAddr = 0xE000 + (row * 1024) + (pixelX * 4);
-
-                                // Read 4 bytes (RGBA) from framebuffer
-                                if (fbAddr + 3 <= 0xFFFF) {
-                                    uint8_t r = handleMemoryRead(fbAddr + 0);
-                                    uint8_t g = handleMemoryRead(fbAddr + 1);
-                                    uint8_t b = handleMemoryRead(fbAddr + 2);
-                                    uint8_t a = handleMemoryRead(fbAddr + 3);
-                                    dstColor = (r << 24) | (g << 16) | (b << 8) | a;
-                                }
-                            } else {
-                                // 16-bit: 2 bytes/pixel, 16-scanline rolling window;
-                                // index by (pixelY % 16) within the 8 KiB buffer.
-                                uint16_t row = pixelY % FB_SCANLINES_16BIT;
-                                uint16_t fbAddr = 0xE000 + (row * 512) + (pixelX * 2);
-
-                                // Read 2 bytes (16-bit BGR) from framebuffer
-                                if (fbAddr + 1 <= 0xFFFF) {
-                                    uint8_t low = handleMemoryRead(fbAddr);
-                                    uint8_t high = handleMemoryRead(fbAddr + 1);
-                                    uint16_t rgb16 = (high << 8) | low;
-
-                                    // Convert 16-bit to 32-bit for blending
-                                    uint8_t r5 = (rgb16 >> 1) & 0x1F;
-                                    uint8_t g5 = (rgb16 >> 6) & 0x1F;
-                                    uint8_t b5 = (rgb16 >> 11) & 0x1F;
-                                    uint8_t a1 = rgb16 & 0x01;
-
-                                    uint8_t r8 = (r5 << 3) | (r5 >> 2);
-                                    uint8_t g8 = (g5 << 3) | (g5 >> 2);
-                                    uint8_t b8 = (b5 << 3) | (b5 >> 2);
-                                    uint8_t a8 = a1 ? 0xFF : 0x00;
-
-                                    dstColor = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
-                                }
-                            }
-
-                            // Apply blending with the translucency value
-                            uint8_t tileSlot = currentTileId & 0x03;
-                            uint8_t alpha = tileTranslucency[tileSlot];
-
-                            if (alpha > 0 && dstColor != 0) {
-                                color = blendColors(color, dstColor, tileBlendMode, alpha);
-                            }
-                        }
-
-                        display->setPixel32(x + tx, y + ty, color);
-                    }
+            // tiledraw - snapshot the current draw state (position, tile,
+            // mode, blend settings) into a free blit channel and dispatch
+            // it to run concurrently - see BlitChannel's comment in ppu.h.
+            // The actual pixel writes happen in executeBlit() when the
+            // channel's own cyclesRemaining reaches 0, not here.
+            int freeChannel = -1;
+            for (size_t i = 0; i < NUM_BLIT_CHANNELS; i++) {
+                if (!blitChannels[i].busy) {
+                    freeChannel = static_cast<int>(i);
+                    break;
                 }
             }
-            // Blitter cost: setup + per-pixel bus traffic over the 8x8 tile.
-            // Blended pixels pay an extra destination read.
-            instrCycles = CYC_TILE_BASE +
-                          TILE_PIXELS * (tileBlendMode != 0 ? CYC_TILE_PX_BLEND
-                                                            : CYC_TILE_PX);
+
+            uint32_t blitCost = CYC_TILE_BASE +
+                                 TILE_PIXELS * (tileBlendMode != 0 ? CYC_TILE_PX_BLEND
+                                                                   : CYC_TILE_PX);
+
+            if (freeChannel >= 0) {
+                BlitChannel& ch = blitChannels[freeChannel];
+                ch.busy = true;
+                ch.cyclesRemaining = blitCost;
+                ch.x = memory[0x0200] | (memory[0x0201] << 8);
+                ch.y = memory[0x0202] | (memory[0x0203] << 8);
+                ch.tileBank = currentTileBank;
+                ch.tileId = currentTileId;
+                ch.tileMode = currentTileMode;
+                ch.blendMode = tileBlendMode;
+                ch.translucency = tileTranslucency;
+
+                // Dispatch-only cost: the PPU is free to issue its next
+                // instruction (e.g. scheduling another TILEDRAW into a
+                // different channel) while this one runs in the background.
+                instrCycles = CYC_TILE_BASE;
+            } else {
+                // All channels busy: fall back to the old fully-synchronous
+                // blit rather than drop this draw or corrupt an in-flight
+                // one. Never worse than pre-concurrency behavior, and with
+                // sane pacing (channels free up faster than a well-tuned
+                // scheduler re-issues TILEDRAW) this path shouldn't trigger.
+                BlitChannel synchronous;
+                synchronous.x = memory[0x0200] | (memory[0x0201] << 8);
+                synchronous.y = memory[0x0202] | (memory[0x0203] << 8);
+                synchronous.tileBank = currentTileBank;
+                synchronous.tileId = currentTileId;
+                synchronous.tileMode = currentTileMode;
+                synchronous.blendMode = tileBlendMode;
+                synchronous.translucency = tileTranslucency;
+                executeBlit(synchronous);
+                instrCycles = blitCost;
+            }
             break;
         }
 
-        case PresetFOpcode::RESERVED_D: {
-            // Reserved - no-op
+        case PresetFOpcode::SETTILEBANK: {
+            // settilebank X - select tile bank from register X. Same
+            // encoding shape as SETDP/MOVDP (0001 XXXXXX --): a plain
+            // register operand in bits 2-7, low 2 bits unused. Widens total
+            // addressable tiles past the 8-bit SETTILE ID field by paging,
+            // not by changing that field's width - see tileStorage's comment.
+            uint8_t regX = (operand >> 2) & 0x3F;
+            currentTileBank = static_cast<uint8_t>(registers[regX] % MAX_TILE_BANKS);
             break;
         }
 
@@ -834,8 +789,8 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
     // Can be written to directly for tile definition
     if (address >= 0x0300 && address <= 0x033F) {
         uint8_t offset = address - 0x0300;
-        if (offset < TILE_SIZE && currentTileId < MAX_TILES) {
-            tileStorage[currentTileId][offset] = value;
+        if (offset < TILE_SIZE && currentTileId < MAX_TILES && currentTileBank < MAX_TILE_BANKS) {
+            tileStorage[currentTileBank][currentTileId][offset] = value;
         }
     }
 
@@ -996,11 +951,17 @@ void PPU::applyVOCReset() {
     callTable.fill(0);
 
     // Reset tile system
-    for (auto& tile : tileStorage) {
-        tile.fill(0);
+    for (auto& bank : tileStorage) {
+        for (auto& tile : bank) {
+            tile.fill(0);
+        }
     }
     currentTileId = 0;
+    currentTileBank = 0;
     currentTileMode = 0;
+    for (auto& ch : blitChannels) {
+        ch = BlitChannel();
+    }
 
     // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
 }
@@ -1088,6 +1049,138 @@ uint32_t PPU::blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alph
     uint8_t outB = ((blendB * blend) + (dstB * (255 - blend))) >> 8;
 
     return (outR << 24) | (outG << 16) | (outB << 8) | outA;
+}
+
+void PPU::advanceBlitChannels(uint32_t elapsed) {
+    for (auto& ch : blitChannels) {
+        if (!ch.busy) continue;
+        if (elapsed >= ch.cyclesRemaining) {
+            ch.cyclesRemaining = 0;
+        } else {
+            ch.cyclesRemaining -= elapsed;
+        }
+        if (ch.cyclesRemaining == 0) {
+            executeBlit(ch);
+            ch.busy = false;
+        }
+    }
+}
+
+void PPU::executeBlit(const BlitChannel& channel) {
+    // The pixel loop TILEDRAW used to run inline and synchronously - now
+    // driven off a channel's snapshotted state (see TILEDRAW's dispatch
+    // case) so it can complete long after the instruction that issued it.
+    if (display == nullptr) return;
+
+    uint16_t x = channel.x;
+    uint16_t y = channel.y;
+
+    // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp
+    bool is4bpp = (channel.tileMode & 0x02) == 0;
+    bool is32bit = (channel.tileMode & 0x01) != 0;
+
+    for (int ty = 0; ty < 8; ty++) {
+        for (int tx = 0; tx < 8; tx++) {
+            uint32_t color = 0;
+
+            if (is4bpp) {
+                // 4bpp mode: 2 pixels per byte, use palette lookup
+                uint8_t byteIndex = (ty * 8 + tx) / 2;
+                uint8_t pixelByte = tileStorage[channel.tileBank][channel.tileId][byteIndex];
+
+                // Get 4-bit palette index (high nibble for even pixels, low nibble for odd)
+                uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
+
+                // Both is32bit and !is32bit draw from the 16-color
+                // palette; the entry is always 16-bit, so expansion
+                // to 32-bit RGBA is identical either way.
+                color = expandPalette16(palette16[paletteIndex]);
+            } else {
+                // 8bpp mode: 1 pixel per byte, use palette lookup
+                uint8_t paletteIndex = tileStorage[channel.tileBank][channel.tileId][ty * 8 + tx];
+
+                if (is32bit) {
+                    // 32-bit RGBA mode with 256-color palette
+                    color = palette256[paletteIndex];
+                } else {
+                    // 16-bit mode with 256-color palette
+                    // Use lower 16 entries or convert to 16-bit format
+                    if (paletteIndex < 16) {
+                        color = expandPalette16(palette16[paletteIndex]);
+                    } else {
+                        // Fallback: grayscale for palette indices >= 16
+                        color = (paletteIndex << 24) | (paletteIndex << 16) |
+                               (paletteIndex << 8) | 0xFF;
+                    }
+                }
+            }
+
+            // Apply translucency to the color
+            color = applyTranslucency(color, channel.tileId);
+
+            // Apply blending if mode is set and we have a non-zero blend mode
+            if (channel.blendMode != 0) {
+                // Calculate framebuffer address for this pixel
+                uint16_t pixelX = x + tx;
+                uint16_t pixelY = y + ty;
+
+                // Read existing pixel from framebuffer
+                uint32_t dstColor = 0;
+
+                if (display->getRenderMode() == RenderMode::RGBA32) {
+                    // 32-bit: 4 bytes/pixel. The rolling buffer only
+                    // holds 8 scanlines, so index by (pixelY % 8) to
+                    // stay within the $E000-$FFFF window.
+                    uint16_t row = pixelY % FB_SCANLINES_32BIT;
+                    uint16_t fbAddr = 0xE000 + (row * 1024) + (pixelX * 4);
+
+                    // Read 4 bytes (RGBA) from framebuffer
+                    if (fbAddr + 3 <= 0xFFFF) {
+                        uint8_t r = handleMemoryRead(fbAddr + 0);
+                        uint8_t g = handleMemoryRead(fbAddr + 1);
+                        uint8_t b = handleMemoryRead(fbAddr + 2);
+                        uint8_t a = handleMemoryRead(fbAddr + 3);
+                        dstColor = (r << 24) | (g << 16) | (b << 8) | a;
+                    }
+                } else {
+                    // 16-bit: 2 bytes/pixel, 16-scanline rolling window;
+                    // index by (pixelY % 16) within the 8 KiB buffer.
+                    uint16_t row = pixelY % FB_SCANLINES_16BIT;
+                    uint16_t fbAddr = 0xE000 + (row * 512) + (pixelX * 2);
+
+                    // Read 2 bytes (16-bit BGR) from framebuffer
+                    if (fbAddr + 1 <= 0xFFFF) {
+                        uint8_t low = handleMemoryRead(fbAddr);
+                        uint8_t high = handleMemoryRead(fbAddr + 1);
+                        uint16_t rgb16 = (high << 8) | low;
+
+                        // Convert 16-bit to 32-bit for blending
+                        uint8_t r5 = (rgb16 >> 1) & 0x1F;
+                        uint8_t g5 = (rgb16 >> 6) & 0x1F;
+                        uint8_t b5 = (rgb16 >> 11) & 0x1F;
+                        uint8_t a1 = rgb16 & 0x01;
+
+                        uint8_t r8 = (r5 << 3) | (r5 >> 2);
+                        uint8_t g8 = (g5 << 3) | (g5 >> 2);
+                        uint8_t b8 = (b5 << 3) | (b5 >> 2);
+                        uint8_t a8 = a1 ? 0xFF : 0x00;
+
+                        dstColor = (r8 << 24) | (g8 << 16) | (b8 << 8) | a8;
+                    }
+                }
+
+                // Apply blending with the translucency value
+                uint8_t tileSlot = channel.tileId & 0x03;
+                uint8_t alpha = channel.translucency[tileSlot];
+
+                if (alpha > 0 && dstColor != 0) {
+                    color = blendColors(color, dstColor, channel.blendMode, alpha);
+                }
+            }
+
+            display->setPixel32(x + tx, y + ty, color);
+        }
+    }
 }
 
 uint32_t PPU::applyTranslucency(uint32_t color, uint8_t tileIndex) {

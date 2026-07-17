@@ -58,7 +58,9 @@ enum class PresetFOpcode : uint8_t {
     CLRTILE          = 0xA,  // Clear tile
     CLRPALETTE       = 0xB,  // Clear palette
     TILEDRAW         = 0xC,  // Draw tile at position
-    RESERVED_D       = 0xD,  // Reserved
+    SETTILEBANK      = 0xD,  // Select tile bank (widens addressable tile count
+                             // past the 8-bit tile-ID field without changing
+                             // its encoding - see PPU::tileStorage)
     CALL             = 0xE,  // Call function
     GBLS             = 0xF   // Get blank status
 };
@@ -225,12 +227,49 @@ private:
     // Display pointer (for memory-mapped I/O)
     Display* display;
 
-    // Tile system (8x8 tiles, 64 bytes each, up to 256 tiles)
+    // Tile system (8x8 tiles, 64 bytes each, up to 256 tiles per bank). The
+    // tile-ID field (SETTILE, the $0300-$033F definition window) is a plain
+    // 8-bit value, same as always - MAX_TILE_BANKS widens total addressable
+    // tiles by paging, the way real 16-bit-era hardware banked CHR/VRAM
+    // beyond what a single ID field could reach, rather than by widening the
+    // ID itself. SETTILEBANK selects which bank subsequent SETTILE/tile-def
+    // writes and TILEDRAW reads target; it does not affect the 8-bit ID.
     static constexpr size_t TILE_SIZE = 64;      // 8x8 pixels
-    static constexpr size_t MAX_TILES = 256;
-    std::array<std::array<uint8_t, TILE_SIZE>, MAX_TILES> tileStorage;
+    static constexpr size_t MAX_TILES = 256;     // per bank
+    static constexpr size_t MAX_TILE_BANKS = 4;  // 1024 tiles total
+    std::array<std::array<std::array<uint8_t, TILE_SIZE>, MAX_TILES>, MAX_TILE_BANKS> tileStorage;
     uint8_t currentTileId;                        // Currently selected tile for drawing
+    uint8_t currentTileBank;                      // Currently selected tile bank (0..MAX_TILE_BANKS-1)
     uint8_t currentTileMode;                      // Tile mode (0-3): 16BBGR 4bpp, 32RGBA 4bpp, 16BBGR 8bpp, 32RGBA 8bpp
+
+    // Concurrent blitter: up to NUM_BLIT_CHANNELS TILEDRAWs can be in flight
+    // at once. TILEDRAW no longer stalls the PPU for the whole ~264-392 cycle
+    // blit cost - it snapshots the live draw state (position, tile, mode,
+    // blend settings) into a free channel and returns almost immediately;
+    // the channel then runs down its own cycle cost independently of what
+    // the PPU issues next, and performs the actual pixel writes when it
+    // completes. This is the same "several transfers make independent
+    // progress every tick" idea as DMAController's concurrent channels
+    // (src/dma.cpp), reimplemented PPU-side rather than routed through the
+    // real DMA controller: DMA only understands CPU-bus-addressable memory
+    // (see CPU::readByteForDMA/writeByteForDMA), with no concept of tile
+    // storage, palettes, or blend modes, so a tile blit isn't representable
+    // as one of its existing transfer modes without duplicating all of this
+    // state inside dma.cpp for no benefit over keeping it where the state
+    // already lives. If every channel is busy when TILEDRAW issues, it falls
+    // back to the old fully-synchronous blit (never drops a draw, only ever
+    // costs extra cycles in that pathological case) - see executePresetF's
+    // TILEDRAW case and advanceBlitChannels().
+    struct BlitChannel {
+        bool busy = false;
+        uint32_t cyclesRemaining = 0;
+        uint16_t x = 0, y = 0;
+        uint8_t tileBank = 0, tileId = 0, tileMode = 0;
+        uint8_t blendMode = 0;
+        std::array<uint8_t, 4> translucency{};   // tileTranslucency snapshot at dispatch
+    };
+    static constexpr size_t NUM_BLIT_CHANNELS = 4;
+    std::array<BlitChannel, NUM_BLIT_CHANNELS> blitChannels;
 
     // Palette system
     std::array<uint16_t, 16> palette16;           // 16-color palette (16-bit BBGR format)
@@ -266,6 +305,20 @@ private:
     // handler, sets the interrupt-entry stall, and returns true. Shared by tick()
     // and runBatch() so their boundary behavior can never drift apart.
     bool serviceInterrupts();
+
+    // Advance every busy blit channel by `elapsed` cycles, executing (and
+    // freeing) any that complete. Must be called with the exact number of
+    // cycles that just passed from every place tick()/runBatch() advances
+    // time, including inside runBatch()'s collapsed-stall fast path, so a
+    // blit's completion timing is identical however the PPU's own
+    // instruction stream happens to be interleaved around it.
+    void advanceBlitChannels(uint32_t elapsed);
+
+    // Perform one channel's blit (the pixel loop TILEDRAW used to run
+    // synchronously), reading only the snapshotted state captured at
+    // dispatch time - never the live current* tile/position registers,
+    // which may have moved on to a different draw by the time this runs.
+    void executeBlit(const BlitChannel& channel);
 
     // Push a return address onto the PPU stack (SP grows upward, matching the
     // ppuasm PUSH/RET shorthands). Shared by every interrupt-entry path and
