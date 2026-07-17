@@ -193,7 +193,7 @@ private:
     bool cartridgeMapped = false;  // has pendingRomData actually been mapped into bank $00-$7F yet?
     std::vector<uint8_t> pendingRomData;
     // Raw 64-byte ZPB header + "ZPSG" trailer for a signed (v2) ROM, mapped
-    // read-only at bank $E1 in lockstep with pendingRomData/cartridgeMapped
+    // read-only at bank $E2 in lockstep with pendingRomData/cartridgeMapped
     // (see ROM::getRawHeader/getTrailer) - empty for an unsigned (v1) ROM.
     std::vector<uint8_t> pendingSignedMetadata;
     // Trailer version 3 gating info (see CPU::configureDataGating), applied

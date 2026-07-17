@@ -178,7 +178,7 @@ bool System::loadROM(const std::string& filename) {
     cartridgeMapped = false;
 
     // Same "not mapped until reset()" deferral as pendingRomData - see the
-    // cartridge-bus comment below. Empty (and bank $E1 cleared at reset)
+    // cartridge-bus comment below. Empty (and bank $E2 cleared at reset)
     // for an unsigned ROM.
     pendingSignedMetadata.clear();
     pendingTrailerVersion = 0;

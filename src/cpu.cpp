@@ -104,7 +104,7 @@ uint8_t CPU::readByteGated(uint32_t address, bool exemptFromGating) {
             // Runtime chunk-verification gate (trailer version 3 only, see
             // configureDataGating()/docs/zpb-format.md): bank <= 0x7F is the
             // cartridge's own ROM region - distinct from the Boot ROM ($E0)
-            // and signed-metadata ($E1) regions, which are never gated.
+            // and signed-metadata ($E2) regions, which are never gated.
             // exemptFromGating lets the Boot ROM's own verify routine (and
             // its legitimately-queued staging DMA) actually read the bytes
             // it hashes; everything else - direct cartridge reads and any
@@ -1780,11 +1780,20 @@ void CPU::loadBootROM(const uint8_t* data, size_t size) {
 
 void CPU::loadSignedROMMetadata(const uint8_t* data, size_t size) {
     // Same replace-semantics reasoning as loadBootROM(): clear any stale
-    // bank-$E1 region first so reloading (or loading an unsigned ROM after
+    // bank-$E2 region first so reloading (or loading an unsigned ROM after
     // a signed one) never leaves two overlapping regions for
     // rebuildBankTable() to silently mis-resolve.
+    //
+    // This bank used to be $E1, directly after the Boot ROM's own bank
+    // $E0 - but a Boot ROM that legitimately grows past 64 KiB spans into
+    // $E0-$E1 as ONE region (see CPU::loadROM's bank-span math), and this
+    // exact cleanup loop's overlap check would then delete that whole
+    // region (Boot ROM included) the moment a cartridge loaded. Moved to
+    // $E2 - documented as unmapped/reserved (see CLAUDE.md's CPU memory
+    // map) - so a multi-bank Boot ROM and the cartridge's signed metadata
+    // can never collide.
     for (auto it = memoryMap.begin(); it != memoryMap.end(); ) {
-        if (it->startBank <= 0xE1 && it->endBank >= 0xE1) {
+        if (it->startBank <= 0xE2 && it->endBank >= 0xE2) {
             delete[] it->data;
             it = memoryMap.erase(it);
         } else {
@@ -1792,7 +1801,7 @@ void CPU::loadSignedROMMetadata(const uint8_t* data, size_t size) {
         }
     }
     if (data && size > 0) {
-        loadROM(data, size, 0xE1);
+        loadROM(data, size, 0xE2);
         // loadROM() always registers a full 0x0000-0xFFFF offset range, but
         // the metadata blob (header+trailer[+manifest]) is only ever a few
         // KiB - shrink endOffset down to the real length so
@@ -1814,7 +1823,7 @@ void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
     // fresh boot where nothing has been checked yet.
     chunkVerified.assign((static_cast<size_t>(chunkCount) + 7) / 8, 0);
 
-    // Expose the bitmap at bank $E1 right after the metadata blob
+    // Expose the bitmap at bank $E2 right after the metadata blob
     // loadSignedROMMetadata() just mapped (its endOffset was shrunk to
     // dataSize-1 for exactly this reason). Reads always return the live
     // bitmap; writes only take effect with PB == 0xE0 (the Boot ROM itself),
@@ -1827,7 +1836,7 @@ void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
     size_t metadataSize = 0;
     bool foundMetadataRegion = false;
     for (const auto& region : memoryMap) {
-        if (region.startBank == 0xE1 && region.endBank == 0xE1 && region.type == MemoryRegion::ROM) {
+        if (region.startBank == 0xE2 && region.endBank == 0xE2 && region.type == MemoryRegion::ROM) {
             metadataSize = region.dataSize;
             foundMetadataRegion = true;
             break;
@@ -1836,7 +1845,7 @@ void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
     if (foundMetadataRegion) {
         gatedBitmapOffset = static_cast<uint16_t>(metadataSize);
         gatedBitmapSize = static_cast<uint16_t>(chunkVerified.size());
-        registerIORegion(0xE1, gatedBitmapOffset, gatedBitmapSize,
+        registerIORegion(0xE2, gatedBitmapOffset, gatedBitmapSize,
             [this](uint16_t off) -> uint8_t {
                 return (off < chunkVerified.size()) ? chunkVerified[off] : 0xFF;
             },
@@ -1873,7 +1882,7 @@ void CPU::writeByteForDMA(uint32_t address, uint8_t value) {
     if (dataGatingActive) {
         uint8_t bank = (address >> 16) & 0xFF;
         uint16_t offset = address & 0xFFFF;
-        if (bank == 0xE1 && offset >= gatedBitmapOffset &&
+        if (bank == 0xE2 && offset >= gatedBitmapOffset &&
             offset < static_cast<uint32_t>(gatedBitmapOffset) + gatedBitmapSize) {
             return;
         }

@@ -92,10 +92,17 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   of bank $00) whenever a boot ROM is loaded; a 35-byte default stub
   (`src/default_boot_rom.cpp`, source at `examples/boot-rom/boot.asm`) reads
   the cartridge entry point from `$D80049-$D8004B` and hands off control to
-  it. `$E1`: signed-ROM metadata (read-only, mapped only when a zpbuild-signed
-  v2 ROM is loaded) — raw 64-byte ZPB header + "ZPSG" trailer, via
-  `CPU::loadSignedROMMetadata()`; see `docs/zpb-format.md`. `$E2-$FF` remain
-  unmapped/reserved. Signature verification of that trailer (RSA-2048/
+  it. `$E1`: reserved for Boot ROM growth — `CPU::loadROM`'s bank-span math
+  maps a >64 KB Boot ROM across `$E0-$E1` as one region (see the ZPbootROM
+  PPU-splash boot wiring, which DMA-copies a PPU program from `$E0` into the
+  PPU window during boot). `$E2`: signed-ROM metadata (read-only, mapped only
+  when a zpbuild-signed v2 ROM is loaded) — raw 64-byte ZPB header + "ZPSG"
+  trailer, via `CPU::loadSignedROMMetadata()`; see `docs/zpb-format.md`. Kept
+  one bank clear of `$E0` deliberately: this used to be `$E1`, but a Boot ROM
+  spanning `$E0-$E1` and `loadSignedROMMetadata`'s stale-region cleanup (which
+  matched by bank-range overlap) would otherwise collide and delete the whole
+  Boot ROM region on the first reset. `$E3-$FF` remain unmapped/reserved.
+  Signature verification of that trailer (RSA-2048/
   SHA-256, see `ZPbootROM/def88186/rsa.def`) is in progress but not yet
   implemented — the default stub trusts whatever entry point
   `System::loadROM()` records. Side effects a

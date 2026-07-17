@@ -128,7 +128,7 @@ split to a different, still-checked, wrong digest - never bypass the check.
 ### Runtime chunk verification (trailer version 3 only)
 
 Once the boot ROM has verified `code_digest` and `manifest_digest` and
-jumped to the cartridge entry point, `manifest[]` sits at bank `$E1`
+jumped to the cartridge entry point, `manifest[]` sits at bank `$E2`
 offset `$016C` (right after `codeSize`, per the table above) and stays
 memory-mapped read-only for the CPU's whole lifetime - ordinary cartridge
 code can read it directly, no privileged call needed. Each 16384-byte data
@@ -210,7 +210,7 @@ just a genuine `COP #$FF` call. Two consequences, both closed:
   needs to become part of the properly nested interrupt state instead.)
 
 The per-chunk verified/unverified state itself lives in a small bitmap
-exposed at bank `$E1`, immediately after the trailer/manifest blob (i.e. at
+exposed at bank `$E2`, immediately after the trailer/manifest blob (i.e. at
 offset `$016C + chunkCount*32`, one bit per chunk). Reads of it always
 return the live bitmap; writes take effect only when both `PB == 0xE0` *and*
 `bootServiceActive` hold - and separately, `CPU::writeByteForDMA()` (the
@@ -235,11 +235,14 @@ For any version, `ROM::load()` reads and shape-checks the trailer
 plus the manifest for version 3) but does not verify the signature.
 `System::loadROM()` then caches the raw 64-byte header and the trailer
 verbatim (`ROM::getRawHeader()` / `ROM::getTrailer()`), and `System::reset()`
-maps them read-only into CPU memory at bank `$E1` (right after the Boot
-ROM at `$E0`) once the cartridge bus connects - `$E1:0000-003F` is the
-header, `$E1:0040-` is the trailer (magic/version/keysize/siglen, the
-32-byte digest, the 256-byte signature, the 4-byte codeSize at `$E1:0168`
-for version 2/3, and the manifest starting at `$E1:016C` for version 3).
+maps them read-only into CPU memory at bank `$E2` (one bank clear of the
+Boot ROM at `$E0` - `$E1` is reserved for Boot ROM growth past 64 KiB, since
+`CPU::loadROM`'s bank-span math would otherwise map a larger Boot ROM and
+this metadata into the same bank) once the cartridge bus connects -
+`$E2:0000-003F` is the
+header, `$E2:0040-` is the trailer (magic/version/keysize/siglen, the
+32-byte digest, the 256-byte signature, the 4-byte codeSize at `$E2:0168`
+for version 2/3, and the manifest starting at `$E2:016C` for version 3).
 For version 3, the chunk-verified bitmap from the previous section
 immediately follows the manifest, at `$016C + chunkCount*32` -
 `CPU::configureDataGating()` registers it as a distinct read/privileged-write
@@ -249,9 +252,9 @@ This is what lets the Boot ROM's `rsa_verify` (see
 `ZPbootROM/def88186/rsa.def`) re-hash the header and payload (payload is
 already visible at bank `$00`) and check the signature without any of it
 passing through the cartridge's own read/write window. `rsa_verify`
-dispatches on the trailer version byte at `$E1:0044` to pick the version-1,
+dispatches on the trailer version byte at `$E2:0044` to pick the version-1,
 version-2 (composite), or version-3 (composite + manifest) path.
-Loading an unsigned (`version == 1`) ROM leaves bank `$E1` unmapped (note:
+Loading an unsigned (`version == 1`) ROM leaves bank `$E2` unmapped (note:
 this is the *header's* `version` field, distinct from the *trailer's*
 version byte discussed above, which only exists for signed ROMs).
 

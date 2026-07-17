@@ -49,7 +49,7 @@ public:
     // disk. The loader only checks the trailer's shape (magic/siglen) - it
     // does not verify the signature itself; that is the boot ROM's job
     // (ZPbootROM/def88186/rsa.def), using the raw header and trailer bytes
-    // below (which System maps into CPU memory at bank $E1).
+    // below (which System maps into CPU memory at bank $E2).
     bool isSigned() const { return signedRom; }
 
     // Exact 64 bytes read from disk, verbatim - the boot ROM re-hashes these

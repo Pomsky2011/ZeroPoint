@@ -170,8 +170,9 @@ public:
     void setCartridgeEntryPoint(uint32_t addr) { cartridgeEntryPoint = addr; }
     uint32_t getCartridgeEntryPoint() const { return cartridgeEntryPoint; }
 
-    // Signed-ROM metadata: mapped read-only at bank $E1 (reserved, right
-    // after the Boot ROM at $E0) whenever a zpbuild-signed (version 2) ROM
+    // Signed-ROM metadata: mapped read-only at bank $E2 (reserved - kept one
+    // bank clear of the Boot ROM at $E0, which may itself span into $E1)
+    // whenever a zpbuild-signed (version 2) ROM
     // is loaded - the raw 64-byte ZPB header followed by the "ZPSG" trailer
     // (see ROM::getRawHeader/getTrailer), so the Boot ROM's RSA verify
     // (ZPbootROM/def88186/rsa.def) can read the bytes it needs to re-hash
@@ -548,7 +549,7 @@ private:
     bool dataGatingActive = false;
     uint32_t gatedCodeSize = 0;
     std::vector<uint8_t> chunkVerified;  // one bit per 16 KiB data chunk
-    // Bank-$E1 offset range of the verified-bitmap IO region (see
+    // Bank-$E2 offset range of the verified-bitmap IO region (see
     // configureDataGating()), used by writeByteForDMA() to refuse DMA
     // writes there outright - see writeByteForDMA()'s own comment.
     uint16_t gatedBitmapOffset = 0;
