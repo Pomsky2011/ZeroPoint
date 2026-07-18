@@ -156,7 +156,24 @@ private:
 
     // fbY of the oldest scanline currently in the rolling window. The window
     // covers [windowStart, windowStart + windowScanlines) and tracks the beam.
-    int windowStart;
+    // Lives in the same ever-growing absolute coordinate space as
+    // frameRowOffset (see below) rather than being reset to 0 every frame -
+    // that reset used to also nuke a real one-band lead the vblank tail
+    // would otherwise hand the next frame's row 0. int64 so it never
+    // meaningfully overflows across a long-running session.
+    int64_t windowStart;
+
+    // Absolute row-space offset of the frame currently being written to (or,
+    // during the vblank tail after the last visible scanline, the frame
+    // about to start). Bumped by VISIBLE_SCANLINES exactly once per frame, at
+    // the transition out of the visible region - deliberately *before* the
+    // wrap back to scanline 0, so that a setPixel/setPixel32(x, y=0..) call
+    // made during the vblank tail already lands in the *next* frame's row
+    // space instead of the just-finished one. y (always local, 0-255) is
+    // converted to this absolute space as `frameRowOffset + y` everywhere
+    // window membership is checked; always a multiple of both possible
+    // window sizes (8, 16), so slot = y % window is unaffected.
+    int64_t frameRowOffset = 0;
 
     // See setRollingMode(). Defaults to true (block), matching the VOC
     // render-mode-control register's power-on value of 0x00 (bit 6 clear).

@@ -268,7 +268,16 @@ private:
         uint8_t blendMode = 0;
         std::array<uint8_t, 4> translucency{};   // tileTranslucency snapshot at dispatch
     };
-    static constexpr size_t NUM_BLIT_CHANNELS = 4;
+    // 8, not 4: the boot ROM splash's band-0 vblank-tail dispatch (see
+    // ZPbootROM/ppu/code/gen_mosaic.py) issues 8 TILEDRAWs per H-blank call
+    // to fit all 32 of a band's columns into the 4 scanlines the vblank tail
+    // gives it. With only 4 channels, the 5th-8th dispatch in that call hit
+    // the synchronous fallback (a real ~264-cycle stall each, not a cheap
+    // dispatch) and blew the 340-cycle H-blank budget, corrupting the ISR
+    // via re-entry. 8 channels means all 8 dispatches stay on the cheap
+    // async path - strictly more headroom than 4 gave the existing 4-per-
+    // H-blank general schedule too (bands 1-31), never less.
+    static constexpr size_t NUM_BLIT_CHANNELS = 8;
     std::array<BlitChannel, NUM_BLIT_CHANNELS> blitChannels;
 
     // Palette system

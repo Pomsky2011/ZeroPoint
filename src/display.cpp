@@ -52,20 +52,30 @@ void Display::tick() {
         currentPixel = 0;
         currentScanline++;
 
+        if (currentScanline == VISIBLE_SCANLINES + 1) [[unlikely]] {
+            // Entering the vblank tail: from here until the next frame's
+            // scanline 1, any write targets the *upcoming* frame's row space
+            // (bumped now, before the scanline-0 wrap below, so the vblank
+            // tail's H-blanks give the next frame's row 0 the same kind of
+            // lead every other row gets - see [[bootrom-ppu-splash-wiring]]).
+            frameRowOffset += VISIBLE_SCANLINES;
+        }
+
         if (currentScanline >= TOTAL_SCANLINES) [[unlikely]] {
-            // Wrap back to scanline 0 (start of new frame): reset the window
-            // and clear the rolling buffer so stale slots don't bleed through.
+            // Wrap the raster position back to scanline 0 (start of new
+            // frame). windowStart/framebuffer are NOT reset here - they live
+            // in the same ever-growing absolute row space as frameRowOffset
+            // and carry over continuously; slots are still freed one at a
+            // time via clearSlot() as the window slides, same as any other
+            // scanline transition.
             currentScanline = 0;
-            windowStart = 0;
-            framebuffer.fill(0);
-            pendingClearSlot = -1;
             return;
         }
 
         // Slide the rolling window forward to track the beam. Each scanline that
         // leaves the top of the window frees its slot for a future scanline.
         if (currentScanline >= 1 && currentScanline <= VISIBLE_SCANLINES) [[likely]] {
-            int target = currentScanline - 1;
+            int64_t target = frameRowOffset + (currentScanline - 1);
             int window = windowScanlines();
             int slotsPerBank = (renderMode == RenderMode::RGBA16) ? 2 : 1;
             while (windowStart < target) {
@@ -104,18 +114,23 @@ void Display::setRenderMode(RenderMode mode) {
     // 32-bit mode: 1 scanline per bank
     framebuffer.fill(0);
     windowStart = 0;
+    frameRowOffset = 0;
     pendingClearSlot = -1;
 
     renderMode = mode;
 }
 
 int Display::getBufferBank(int y, int& offsetInBank) const {
-    // Map an absolute scanline Y to its slot in the rolling window. Scanline y
-    // lives in slot (y % window); only scanlines currently inside the window
-    // [windowStart, windowStart + window) are addressable — everything else is
-    // "forgotten" (writes dropped, reads return -1), matching the hardware.
+    // Map a local scanline y (0-255, as every caller sees it) to its slot in
+    // the rolling window. y is converted to the ever-growing absolute row
+    // space (frameRowOffset + y) before comparing against windowStart, since
+    // during the vblank tail frameRowOffset already refers to the *next*
+    // frame - see its declaration in display.h. Scanline y still lives in
+    // slot (y % window) regardless: frameRowOffset is always a multiple of
+    // window (8 or 16), so the two spaces agree mod window.
     int window = windowScanlines();
-    int relativeY = y - windowStart;
+    int64_t absY = frameRowOffset + y;
+    int64_t relativeY = absY - windowStart;
     if (relativeY < 0 || relativeY >= window) {
         return -1;  // Outside the rolling window
     }
@@ -210,8 +225,8 @@ void Display::setPixel32(int x, int y, Color32 color) {
         int offsetInBank;
         int bank = getBufferBank(y, offsetInBank);
         if (getenv("ZP_DEBUG_PIXEL")) {
-            fprintf(stderr, "[setPixel32] x=%d y=%d windowStart=%d window=%d bank=%d color=%08X curScan=%d curPix=%d\n",
-                    x, y, windowStart, windowScanlines(), bank, color, currentScanline, currentPixel);
+            fprintf(stderr, "[setPixel32] x=%d y=%d windowStart=%lld window=%d bank=%d color=%08X curScan=%d curPix=%d\n",
+                    x, y, static_cast<long long>(windowStart), windowScanlines(), bank, color, currentScanline, currentPixel);
         }
 
         if (bank < 0) {
