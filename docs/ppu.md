@@ -32,7 +32,16 @@ The PPU runs at the master clock rate, synchronized via `System::tickComponents(
 
 ## Initialization Sequence
 
-There is currently no boot ROM (bank $FF is unmapped — see CLAUDE.md "In Progress"), so there is no fixed hardware initialization sequence yet. Test/demo programs (`ZPdevtools/examples/ppu/*.asm`) set up VBlank/HBlank interrupt registers (R59/R60) and start execution directly via the PPUCTRL I/O register.
+A Boot ROM exists at CPU bank $E0 (read-only, mapped at construction — see
+CLAUDE.md's CPU Memory Map); hardware reset lands the CPU there instead of
+bank $00 whenever one is loaded, and the default stub hands off to the
+cartridge entry point. The `ZPbootROM` project's splash screen drives the PPU
+directly during that handoff, including the tile-banking (`SETTILEBANK`) and
+concurrent TILEDRAW-blitter features described below — see
+`docs/zpb-format.md` for the signature-verification side of boot. Standalone
+test/demo programs (`ZPdevtools/examples/ppu/*.asm`) that don't go through a
+boot ROM still set up VBlank/HBlank interrupt registers (R59/R60) and start
+execution directly via the PPUCTRL I/O register.
 
 ## Instruction Set
 
@@ -118,14 +127,57 @@ Extended graphics and control instructions.
 | 0x9 | SETREGBANK | `1001 00 ZZ WW 00` | Set register banks: Z (bits 5-4) for X, W (bits 3-2) for Y — used by SETPOS and CPREG |
 | 0xA | CLRTILE | `1010 00000000` | Clear all tile storage |
 | 0xB | CLRPALETTE | `1011 00000000` | Reset both palettes to default grayscale |
-| 0xC | TILEDRAW | `1100 00000000` | Draw the current tile (SETTILE) at the current position (SETPOS), with palette lookup, translucency, and blending |
-| 0xD | (reserved) | `1101 00000000` | No-op |
+| 0xC | TILEDRAW | `1100 00000000` | Dispatch a draw of the current tile (SETTILE/SETTILEBANK) at the current position (SETPOS) — see "Concurrent TILEDRAW Blitter" below |
+| 0xD | SETTILEBANK | `1101 XXXXXX --` | Select the active tile bank from register X (`registers[X] % MAX_TILE_BANKS`); same operand shape as SETDP |
 | 0xE | CALL | `1110 XXXXXXXX` | Jump through call-table slot X (populated earlier by DEFCALL), pushing a return address |
 | 0xF | GBLS | `1111 XXXXXX 00` | Get blank status into register X |
 
 Note: there is no tile-definition instruction pair (no STRTDEFTILE/ENDDEFTILE)
 — tile pixel data is written directly to the `$0300-$033F` memory-mapped
-tile-definition buffer, 64 bytes per tile.
+tile-definition buffer, 64 bytes per tile, targeting
+`tileStorage[currentTileBank][currentTileId]` (`src/ppu.cpp`).
+
+### Tile Banking (SETTILEBANK)
+
+Tile storage is banked: `MAX_TILE_BANKS = 4` banks × `MAX_TILES = 256` tiles
+each (1024 tiles total), `tileStorage[bank][tileId][byte]` in `include/ppu.h`.
+`SETTILEBANK` selects which bank subsequent tile-definition writes and
+`SETTILE`'s 8-bit tile ID index into — it's a bank-select register, not a
+wider tile-ID field; `SETTILE`'s own encoding is unchanged. `TILEDRAW`
+snapshots the active bank (along with tile ID, mode, position, blend mode,
+and translucency) into its dispatched blit channel at issue time, not at
+completion time, so a `SETTILEBANK` right after issuing a `TILEDRAW` doesn't
+affect the tile already in flight. `CLRTILE` clears all banks; reset (VOC
+reset or `PPU::reset()`) zeroes `currentTileBank` back to 0.
+
+### Concurrent TILEDRAW Blitter
+
+`TILEDRAW` doesn't draw synchronously by default. On issue, the PPU looks
+for a free slot among `NUM_BLIT_CHANNELS` (8) background blit channels
+(`include/ppu.h`/`src/ppu.cpp`):
+
+- **A channel is free**: the draw's parameters (position, tile bank/ID/mode,
+  blend mode, translucency) are snapshotted into the channel, the channel is
+  marked busy with `cyclesRemaining` set to the full blit cost (below), and
+  `TILEDRAW` itself only costs the issuing PPU `CYC_TILE_BASE` (8) cycles —
+  it can move on to its next instruction, including dispatching another
+  `TILEDRAW` to a different channel, immediately. Busy channels are advanced
+  every cycle regardless of what the PPU itself is doing (including while
+  stalled on something else), and the pixel write happens when a channel's
+  `cyclesRemaining` reaches 0.
+- **No channel is free**: `TILEDRAW` falls back to drawing synchronously
+  inline, paying the full blit cost as its own instruction stall — this is
+  the same behavior the PPU always had before concurrent dispatch existed,
+  and is strictly a worse-case-only path.
+
+**Blit cost**: `CYC_TILE_BASE + TILE_PIXELS * (blended ? CYC_TILE_PX_BLEND :
+CYC_TILE_PX)` = `8 + 64*4 = 264` cycles for an opaque tile, `8 + 64*6 = 392`
+cycles for a blended one (`src/ppu.cpp` `CYC_*` constants). 8 channels gives
+enough headroom for the ZPbootROM splash screen's per-H-blank dispatch
+pattern (up to 8 `TILEDRAW`s per H-blank call) to stay entirely on the cheap
+async path — with fewer channels, the excess dispatches would hit the
+264-cycle-plus synchronous fallback and could blow the 340-cycle H-blank
+budget.
 
 ### GBLS - Get Blank Status
 
@@ -178,13 +230,27 @@ MOV R6          ; R6 = value at (DP)
 
 ## Timing
 
-At 68.011355 MHz with (at minimum) 1 cycle per instruction:
+68.011355 MHz is the *nominal* clock the CPU/DMA/APU clocks and timer periods
+are derived from (master/4, master/2, master/16), not a literal free-running
+wall-clock rate: the Display and PPU are ticked together, cycle-for-cycle, by
+`System::tickComponents()`, and `System::stepFrame()` runs exactly
+`CYCLES_PER_FRAME` master cycles per call before the frontend sleeps to a
+~60 Hz real-time target (`src/main.cpp`) — so in real time the PPU executes
+roughly `CYCLES_PER_FRAME` cycles per 1/60 s, not 68 million cycles every
+real second.
 
-- **Instructions per second**: ~68 million (fewer if branches/MUL/DIV/TILEDRAW/palette loads dominate — those cost extra cycles, see `src/ppu.cpp` `CYC_*` constants)
-- **Instructions per scanline** (at 261 scanlines/frame, ~60 Hz): ~4344
-- **Instructions per frame**: ~1,133,523
+Within that budget, cycles per scanline/frame are exact and raster-derived,
+not a clock/60 Hz approximation:
 
-This gives plenty of time for complex rendering operations.
+- **Cycles per scanline**: 340 (`TOTAL_PIXELS_PER_LINE`, `include/display.h`) — a hard ceiling on how much work (including `TILEDRAW` dispatches, see "Concurrent TILEDRAW Blitter" above) fits between two H-Blank edges
+- **Cycles per frame**: 88,740 (340 × 261 `TOTAL_SCANLINES` = `System::CYCLES_PER_FRAME`)
+- **Peak issue rate if never stalled**: ~68 million instructions/second (fewer in practice — branches/MUL/DIV/palette loads/`CLRTILE`/`CLRPALETTE` all cost more than 1 cycle, and `TILEDRAW`'s synchronous fallback costs far more — see the `CYC_*` constants in `src/ppu.cpp`)
+
+An H-Blank ISR's real deadline is the full 340-cycle scanline (the interrupt
+is edge-triggered once per scanline, not tied to the 84-pixel physical
+blanking window alone) — see `ZPdevtools/docs/ppu/ucode.txt` section 8.3 for
+why this specifically motivated the concurrent TILEDRAW blitter's 8-channel
+design.
 
 ## Integration with Display
 
@@ -196,9 +262,11 @@ The PPU should be synchronized with the display controller:
 ## Implementation Notes
 
 ### Not Yet Implemented
-- Boot ROM animation (no boot ROM exists at all yet — see CLAUDE.md)
+- Boot ROM signature verification is still in progress (the boot ROM itself,
+  including its splash animation, is implemented — see CLAUDE.md's "In
+  Progress" section and `docs/zpb-format.md`)
 
-Tile rendering (SETTILE/TILEDRAW/CLRTILE), palette management
+Tile rendering (SETTILE/TILEDRAW/CLRTILE/SETTILEBANK), palette management
 (PALETTE16/PALETTE256/CLRPALETTE), and the call stack (DEFCALL/CALL/RET) are
 all implemented — the doc previously listed these as placeholders, which is
 stale.

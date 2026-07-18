@@ -49,7 +49,8 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **Rolling framebuffer** - 8 banks × 1 KiB with H-Blank rotation ✨ **FULLY FUNCTIONAL**
 - **NTSC timing** - Authentic 60 Hz display at 5.3 MHz pixel clock
 - **Video Output Coprocessor (VOC)** - 16 hardware registers for display control
-- **Tile system** - 8×8 pixel tiles, 256 tiles max, DIY placement with translucency
+- **Tile system** - 8×8 pixel tiles, 256 tiles per bank × 4 banks (`SETTILEBANK`), DIY placement with translucency
+- **Concurrent TILEDRAW blitter** - up to 8 tile draws in flight at once, dispatched async (~8 cycle issue cost) instead of stalling the PPU for the full ~264/392-cycle draw
 - **Interrupts** - V-Blank and H-Blank with automatic stack management
 - **64 × 16-bit registers** with special registers (PC, DP, SP)
 - **Batched executor (`--jit`)** - Fast interpreter path that runs whole instructions and collapses timing stalls, 1.2x-4x faster than per-cycle ticking (not native code generation, despite the flag name)
@@ -67,9 +68,9 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 
 ### Boot ROM
 - **Bank $E0** - 64 KiB, read-only, mapped at construction; hardware reset lands here instead of bank $00 whenever a boot ROM is loaded
-- **Default stub** (`examples/boot-rom/boot.asm`) - Reads the cartridge entry point from I/O and hands off control via a Work-RAM JMP-long trampoline
+- **Default stub** (`examples/boot-rom/boot.asm`) - Reads the cartridge entry point from I/O and hands off control via a Work-RAM JMP-long trampoline; does not verify anything
 - **Alternate Boot ROM loading** - `System::loadBootROM()` / `--boot` flag for loading a custom boot ROM in place of the default stub
-- Signature verification against the zplink-signed ROM trailer is not implemented yet - the stub trusts whatever entry point is loaded
+- **Signature verification** - the separate `ZPbootROM` project (loaded via `--boot`) verifies RSA-2048/SHA-256-signed ROM trailers (v1/v2/v3, see `docs/zpb-format.md`) before jumping to the cartridge entry point, and halts on any failure. v3 also includes hardware-enforced runtime chunk verification (unverified data chunks read as poison until checked via a `COP #$FF` call into the Boot ROM) so an 8 MB cartridge doesn't have to hash its entire data region at boot
 
 ### DMA Controller ✅ COMPLETE!
 - **16 independent channels** @ 34.005678 MHz
@@ -126,7 +127,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 build-windows.bat           # Windows (x64 & ARM64)
 ./build-windows-cross.sh    # Windows cross-compile from Linux
 ```
-(macOS support was removed; there is no `build-macos.sh`.)
+(macOS is CI-only — see Platform Support below; there is no `build-macos.sh` for local builds.)
 
 **Build Dev Tools Only:**
 ```bash
@@ -155,8 +156,12 @@ cmake --build . -j
 | Windows  | ARM64       | ✅ ARM64    | ✅    |
 | Linux    | x86_64      | ✅ x86-64   | ✅    |
 | Linux    | ARM64       | ✅ ARM64    | ✅    |
+| macOS    | ARM64 (Apple Silicon) | ✅ ARM64 | ✅ (native runner) |
+| macOS    | x86_64 (Intel) | ✅ x86-64 | ✅ (Rosetta cross-compile, experimental) |
 
-macOS support was removed; the emulator targets Linux and Windows only.
+macOS is CI-only — there's no local dev machine to verify against, and there's
+no `.app`/`.icns` packaging (plain executables only). See
+`.github/workflows/build.yml` for the current approach.
 
 ### Executables
 - `bin/zeropoint_sdl` - SDL frontend
@@ -227,7 +232,7 @@ cd ../ZeroPoint/build
 
 **DMA**: ✅ **COMPLETE!** All 4 transfer modes implemented with 16-channel support. Fully integrated with CPU memory system and interrupt handling. Comprehensive test suite (7/7 passing).
 
-**Boot ROM**: ✅ **INFRASTRUCTURE COMPLETE!** Bank $E0 mapped read-only, hardware reset hands off to the cartridge via the default stub or a custom `--boot` ROM. Signature verification against the zplink-signed ROM trailer is still in progress.
+**Boot ROM**: ✅ **INFRASTRUCTURE COMPLETE!** Bank $E0 mapped read-only, hardware reset hands off to the cartridge via the default stub or a custom `--boot` ROM. The separate `ZPbootROM` project (opt-in via `--boot`) adds full RSA-2048/SHA-256 signature verification of zpbuild-signed ROM trailers, halting on failure instead of booting.
 
 ## License
 

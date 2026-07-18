@@ -6,7 +6,13 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
 ### Display
 - **256×256** pixels, RGBA16 (5-5-5-1) / RGBA32 (8-8-8-8)
-- **Rolling Buffer**: 8 banks × 1 KiB, rotates each H-Blank
+- **Rolling Buffer**: 8 banks × 1 KiB, rotates each H-Blank. `windowStart` and
+  the local scanline Y (0-255) live in an ever-growing absolute row space
+  (`frameRowOffset`, bumped once per frame at the vblank-tail transition,
+  *before* the raster wraps to scanline 0) rather than being reset every
+  frame — a hard per-frame reset used to erase the same one-band write
+  lookahead every other row gets, which made scanline 0 unreliable for
+  time-critical vblank-tail writes. See `docs/display.md`.
 - **Framebuffer**: $E000-$FFFF in PPU memory
 - **Backends**: SDL2, Qt, Vulkan (native GPU acceleration)
 
@@ -14,8 +20,12 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **68.011355 MHz** (master/1), 1 instruction/cycle
 - **64 × 16-bit registers** (R0-R63): R59 (VBlank INT), R60 (HBlank INT), R61 (SP), R62 (PC), R63 (DP)
 - **64 KiB memory**, 15 basic + 16 extended opcodes
-- **Tiles**: 8×8 pixels, 256 max, 4 modes (16/32-bit, 4/8bpp)
+- **Tiles**: 8×8 pixels, 256 per bank × 4 banks (1024 total, `SETTILEBANK`), 4 modes (16/32-bit, 4/8bpp)
 - **Palettes**: 16-color (16-bit) / 256-color (32-bit)
+- **TILEDRAW**: dispatches onto one of 8 concurrent background blit channels
+  (async, ~8-cycle issue cost) when one is free, falling back to a
+  synchronous ~264/392-cycle draw (opaque/blended) only when all are busy —
+  see `docs/ppu.md`
 
 ### APU (Audio Processing Unit)
 - **4.250710 MHz** (master/16, ~1.0 MIPS), 8-bit RISC
@@ -102,10 +112,21 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   spanning `$E0-$E1` and `loadSignedROMMetadata`'s stale-region cleanup (which
   matched by bank-range overlap) would otherwise collide and delete the whole
   Boot ROM region on the first reset. `$E3-$FF` remain unmapped/reserved.
-  Signature verification of that trailer (RSA-2048/
-  SHA-256, see `ZPbootROM/def88186/rsa.def`) is in progress but not yet
-  implemented — the default stub trusts whatever entry point
-  `System::loadROM()` records. Side effects a
+  Signature verification of that trailer (RSA-2048/SHA-256, v1/v2/v3
+  trailers, v3's per-chunk data verification hardware-gated behind
+  `COP #$FF`) is fully implemented in the separate `ZPbootROM` project
+  (`ZPbootROM/def88186/rsa.def`, `main.def`) — see `docs/zpb-format.md` for
+  the on-disk/wire format and the hardware-enforcement details. `main.def`'s
+  `main:` routine (reached from `init.def` once hardware init finishes) is
+  the boot ROM's entire security boundary: it runs `rsa_verify`, checks
+  `RSA_VALID`, and `hlt`s outright rather than jumping to the cartridge
+  entry point on any failure (invalid signature, or an unsigned ROM, since
+  the header/trailer bytes it reads won't coincidentally verify). This is
+  opt-in, not automatic: it only applies when `ZPbootROM` is loaded via
+  `System::loadBootROM()`/`--boot` in place of the default stub. ZeroPoint's
+  own bundled 35-byte default stub (below) does **not** verify anything —
+  it's a minimal trampoline for standalone/dev use, and trusts whatever
+  entry point `System::loadROM()` records. Side effects a
   cartridge's crt0 should expect: `$80:0000-$80:0003` (start of Work RAM) is
   used as JMP-long trampoline scratch and isn't zeroed at entry, and A/N/Z
   hold the entry point's bank byte rather than the all-zero reset state a
@@ -164,7 +185,7 @@ DEFCALL, MOVXP/NOP, SWAPREG, CLR, CMP, CLRF, JMZ/JMG, JNZ/JNG/JML, INC, DEC, ADD
 TARREG, SETBYTE, BUILD, CPREG
 
 ### Preset F (0xF)
-SETPOS, SETTILE, SETDP, MOVDP, SETRENDMOD, PALETTE16, PALETTE256, JMR, MOV, SETREGBANK, CLRTILE, CLRPALETTE, TILEDRAW, CALL, GBLS
+SETPOS, SETTILE, SETDP, MOVDP, SETRENDMOD, PALETTE16, PALETTE256, JMR, MOV, SETREGBANK, CLRTILE, CLRPALETTE, TILEDRAW, SETTILEBANK, CALL, GBLS
 
 ### Assembly Shorthands
 ```asm
@@ -280,7 +301,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 ## Status
 
 ### Complete ✅
-- DEF88186 CPU (256 opcodes), APU (47 instructions), PPU (31 opcodes)
+- DEF88186 CPU (256 opcodes), APU (47 instructions), PPU (35 opcodes: 15 basic + 16 extended Preset F + 4 extended Preset E)
 - **Clean Instruction Dispatch System** (table-driven, easy to modify/implement)
 - Display system with rolling framebuffer, NTSC timing
 - Tile system (4 modes), palettes (16/256 colors), translucency
@@ -295,14 +316,13 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - MMP audio (16 channels with pan, SDL output)
 - **PPU instruction timing model**: multi-cycle cost per instruction (branches, MUL/DIV, palette loads, the TILEDRAW blitter). Costs are tunable constants at the top of `src/ppu.cpp`; `PPU::tick()` stalls for `cost-1` cycles after issuing.
 - **PPU batched executor** (`PPU::runBatch`): fast interpreter path that runs whole instructions and collapses stalls (1.2x-4x faster than per-cycle ticking, provably state-identical). The `--jit` flag drives this. NOTE: the "JIT" is this batched executor, **not** a native compiler — the `emit*` codegen only ever wrapped `tick()` in a native loop; real per-opcode codegen was scoped and deliberately not built.
+- **PPU tile banking + concurrent TILEDRAW blitter**: 4 tile banks × 256 tiles (`SETTILEBANK`), and TILEDRAW dispatches onto one of 8 async blit channels that complete in the background over ~264/392 cycles (opaque/blended) instead of stalling the issuing instruction — falls back to the old synchronous draw only when all channels are busy. Exercised by `ZPbootROM`'s full-width tile-mosaic splash screen. See `docs/ppu.md`.
 - **Vulkan Renderer** (28% faster than SDL, native GPU acceleration, cross-platform)
-- **Boot ROM infrastructure**: bank $E0 mapped read-only, `CPU::loadBootROM()`/`hasBootROM()`, hardware reset lands in the Boot ROM when one is loaded. Default stub hands off to the cartridge entry point via a Work-RAM JMP-long trampoline (this CPU's indirect-jump modes always source their pointer from bank $00, which is cartridge ROM). No signature verification yet — see below.
+- **Boot ROM infrastructure**: bank $E0 mapped read-only, `CPU::loadBootROM()`/`hasBootROM()`, hardware reset lands in the Boot ROM when one is loaded. Default stub hands off to the cartridge entry point via a Work-RAM JMP-long trampoline (this CPU's indirect-jump modes always source their pointer from bank $00, which is cartridge ROM).
+- **Boot ROM signature verification** (in the separate `ZPbootROM` project, opt-in via `--boot`): RSA-2048/SHA-256 verification of zpbuild-signed v1/v2/v3 ROM trailers, halting instead of booting on any failure. v3's chunked-data-manifest defers bulk-data hashing to load time — a chunk reads as poison (`0xDE`/`0xAF`) until verified via a hardware-gated `COP #$FF` call into the Boot ROM, closed against both the DMA-read and direct-jump ROP-style bypasses that would otherwise let a cartridge fake or dodge the check. See `docs/zpb-format.md`.
 - **Basic CLI debugger** (`bin/debugger`, `tools/debugger.cpp`): headless REPL over `System` (no SDL/Qt/Vulkan). CPU/PPU/APU register inspection, single-instruction stepping (advances the whole master clock until one CPU instruction retires, so PPU/APU/DMA/Display stay in sync), CPU-PC breakpoints, `continue` (Ctrl-C to break back to the prompt), and raw memory read/write for all three address spaces. Annotates the opcode at PC with its mnemonic via a table pulled from the generated `src/cpu_instructions.cpp` comments (authoritative, unlike ZPdevtools' own `cpudisasm.c` table, which only covers ~80/256 opcodes) — it decodes only the single opcode at PC, not a multi-instruction listing, since several addressing modes are 8/16-bit depending on the live M/X flags.
 
 ### In Progress ⏳
-- Boot ROM signature verification (checking the ZPSG/RSA-2048 trailer that
-  `zpbuild` writes — see `zeropoint-c-sdk` notes — before handing off to the
-  cartridge; the current stub trusts any loaded ROM)
 - System integration (CPU ↔ PPU ↔ APU communication)
 
 ### Planned 🔲

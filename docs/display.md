@@ -235,6 +235,33 @@ During each H-Blank (end of scanline), the display rolls banks to make room:
 - Each bank holds 2 scanlines (512 bytes each)
 - Buffer window: 16 scanlines ahead
 
+### Window Addressing Across Frame Boundaries
+
+`windowStart` and the framebuffer contents are **not** reset every frame.
+Both `windowStart` and the local scanline `y` (0-255, as every caller sees
+it) are converted into a single ever-growing absolute row space via
+`frameRowOffset` (`Display::getBufferBank()`, `src/display.cpp`) before the
+window-membership check `[windowStart, windowStart + window)` runs;
+`frameRowOffset` is bumped by `VISIBLE_SCANLINES` exactly once per frame, at
+the transition into the vblank tail (scanline 257) — deliberately *before*
+the raster position wraps back to scanline 0 below it. `y % window` is
+unaffected either way, since `frameRowOffset` is always a multiple of both
+possible window sizes (8, 16).
+
+This exists so that a `setPixel`/`setPixel32(x, y=0..)` call made during the
+vblank tail (after the last visible scanline, before the next frame's
+scanline 1) lands in the *next* frame's row space rather than the
+just-finished one, and so the window keeps sliding continuously across the
+frame boundary instead of snapping `windowStart` back to 0. A hard reset
+there used to erase the same one-band lead every other row in the frame
+gets, which meant scanline 0 of each new frame started with less write
+lookahead than every other row — this is what caused the top rows of a
+frame to be unreliable for time-critical writes (e.g. the boot ROM splash's
+vblank-tail dispatch, see `docs/ppu.md`). `windowStart` and
+`frameRowOffset` are `int64_t` so they never meaningfully overflow across a
+long-running session; both are still reset to 0 on `setRenderMode()` (mode
+switches still clear the framebuffer — see Limitations below).
+
 ### Memory Access
 - **Read/Write**: Use MOV/MOVDP instructions to access framebuffer bytes
 - **Address Range**: 0xE000-0xFFFF (always 8 KiB regardless of mode)

@@ -5,8 +5,9 @@
 > Start are the current, maintained instructions** (`./build-linux.sh` /
 > `build-windows.bat` + top-level `cmake`) — use those. This file is kept for
 > the SDL-only `make` path, which still exists but isn't Vulkan-aware and
-> doesn't build the Qt frontend or dev tools. macOS support was removed from
-> the project (Linux/Windows only now); the Homebrew section below is stale.
+> doesn't build the Qt frontend or dev tools. macOS is CI-only (no local dev
+> machine, no `.app`/`.icns` packaging) — see README.md's Platform Support
+> table; the section below still only covers Linux.
 
 ## Prerequisites
 
@@ -36,8 +37,7 @@ The Qt frontend provides a full GUI with ROM loading and configuration.
 
 ### Linux (Ubuntu/Debian)
 
-macOS is no longer supported (removed from the project); Linux and Windows
-only. `CMakeLists.txt` requires Vulkan unconditionally (`find_package(Vulkan
+`CMakeLists.txt` requires Vulkan unconditionally (`find_package(Vulkan
 REQUIRED)`) even for this SDL/Qt-only path — see `BUILD.md`.
 
 ```bash

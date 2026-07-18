@@ -4,6 +4,35 @@
 
 **NONE** - All critical bugs resolved! 🎉
 
+## Recent Updates (2026-07-17)
+
+### ✅ PPU Tile Banking, Concurrent TILEDRAW Blitter, Rolling-Buffer Frame-Boundary Fix
+**Added**: `SETTILEBANK` (4 tile banks × 256 tiles), 8 concurrent async TILEDRAW blit channels
+**Fixed**: Rolling framebuffer window no longer resets every frame, closing a top-of-frame write-lookahead bug
+**Status**: ✅ **COMPLETE**
+
+**Changes**:
+- New PPU instruction `SETTILEBANK` (Preset F, `0xD`, was a reserved no-op) selects among 4 tile banks of 256 tiles each; `SETTILE`'s own 8-bit tile-ID encoding is unchanged
+- `TILEDRAW` now dispatches onto one of 8 background blit channels when one is free (async, ~8-cycle issue cost; full ~264/392-cycle opaque/blended draw completes in the background), falling back to the old synchronous draw only when all channels are busy
+- `Display`'s rolling-window `windowStart` and local scanline Y are now tracked in an ever-growing absolute row space (`frameRowOffset`, `int64_t`) instead of being reset to 0 every frame — the old reset erased the same one-band write lookahead every other row gets, making scanline 0 unreliable for time-critical vblank-tail writes (e.g. the boot ROM splash)
+- Both features are exercised by `ZPbootROM`'s full-width tile-mosaic splash screen
+
+**Files Modified**:
+- `include/ppu.h` / `src/ppu.cpp`: tile bank storage, `SETTILEBANK`, `BlitChannel`/`NUM_BLIT_CHANNELS` (4→8), `advanceBlitChannels()`
+- `include/display.h` / `src/display.cpp`: `frameRowOffset`, `windowStart` widened to `int64_t`
+- `docs/ppu.md`, `docs/display.md`, `CLAUDE.md`: updated to match
+
+### ✅ Signed-ROM Metadata Bank Move + v3 Chunk-Verification Hardening
+**Moved**: Signed-ROM metadata (bank `$E1` → `$E2`) to avoid colliding with a >64 KB Boot ROM spanning `$E0-$E1`
+**Fixed**: Two ROP-style bypasses of the v3 runtime chunk-verification gate (DMA-queued reads holding a stale `PB==$E0`; a direct `JML` into `verify_chunk`'s bit-setting tail)
+**Status**: ✅ **COMPLETE** — see `docs/zpb-format.md` for the full threat-model writeup
+
+### ✅ PPU BUILD Instruction: Fixed Emulator/Assembler Encoding Mismatch
+**Found while**: ground-truth-verifying `ZPdevtools/docs/ppu/ucode.txt`'s rewrite against `src/ppu.cpp`
+**Root cause**: `ZPdevtools`' `ppuasm.c` had its BUILD (Preset E `0x2`) encoding fixed in `32cd754` (2025-10-23, "Fix critical PPU loop bug") to emit `T1<<8 | T2<<6`, but this emulator's decoder was never updated to match — it still read `(operand>>6)&0x3` / `(operand>>4)&0x3`, silently corrupting T1 and forcing the destination register's low 2 bits to alias T2 for every BUILD instruction
+**Fix**: `src/ppu.cpp`'s `PresetEOpcode::BUILD` case now reads `targetReg1 = (operand>>8)&0x3`, `targetReg2 = (operand>>6)&0x3`, matching the assembler and the instruction's own encoding comment exactly
+**Status**: ✅ **COMPLETE** — verified against `ZPdevtools/examples/ppu/test_add.asm` (only existing BUILD usage; result was accidentally unaffected by the bug) and the full `test_ppu` suite; see `ZPdevtools/docs/ppu/ucode.txt` §15.4 for the full before/after
+
 ## Recent Updates (2026-04-03)
 
 ### ✅ APU Instruction Set Redesign

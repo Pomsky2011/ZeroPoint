@@ -1,33 +1,37 @@
 # ZeroPoint Roadmap to Final Release
 
-## Current Status (2025-10-29)
+## Current Status (2026-07-17)
 
-### ✅ Complete & Production Ready (~85% Done!)
+### ✅ Complete & Production Ready
 - **CPU (DEF88186)**: All 256 opcodes, hardware multiply/divide, loops, interrupts ✅
-- **PPU**: Display system, tiles, palettes, interrupts, VOC, JIT (experimental) ✅
+- **PPU**: Display system, tiles (with tile banking), palettes, interrupts, VOC, concurrent TILEDRAW blitter, batched executor (`--jit`) ✅
 - **APU**: All 47 instructions, MMP audio (16 stereo channels), SST system ✅
 - **DMA**: All 4 transfer modes, 16 channels, interrupt-aware ✅
 - **C Compiler**: ~95% complete! Pointers, structs, unions, enums, typedef, arrays, all operators, all control flow ✅
 - **Development Tools**: Assemblers (CPU/PPU/APU), ROM builder, disassemblers ✅
+- **Boot ROM**: System initialization and cartridge handoff, plus RSA-2048/SHA-256 signature verification of zpbuild-signed (v2/v3) ROM trailers — hardware-enforced runtime chunk verification for v3's chunked-data-manifest (`ZPbootROM/def88186/rsa.def`) ✅
+- **Basic CLI debugger** (`bin/debugger`): register inspection, single-instruction stepping, CPU-PC breakpoints, raw memory read/write across CPU/PPU/APU ✅
 
 ### 🔧 Remaining Core Work
-- **Boot ROM**: System initialization and program loader (Phase 1) — WIP in the separate `ZPbootROM` repo; `init.def` (register/stack/hardware init + RAM-clear DMA) is written, `main.def`/`copy.def`/`rsa.def` are still empty
-- **System Integration**: CPU ↔ PPU ↔ APU communication (Phase 1)
-- **Debuggers**: Interactive debugging for CPU/PPU/APU (Phase 3)
+- **System Integration**: CPU ↔ PPU ↔ APU communication polish (Phase 1)
+- **Debuggers**: PPU/APU-specific debugging views beyond the basic CLI debugger (Phase 3)
 - **Documentation**: User manual, tutorials, examples (Phase 5)
 
-**The hardware emulation is essentially complete! Most remaining work is integration, debugging tools, and documentation.**
+**The hardware emulation, boot/signing chain, and a basic debugger are done. Most remaining work is deeper debugging tooling and documentation.**
 
 ---
 
 ## Phase 1: Core System Integration (2-3 weeks)
 
 ### 1.1 System Boot & Initialization ⚡ CRITICAL
-- [ ] **Boot ROM implementation**
+- [x] **Boot ROM implementation** — bank $E0, default stub + ZPbootROM splash;
+  RSA-2048/SHA-256 signature verification (v1/v2/v3 trailers) and v3 runtime
+  chunk verification via `COP #$FF` are done (see `docs/zpb-format.md`)
   - System initialization sequence
   - Hardware detection and setup
   - Default interrupt vectors
-  - Basic diagnostics
+  - [ ] Basic diagnostics — hardware self-test lives in
+    `examples/boot-rom/tester/`, not yet the default boot path
   - User program loader
 - [ ] **Memory mapping finalization**
   - CPU memory map validation ($00-$FF banks)
@@ -124,12 +128,14 @@
 ## Phase 3: Developer Experience (1-2 weeks)
 
 ### 3.1 Debugging Tools ⚡ HIGH PRIORITY
-- [ ] **CPU debugger**
+- [x] **CPU debugger** — `bin/debugger` (`tools/debugger.cpp`): headless REPL,
+  register inspection, memory read/write, PC breakpoints, single-instruction
+  stepping (whole master clock, so PPU/APU/DMA stay in sync), `continue`
   - Register inspection
   - Memory viewer/editor
   - Breakpoints
   - Single-step execution
-  - Call stack trace
+  - [ ] Call stack trace
 - [ ] **PPU debugger**
   - PC tracing
   - Register watch points
@@ -320,7 +326,7 @@
 ## Success Criteria for v1.0
 
 ### Functional Requirements ✅
-- [ ] Boot ROM initializes all hardware
+- [x] Boot ROM initializes all hardware
 - [ ] CPU can control PPU and APU via memory windows
 - [ ] DMA transfers work reliably
 - [ ] C compiler can build non-trivial programs (with pointers and structs)
