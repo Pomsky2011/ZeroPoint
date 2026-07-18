@@ -457,9 +457,13 @@ void PPU::executePresetE(uint8_t subopcode, uint16_t operand) {
 
         case PresetEOpcode::BUILD: {
             // build T1, T2, X - set register X's MSB from target T1, LSB from target T2
-            // Encoding: 10 TT TT XXXXXX
-            uint8_t targetReg1 = (operand >> 6) & 0x03;    // First target (MSB source)
-            uint8_t targetReg2 = (operand >> 4) & 0x03;    // Second target (LSB source)
+            // Encoding: 10 TT TT XXXXXX (T1 at bits 9-8, T2 at bits 7-6, dest at
+            // bits 5-0 of the 10-bit suboperand - matches ppuasm.c's encoder:
+            // suboperand = (T1<<8)|(T2<<6)|(dest&0x3F). This used to read T1/T2
+            // two bits too low (>>6/>>4), which both silently corrupted T1 and
+            // made dest's low 2 bits alias T2's field - see ucode.txt's changelog.
+            uint8_t targetReg1 = (operand >> 8) & 0x03;    // First target (MSB source)
+            uint8_t targetReg2 = (operand >> 6) & 0x03;    // Second target (LSB source)
             uint8_t destReg = operand & 0x3F;              // Destination register (0-63)
 
             // Get values from the registers pointed to by target registers
