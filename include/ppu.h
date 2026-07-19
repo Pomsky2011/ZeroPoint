@@ -191,13 +191,23 @@ private:
     bool vblank;
     bool hblank;
 
-    // Previous-tick blank state. Blank interrupts are edge-triggered: they fire
-    // once on the 0->1 transition, not continuously while the blank line is
-    // asserted. Without this, an ISR that runs longer than a few cycles would be
-    // re-entered at every instruction boundary during the blank period, blowing
-    // the stack. Sampled at each instruction boundary in serviceInterrupts().
+    // Previous-cycle blank state, sampled every cycle (see latchInterruptEdges())
+    // regardless of whether the PPU is mid-stall - not just at instruction
+    // boundaries. Blank interrupts are edge-triggered: they fire once on the
+    // 0->1 transition, not continuously while the blank line is asserted.
     bool prevVblank;
     bool prevHblank;
+
+    // Edge-latched, not yet serviced. A blank pulse can be shorter than a
+    // single stalled instruction (e.g. PALETTE16/INTDIV inside an ISR body) -
+    // sampling edges only at instruction boundaries, as this used to do, could
+    // see the line go high and back low again entirely within one stall and
+    // never notice the pulse at all, silently dropping that interrupt. Latching
+    // every cycle instead means the edge is caught the instant it happens;
+    // serviceInterrupts() then just drains whatever's pending at the next
+    // instruction boundary.
+    bool vblankPending;
+    bool hblankPending;
 
     // CPU-raised (host/boot ROM) interrupt: pending flag + vector. Serviced at
     // the next instruction boundary with priority over the blank interrupts.
@@ -308,6 +318,12 @@ private:
     void executeInstruction();
     void executePresetE(uint8_t subopcode, uint16_t operand);
     void executePresetF(uint8_t subopcode, uint8_t operand);
+
+    // Edge-detect vblank/hblank and latch into vblankPending/hblankPending.
+    // Must be called every cycle, including mid-stall - see its own comment
+    // in ppu.cpp for why sampling only at instruction boundaries can drop a
+    // short blank pulse entirely.
+    void latchInterruptEdges();
 
     // Recognize a pending V/H-blank interrupt at an instruction boundary. If one
     // fires, pushes the return address, redirects the execution pointer to the

@@ -46,6 +46,8 @@ PPU::PPU()
     , hblank(false)
     , prevVblank(false)
     , prevHblank(false)
+    , vblankPending(false)
+    , hblankPending(false)
     , cpuIrqPending(false)
     , cpuIrqVector(0)
     , regBankX(0)
@@ -91,6 +93,8 @@ void PPU::reset() {
     hblank = false;
     prevVblank = false;
     prevHblank = false;
+    vblankPending = false;
+    hblankPending = false;
     cpuIrqPending = false;
     cpuIrqVector = 0;
     regBankX = 0;
@@ -155,16 +159,25 @@ void PPU::start() {
     }
 }
 
-bool PPU::serviceInterrupts() {
-    // Edge-detect the blank lines: only the 0->1 transition arms an interrupt.
-    // prev* is updated every instruction boundary so a blank that stays asserted
-    // for its whole ~1000-cycle span fires exactly once, letting the ISR run to
-    // completion without re-entering itself.
+void PPU::latchInterruptEdges() {
+    // Edge-detect the blank lines every cycle - only the 0->1 transition arms
+    // an interrupt. This must run every cycle, including while stallCycles>0,
+    // not just at instruction boundaries: a blank pulse can be shorter than a
+    // single stalled instruction (PALETTE16/INTDIV/etc. inside an ISR body can
+    // easily run 20-50+ cycles), so sampling only at boundaries could see the
+    // line go high and back low again entirely within one stall and never
+    // notice the pulse - silently dropping that interrupt. The *sticky*
+    // vblankPending/hblankPending latches (set here, cleared in
+    // serviceInterrupts()) are what actually survive until the next boundary.
     bool vblankEdge = vblank && !prevVblank;
     bool hblankEdge = hblank && !prevHblank;
     prevVblank = vblank;
     prevHblank = hblank;
+    if (vblankEdge) vblankPending = true;
+    if (hblankEdge) hblankPending = true;
+}
 
+bool PPU::serviceInterrupts() {
     // Highest priority: a CPU/host-raised interrupt (e.g. "your code is about to
     // be swapped"). One-shot, fires regardless of blanking. Same upward-growing
     // push convention as the blank interrupts so RET stays balanced.
@@ -177,7 +190,8 @@ bool PPU::serviceInterrupts() {
     }
 
     // Check for VBlank interrupt (R59 + VOC bit 4) - optimized with branch hints
-    if (vblankEdge) [[unlikely]] {
+    if (vblankPending) [[unlikely]] {
+        vblankPending = false;
         bool vblankIntEnabled = (vocRegisters.renderModeControl & VOC_VBLANK_INT) != 0;
         if (vblankIntEnabled && registers[REG_VBLANK_INT] != 0) [[likely]] {
             // Push return address. The stack grows UPWARD to match the
@@ -193,7 +207,8 @@ bool PPU::serviceInterrupts() {
     }
 
     // Check for HBlank interrupt (R60 + VOC bit 5) - optimized with branch hints
-    if (hblankEdge) [[unlikely]] {
+    if (hblankPending) [[unlikely]] {
+        hblankPending = false;
         bool hblankIntEnabled = (vocRegisters.renderModeControl & VOC_HBLANK_INT) != 0;
         if (hblankIntEnabled && registers[REG_HBLANK_INT] != 0) [[likely]] {
             // Push return address. Stack grows UPWARD to match the ppuasm
@@ -221,10 +236,16 @@ void PPU::tick() {
     // of whether the PPU itself is stalled on something else.
     advanceBlitChannels(1);
 
+    // Latch blank-line edges every cycle, even mid-stall (see
+    // latchInterruptEdges()'s comment) - a short blank pulse could otherwise
+    // toggle on and back off entirely within one stalled instruction and
+    // never get noticed.
+    latchInterruptEdges();
+
     // Busy finishing a multi-cycle instruction: burn one cycle and wait. This
     // is what makes MUL/DIV, branches, and palette loads actually occupy the
-    // PPU for their full duration. Interrupts are only recognized at
-    // instruction boundaries, so they wait too.
+    // PPU for their full duration. Actually *servicing* a pending interrupt
+    // (pushing PC, jumping) still only happens at an instruction boundary.
     if (stallCycles > 0) {
         stallCycles--;
         return;
@@ -247,14 +268,23 @@ uint32_t PPU::runBatch(uint32_t cycles) {
         // Collapse a multi-cycle stall in one step instead of spinning one
         // iteration per cycle. Blit channels must see the same elapsed time
         // as tick() would have given them one cycle at a time, so advance
-        // them by the same `consumed` amount here.
+        // them by the same `consumed` amount here. Latching the edge once per
+        // collapsed segment (rather than once per cycle within it) is safe
+        // for runBatch's current caller: vblank/hblank are driven externally
+        // by Display::tick(), which nothing inside this loop invokes, so the
+        // line can't actually change mid-collapse the way it can across
+        // System's per-cycle tick()/Display::tick() interleaving - see
+        // tick()'s call to latchInterruptEdges() for the case that matters.
         if (stallCycles > 0) {
             uint32_t consumed = stallCycles < remaining ? stallCycles : remaining;
             stallCycles -= consumed;
             remaining -= consumed;
             advanceBlitChannels(consumed);
+            latchInterruptEdges();
             continue;
         }
+
+        latchInterruptEdges();
 
         // Instruction boundary: same interrupt/issue logic as tick(), one cycle.
         if (serviceInterrupts()) {
