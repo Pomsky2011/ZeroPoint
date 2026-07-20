@@ -12,6 +12,7 @@ cmake_install.cmake
 Makefile
 *.cmake
 !CMakeLists.txt
+!/cmake/*.cmake
 CTestTestfile.cmake
 _deps/
 
