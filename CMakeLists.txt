@@ -278,6 +278,13 @@ set_target_properties(debugger PROPERTIES
 add_executable(test_diag_rom tools/test_diag_rom.cpp)
 target_link_libraries(test_diag_rom zeropoint_core)
 
+# Headless profiling workload: boots a two-bank Boot ROM image (e.g.
+# ZPbootROM's splash) with no cartridge and runs it for a fixed number of
+# frames, for use under `perf record`/gprof. Not part of the shipped test
+# suite.
+add_executable(profile_bootrom tools/profile_bootrom.cpp)
+target_link_libraries(profile_bootrom zeropoint_core)
+
 # White fill test (color format verification)
 add_executable(test_white_fill tools/test_white_fill.cpp)
 target_link_libraries(test_white_fill zeropoint_core)

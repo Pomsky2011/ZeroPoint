@@ -1,5 +1,3 @@
-#include <cstdio>
-#include <cstdlib>
 #include "display.h"
 #include <cstring>
 
@@ -224,10 +222,6 @@ void Display::setPixel32(int x, int y, Color32 color) {
         // Use rolling bank system
         int offsetInBank;
         int bank = getBufferBank(y, offsetInBank);
-        if (getenv("ZP_DEBUG_PIXEL")) {
-            fprintf(stderr, "[setPixel32] x=%d y=%d windowStart=%lld window=%d bank=%d color=%08X curScan=%d curPix=%d\n",
-                    x, y, static_cast<long long>(windowStart), windowScanlines(), bank, color, currentScanline, currentPixel);
-        }
 
         if (bank < 0) {
             return; // Outside buffer window

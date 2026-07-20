@@ -289,10 +289,25 @@ private:
     // H-blank general schedule too (bands 1-31), never less.
     static constexpr size_t NUM_BLIT_CHANNELS = 8;
     std::array<BlitChannel, NUM_BLIT_CHANNELS> blitChannels;
+    // Count of currently-busy blitChannels entries, kept in lockstep with
+    // each ch.busy flip (TILEDRAW dispatch sets it, advanceBlitChannels()
+    // clears it on completion). advanceBlitChannels() runs every single PPU
+    // cycle regardless of whether anything is in flight - most cycles have
+    // zero busy channels, so this lets it skip the 8-entry scan entirely
+    // instead of paying 8 dead loads/branches every tick.
+    int busyBlitChannelCount = 0;
 
     // Palette system
     std::array<uint16_t, 16> palette16;           // 16-color palette (16-bit BBGR format)
     std::array<uint32_t, 256> palette256;         // 256-color palette (32-bit RGBA format)
+    // expandPalette16(palette16[i]) precomputed for all 16 entries. The
+    // 4bpp TILEDRAW blit path (executeBlit) looks up this cache instead of
+    // recomputing the RGBA expansion per pixel - only 16 distinct palette
+    // entries exist, so a 64-pixel tile draw would otherwise redo the same
+    // ~16 expansions up to 4x each. Refreshed at every palette16 write site
+    // (reset(), CLRPALETTE, loadPalette16()) - see refreshPalette16Expanded().
+    std::array<uint32_t, 16> palette16Expanded;
+    void refreshPalette16Expanded();
     std::array<uint8_t, 4> tileTranslucency;      // Translucency for last 4 tiles (4 bits each)
     uint8_t tileBlendMode;                        // Blend mode for tiles (0-3)
 

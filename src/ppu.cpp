@@ -113,12 +113,14 @@ void PPU::reset() {
     for (auto& ch : blitChannels) {
         ch = BlitChannel();
     }
+    busyBlitChannelCount = 0;
 
     // Initialize palette system (default grayscale palettes)
     for (int i = 0; i < 16; i++) {
         uint8_t gray = (i << 4) | i;  // 0x00, 0x11, 0x22, ... 0xFF
         palette16[i] = ((gray >> 3) << 11) | ((gray >> 3) << 6) | ((gray >> 3) << 1) | 1;  // 16-bit BBGR
     }
+    refreshPalette16Expanded();
     for (int i = 0; i < 256; i++) {
         palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;  // 32-bit RGBA grayscale
     }
@@ -644,6 +646,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                 uint8_t gray = (i << 4) | i;
                 palette16[i] = ((gray >> 3) << 11) | ((gray >> 3) << 6) | ((gray >> 3) << 1) | 1;
             }
+            refreshPalette16Expanded();
             for (int i = 0; i < 256; i++) {
                 palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;
             }
@@ -672,6 +675,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
             if (freeChannel >= 0) {
                 BlitChannel& ch = blitChannels[freeChannel];
                 ch.busy = true;
+                busyBlitChannelCount++;
                 ch.cyclesRemaining = blitCost;
                 ch.x = memory[0x0200] | (memory[0x0201] << 8);
                 ch.y = memory[0x0202] | (memory[0x0203] << 8);
@@ -812,7 +816,7 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
         if ((vocRegisters.renderModeControl & VOC_PALETTE_MODE) != 0) {
             color = palette256[memory[0x0104]];
         } else {
-            color = expandPalette16(palette16[memory[0x0104] & 0x0F]);
+            color = palette16Expanded[memory[0x0104] & 0x0F];
         }
 
         // Draw pixel to display
@@ -996,6 +1000,7 @@ void PPU::applyVOCReset() {
     for (auto& ch : blitChannels) {
         ch = BlitChannel();
     }
+    busyBlitChannelCount = 0;
 
     // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
 }
@@ -1009,6 +1014,13 @@ void PPU::loadPalette16() {
         uint8_t low = memory[addr + i * 2];
         uint8_t high = memory[addr + i * 2 + 1];
         palette16[i] = (high << 8) | low;
+    }
+    refreshPalette16Expanded();
+}
+
+void PPU::refreshPalette16Expanded() {
+    for (int i = 0; i < 16; i++) {
+        palette16Expanded[i] = expandPalette16(palette16[i]);
     }
 }
 
@@ -1086,6 +1098,10 @@ uint32_t PPU::blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alph
 }
 
 void PPU::advanceBlitChannels(uint32_t elapsed) {
+    // Common case: nothing in flight. Called every single PPU cycle, so this
+    // skips the 8-entry scan below for the vast majority of calls.
+    if (busyBlitChannelCount == 0) return;
+
     for (auto& ch : blitChannels) {
         if (!ch.busy) continue;
         if (elapsed >= ch.cyclesRemaining) {
@@ -1096,6 +1112,7 @@ void PPU::advanceBlitChannels(uint32_t elapsed) {
         if (ch.cyclesRemaining == 0) {
             executeBlit(ch);
             ch.busy = false;
+            busyBlitChannelCount--;
         }
     }
 }
@@ -1128,7 +1145,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
                 // Both is32bit and !is32bit draw from the 16-color
                 // palette; the entry is always 16-bit, so expansion
                 // to 32-bit RGBA is identical either way.
-                color = expandPalette16(palette16[paletteIndex]);
+                color = palette16Expanded[paletteIndex];
             } else {
                 // 8bpp mode: 1 pixel per byte, use palette lookup
                 uint8_t paletteIndex = tileStorage[channel.tileBank][channel.tileId][ty * 8 + tx];
@@ -1140,7 +1157,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
                     // 16-bit mode with 256-color palette
                     // Use lower 16 entries or convert to 16-bit format
                     if (paletteIndex < 16) {
-                        color = expandPalette16(palette16[paletteIndex]);
+                        color = palette16Expanded[paletteIndex];
                     } else {
                         // Fallback: grayscale for palette indices >= 16
                         color = (paletteIndex << 24) | (paletteIndex << 16) |
