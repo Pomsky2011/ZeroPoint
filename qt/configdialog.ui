@@ -407,7 +407,7 @@
        <item>
         <widget class="QLabel" name="biosInfoLabel">
          <property name="text">
-          <string>Optional Boot ROM (BIOS) that runs before any cartridge, e.g. to verify a signed ROM or show a splash screen. Leave blank to use the built-in minimal stub.</string>
+          <string>Optional CPU Boot ROM that runs before any cartridge, e.g. to verify a signed ROM or show a splash screen. Leave blank to use the built-in minimal stub.</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -435,6 +435,44 @@
          </item>
          <item>
           <widget class="QPushButton" name="biosClearButton">
+           <property name="text">
+            <string>Clear</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="apuBiosInfoLabel">
+         <property name="text">
+          <string>Optional APU internal BIOS, e.g. one built from the ZPbootROM apu/internalBIOS sources - verifies and hands off to an audio program loaded into APU RAM. Leave blank to leave APU memory zero-filled (idle).</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_apuBios">
+         <item>
+          <widget class="QLineEdit" name="apuBiosPathEdit">
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+           <property name="placeholderText">
+            <string>(none)</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="apuBiosBrowseButton">
+           <property name="text">
+            <string>Browse...</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="apuBiosClearButton">
            <property name="text">
             <string>Clear</string>
            </property>

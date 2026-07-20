@@ -23,6 +23,14 @@ void APU::reset() {
     arom.fill(0);
     registers.fill(0);
 
+    // A user-loaded internal BIOS (loadBIOS()) has no dedicated memory
+    // region to preserve across the fill(0) above - APU memory is one flat
+    // array, unlike the CPU's bank map - so it's kept separately and
+    // reapplied here.
+    if (!customBios.empty()) {
+        std::memcpy(&memory[BIOS_BASE], customBios.data(), customBios.size());
+    }
+
     pc = 0x8000;  // Start at BIOS
     sp = 0x0000;  // Stack pointer (should be initialized by BSP instruction)
     rp = 0x80;
@@ -85,6 +93,12 @@ void APU::loadROM(const uint8_t* data, size_t size, uint16_t address) {
         size_t copySize = std::min(size, MEMORY_SIZE - address);
         std::memcpy(&memory[address], data, copySize);
     }
+}
+
+void APU::loadBIOS(const uint8_t* data, size_t size) {
+    size_t copySize = std::min(size, (size_t)BIOS_SIZE);
+    customBios.assign(data, data + copySize);
+    std::memcpy(&memory[BIOS_BASE], customBios.data(), customBios.size());
 }
 
 uint8_t APU::readByte(uint16_t address) {

@@ -61,11 +61,12 @@ static int runTestPattern(Window& window) {
 int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
-    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin]\n";
+    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin]\n";
     std::cout << "Press ESC to exit\n\n";
 
     std::string romPath;
     std::string bootPath;
+    std::string apuBiosPath;
     bool devMode = false;
     int scale = 2;
     for (int i = 1; i < argc; i++) {
@@ -79,6 +80,8 @@ int main(int argc, char** argv) {
             }
         } else if (std::strcmp(argv[i], "--boot") == 0 && i + 1 < argc) {
             bootPath = argv[++i];
+        } else if (std::strcmp(argv[i], "--apu-bios") == 0 && i + 1 < argc) {
+            apuBiosPath = argv[++i];
         } else if (argv[i][0] != '-') {
             romPath = argv[i];
         }
@@ -90,8 +93,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // No ROM and no alternate Boot ROM: fall back to the static test pattern.
-    if (romPath.empty() && bootPath.empty()) {
+    // No ROM and no alternate Boot ROM/APU BIOS: fall back to the static test pattern.
+    if (romPath.empty() && bootPath.empty() && apuBiosPath.empty()) {
         return runTestPattern(window);
     }
 
@@ -102,6 +105,10 @@ int main(int argc, char** argv) {
     }
     if (!bootPath.empty() && !system.loadBootROM(bootPath)) {
         std::cerr << "Failed to load Boot ROM: " << bootPath << "\n";
+        return 1;
+    }
+    if (!apuBiosPath.empty() && !system.loadAPUBios(apuBiosPath)) {
+        std::cerr << "Failed to load APU BIOS: " << apuBiosPath << "\n";
         return 1;
     }
 

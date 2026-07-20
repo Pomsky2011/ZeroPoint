@@ -21,6 +21,19 @@ public:
 
     // Memory
     void loadROM(const uint8_t* data, size_t size, uint16_t address);
+
+    // Replace the internal BIOS (the region APU execution starts in - see
+    // BIOS_BASE/BIOS_SIZE below) with a user-supplied payload, e.g. one
+    // built from the ZPbootROM apu/internalBIOS sources. Unlike a plain
+    // loadROM(data, size, BIOS_BASE) call, this survives reset(): the APU's
+    // memory is a flat array that reset() zero-fills wholesale (there's no
+    // per-region bookkeeping like the CPU's bank map to leave a loaded ROM
+    // region alone), so the payload is kept and reapplied after every
+    // reset() for as long as the process runs. With no BIOS loaded, APU
+    // execution starts on zero-filled memory (an endless run of NOP).
+    void loadBIOS(const uint8_t* data, size_t size);
+    bool hasBIOS() const { return !customBios.empty(); }
+
     uint8_t readByte(uint16_t address);
     void writeByte(uint16_t address, uint8_t value);
     uint16_t readWord(uint16_t address);
@@ -158,6 +171,11 @@ private:
     std::array<uint8_t, MEMORY_SIZE> memory;
     std::array<uint8_t, AROM_SIZE> arom;
     std::array<uint8_t, 256> registers;  // Up to 256 general purpose registers
+
+    // User-loaded internal BIOS payload (see loadBIOS()), reapplied at
+    // BIOS_BASE after every reset() since memory.fill(0) would otherwise
+    // wipe it. Empty when no custom BIOS has been loaded.
+    std::vector<uint8_t> customBios;
 
     // Flag bits (0bzglc)
     static constexpr uint8_t FLAG_Z = 0x08;  // zero

@@ -193,6 +193,7 @@ void MainWindow::onConfiguration()
     dialog.setVolume(volume);
     dialog.setKeyBindings(keyBindings);
     dialog.setBiosPath(biosPath);
+    dialog.setApuBiosPath(apuBiosPath);
 
     if (dialog.exec() == QDialog::Accepted) {
         int newScale = dialog.getWindowScale();
@@ -202,6 +203,7 @@ void MainWindow::onConfiguration()
         volume = dialog.getVolume();
         keyBindings = dialog.getKeyBindings();
         biosPath = dialog.getBiosPath();
+        apuBiosPath = dialog.getApuBiosPath();
 
         saveConfiguration();
         applySettingsToEmulator();
@@ -289,6 +291,7 @@ void MainWindow::applySettingsToEmulator()
     emulatorWidget->setKeyBindings(keyBindings);
     emulatorWidget->setSmoothFiltering(smoothFiltering);
     emulatorWidget->setBootROMPath(biosPath);
+    emulatorWidget->setApuBiosPath(apuBiosPath);
 }
 
 void MainWindow::updateEmulationControls(bool active)
@@ -307,6 +310,7 @@ void MainWindow::loadConfiguration()
     audioEnabled = settings.value("audio/enabled", true).toBool();
     volume = settings.value("audio/volume", 80).toInt();
     biosPath = settings.value("system/biosPath", QString()).toString();
+    apuBiosPath = settings.value("system/apuBiosPath", QString()).toString();
 
     KeyBindings defaults;
     keyBindings.up = settings.value("input/up", defaults.up).toInt();
@@ -334,6 +338,7 @@ void MainWindow::saveConfiguration()
     settings.setValue("audio/enabled", audioEnabled);
     settings.setValue("audio/volume", volume);
     settings.setValue("system/biosPath", biosPath);
+    settings.setValue("system/apuBiosPath", apuBiosPath);
 
     settings.setValue("input/up", keyBindings.up);
     settings.setValue("input/down", keyBindings.down);

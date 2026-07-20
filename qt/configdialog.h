@@ -39,10 +39,18 @@ public:
     void setBiosPath(const QString &path);
     QString getBiosPath() const;
 
+    // APU internal BIOS path. Empty means "no APU BIOS loaded" (APU memory
+    // stays zero-filled at $8000, unlike the CPU side which always has a
+    // built-in stub).
+    void setApuBiosPath(const QString &path);
+    QString getApuBiosPath() const;
+
 private slots:
     void onResetKeys();
     void onBrowseBios();
     void onClearBios();
+    void onBrowseApuBios();
+    void onClearApuBios();
 
 private:
     Ui::ConfigDialog *ui;

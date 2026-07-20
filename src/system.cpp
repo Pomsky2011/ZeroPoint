@@ -227,6 +227,24 @@ bool System::loadBootROM(const std::string& filename) {
     return true;
 }
 
+bool System::loadAPUBios(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error loading APU BIOS: cannot open " << filename << "\n";
+        return false;
+    }
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(file)),
+                               std::istreambuf_iterator<char>());
+    if (data.empty()) {
+        std::cerr << "Error loading APU BIOS: " << filename << " is empty\n";
+        return false;
+    }
+
+    apu.loadBIOS(data.data(), data.size());
+    std::cout << "Loaded APU BIOS: " << filename << " (" << data.size() << " bytes)\n";
+    return true;
+}
+
 // Number of subchip cycles granted after raising the code-switch signal, so a
 // running program reaches an instruction boundary and services/acknowledges the
 // notification before its code memory is overwritten.

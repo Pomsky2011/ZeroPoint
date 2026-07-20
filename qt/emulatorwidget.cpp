@@ -46,6 +46,17 @@ bool EmulatorWidget::applyBootROM()
     return system.loadBootROM(bootRomPath.toStdString());
 }
 
+bool EmulatorWidget::applyApuBios()
+{
+    // Empty path: no APU internal BIOS - unlike the CPU side, there's no
+    // built-in default stub to fall back to, so this just leaves APU memory
+    // zero-filled (an idle NOP loop at $8000) if nothing was ever loaded.
+    if (apuBiosPath.isEmpty()) {
+        return true;
+    }
+    return system.loadAPUBios(apuBiosPath.toStdString());
+}
+
 bool EmulatorWidget::loadROM(const QString &path)
 {
     stop();
@@ -53,6 +64,9 @@ bool EmulatorWidget::loadROM(const QString &path)
         return false;
     }
     if (!applyBootROM()) {
+        return false;
+    }
+    if (!applyApuBios()) {
         return false;
     }
     system.powerOn();
@@ -66,6 +80,9 @@ bool EmulatorWidget::bootBIOS()
 {
     stop();
     if (!applyBootROM()) {
+        return false;
+    }
+    if (!applyApuBios()) {
         return false;
     }
     system.powerOn();

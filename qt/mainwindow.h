@@ -46,6 +46,7 @@ private:
     bool audioEnabled;
     int volume;
     QString biosPath;
+    QString apuBiosPath;
     KeyBindings keyBindings;
 
     void switchToEmulatorView();

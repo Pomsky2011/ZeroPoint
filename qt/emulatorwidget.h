@@ -32,6 +32,11 @@ public:
     // construction time). Takes effect on the next loadROM()/bootBIOS() call.
     void setBootROMPath(const QString &path) { bootRomPath = path; }
 
+    // Empty path means "no APU internal BIOS" (APU memory stays zero-filled
+    // at $8000 - there's no built-in default stub on the APU side the way
+    // there is for the CPU). Takes effect on the next loadROM()/bootBIOS() call.
+    void setApuBiosPath(const QString &path) { apuBiosPath = path; }
+
     void setKeyBindings(const KeyBindings &bindings) { keys = bindings; }
     void setSmoothFiltering(bool smooth) { smoothFiltering = smooth; }
 
@@ -50,6 +55,7 @@ private:
     bool running;
     bool poweredOn;
     QString bootRomPath;
+    QString apuBiosPath;
     bool smoothFiltering;
 
     KeyBindings keys;
@@ -62,6 +68,7 @@ private:
     bool keyMenu = false, keyPause = false;
 
     bool applyBootROM();
+    bool applyApuBios();
     void updateFrameBuffer();
     void updatePlayerInput();
     void fillTestPattern();

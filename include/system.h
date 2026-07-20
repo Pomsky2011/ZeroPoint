@@ -60,6 +60,13 @@ public:
     // cartridge at all. Call reset() afterward to actually jump into it.
     bool loadBootROM(const std::string& filename);
 
+    // Load a custom APU internal BIOS (see APU::loadBIOS()) - unlike the CPU
+    // Boot ROM, there is no default stub installed at construction, so the
+    // APU runs zero-filled memory (an endless NOP) at $8000 until one is
+    // loaded. Survives reset(). Call before or after reset(); the payload
+    // takes effect either way since it's reapplied on every reset().
+    bool loadAPUBios(const std::string& filename);
+
     // Boot ROM / hot-swap: (re)load a subchip's program. The sequence is
     // notify -> let it acknowledge -> halt -> upload -> restart, so a subchip
     // that is already running gets interrupted and knows its code is being

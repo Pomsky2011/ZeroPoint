@@ -12,6 +12,8 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     connect(ui->resetKeysButton, &QPushButton::clicked, this, &ConfigDialog::onResetKeys);
     connect(ui->biosBrowseButton, &QPushButton::clicked, this, &ConfigDialog::onBrowseBios);
     connect(ui->biosClearButton, &QPushButton::clicked, this, &ConfigDialog::onClearBios);
+    connect(ui->apuBiosBrowseButton, &QPushButton::clicked, this, &ConfigDialog::onBrowseApuBios);
+    connect(ui->apuBiosClearButton, &QPushButton::clicked, this, &ConfigDialog::onClearApuBios);
 }
 
 ConfigDialog::~ConfigDialog()
@@ -145,4 +147,33 @@ void ConfigDialog::onBrowseBios()
 void ConfigDialog::onClearBios()
 {
     ui->biosPathEdit->clear();
+}
+
+void ConfigDialog::setApuBiosPath(const QString &path)
+{
+    ui->apuBiosPathEdit->setText(path);
+}
+
+QString ConfigDialog::getApuBiosPath() const
+{
+    return ui->apuBiosPathEdit->text();
+}
+
+void ConfigDialog::onBrowseApuBios()
+{
+    QString filename = QFileDialog::getOpenFileName(
+        this,
+        tr("Select APU Internal BIOS"),
+        QString(),
+        tr("APU BIOS Binary (*.bin);;All Files (*)")
+    );
+
+    if (!filename.isEmpty()) {
+        ui->apuBiosPathEdit->setText(filename);
+    }
+}
+
+void ConfigDialog::onClearApuBios()
+{
+    ui->apuBiosPathEdit->clear();
 }
