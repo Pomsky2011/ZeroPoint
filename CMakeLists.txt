@@ -181,12 +181,15 @@ set(QT_SOURCES
     qt/mainwindow.cpp
     qt/configdialog.cpp
     qt/emulatorwidget.cpp
+    qt/keycapturebutton.cpp
 )
 
 set(QT_HEADERS
     qt/mainwindow.h
     qt/configdialog.h
     qt/emulatorwidget.h
+    qt/keycapturebutton.h
+    qt/keybindings.h
 )
 
 set(QT_UI
@@ -195,6 +198,11 @@ set(QT_UI
 )
 
 add_executable(zeropoint_qt ${QT_SOURCES} ${QT_HEADERS} ${QT_UI})
+
+# uic-generated ui_*.h headers #include custom-widget headers (e.g.
+# keycapturebutton.h) by bare name, resolved relative to qt/ - needed since
+# that's not otherwise on the include path.
+target_include_directories(zeropoint_qt PRIVATE ${CMAKE_SOURCE_DIR}/qt)
 
 # Qt never touches window.h/vulkan_window.h — it renders via QImage — so it
 # links only the core and Qt itself, no SDL2/Vulkan.

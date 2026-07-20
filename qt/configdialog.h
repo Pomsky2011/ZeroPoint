@@ -2,6 +2,8 @@
 #define CONFIGDIALOG_H
 
 #include <QDialog>
+#include <QString>
+#include "keybindings.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class ConfigDialog; }
@@ -20,12 +22,27 @@ public:
     int getWindowScale() const;
     void setVSync(bool enabled);
     bool getVSync() const;
+    void setSmoothFiltering(bool smooth);
+    bool getSmoothFiltering() const;
 
     // Audio settings
     void setAudioEnabled(bool enabled);
     bool getAudioEnabled() const;
     void setVolume(int volume);
     int getVolume() const;
+
+    // Input settings
+    void setKeyBindings(const KeyBindings &bindings);
+    KeyBindings getKeyBindings() const;
+
+    // BIOS / Boot ROM settings. Empty path means "use the built-in stub".
+    void setBiosPath(const QString &path);
+    QString getBiosPath() const;
+
+private slots:
+    void onResetKeys();
+    void onBrowseBios();
+    void onClearBios();
 
 private:
     Ui::ConfigDialog *ui;

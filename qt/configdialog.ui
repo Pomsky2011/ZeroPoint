@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>500</width>
-    <height>400</height>
+    <width>520</width>
+    <height>500</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -37,7 +37,7 @@
           <number>1</number>
          </property>
          <property name="maximum">
-          <number>4</number>
+          <number>6</number>
          </property>
          <property name="value">
           <number>2</number>
@@ -130,16 +130,19 @@
        <item>
         <widget class="QLabel" name="inputInfoLabel">
          <property name="text">
-          <string>Keyboard mappings for controller buttons:</string>
+          <string>Click a binding, then press the key you want to use. Escape cancels.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="keyboardGroupBox">
+        <widget class="QGroupBox" name="dpadGroupBox">
          <property name="title">
-          <string>Keyboard Controls</string>
+          <string>D-Pad</string>
          </property>
-         <layout class="QFormLayout" name="formLayout_3">
+         <layout class="QFormLayout" name="formLayout_dpad">
           <item row="0" column="0">
            <widget class="QLabel" name="upLabel">
             <property name="text">
@@ -148,12 +151,9 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="QLineEdit" name="upKeyEdit">
+           <widget class="KeyCaptureButton" name="upKeyButton">
             <property name="text">
-             <string>Up Arrow</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
+             <string>Up</string>
             </property>
            </widget>
           </item>
@@ -165,12 +165,9 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QLineEdit" name="downKeyEdit">
+           <widget class="KeyCaptureButton" name="downKeyButton">
             <property name="text">
-             <string>Down Arrow</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
+             <string>Down</string>
             </property>
            </widget>
           </item>
@@ -182,12 +179,9 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="QLineEdit" name="leftKeyEdit">
+           <widget class="KeyCaptureButton" name="leftKeyButton">
             <property name="text">
-             <string>Left Arrow</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
+             <string>Left</string>
             </property>
            </widget>
           </item>
@@ -199,80 +193,9 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="QLineEdit" name="rightKeyEdit">
+           <widget class="KeyCaptureButton" name="rightKeyButton">
             <property name="text">
-             <string>Right Arrow</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="aButtonLabel">
-            <property name="text">
-             <string>A Button:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="QLineEdit" name="aButtonEdit">
-            <property name="text">
-             <string>Z</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="bButtonLabel">
-            <property name="text">
-             <string>B Button:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="1">
-           <widget class="QLineEdit" name="bButtonEdit">
-            <property name="text">
-             <string>X</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0">
-           <widget class="QLabel" name="startLabel">
-            <property name="text">
-             <string>Start:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="1">
-           <widget class="QLineEdit" name="startKeyEdit">
-            <property name="text">
-             <string>Return</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="7" column="0">
-           <widget class="QLabel" name="selectLabel">
-            <property name="text">
-             <string>Select:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="7" column="1">
-           <widget class="QLineEdit" name="selectKeyEdit">
-            <property name="text">
-             <string>Right Shift</string>
-            </property>
-            <property name="readOnly">
-             <bool>true</bool>
+             <string>Right</string>
             </property>
            </widget>
           </item>
@@ -280,7 +203,247 @@
         </widget>
        </item>
        <item>
-        <spacer name="verticalSpacer">
+        <layout class="QHBoxLayout" name="horizontalLayout_groups">
+         <item>
+          <widget class="QGroupBox" name="buttonsGroupBox">
+           <property name="title">
+            <string>Buttons</string>
+           </property>
+           <layout class="QFormLayout" name="formLayout_buttons">
+            <item row="0" column="0">
+             <widget class="QLabel" name="button1Label">
+              <property name="text">
+               <string>Button 1:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="KeyCaptureButton" name="button1KeyButton">
+              <property name="text">
+               <string>Z</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="button2Label">
+              <property name="text">
+               <string>Button 2:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="KeyCaptureButton" name="button2KeyButton">
+              <property name="text">
+               <string>X</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="button3Label">
+              <property name="text">
+               <string>Button 3:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="KeyCaptureButton" name="button3KeyButton">
+              <property name="text">
+               <string>C</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="button4Label">
+              <property name="text">
+               <string>Button 4:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="KeyCaptureButton" name="button4KeyButton">
+              <property name="text">
+               <string>V</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QGroupBox" name="shoulderGroupBox">
+           <property name="title">
+            <string>Bumpers / Triggers</string>
+           </property>
+           <layout class="QFormLayout" name="formLayout_shoulder">
+            <item row="0" column="0">
+             <widget class="QLabel" name="bigLeftLabel">
+              <property name="text">
+               <string>Left Bumper:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="KeyCaptureButton" name="bigLeftKeyButton">
+              <property name="text">
+               <string>A</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="littleLeftLabel">
+              <property name="text">
+               <string>Left Trigger:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="KeyCaptureButton" name="littleLeftKeyButton">
+              <property name="text">
+               <string>S</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="littleRightLabel">
+              <property name="text">
+               <string>Right Trigger:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="KeyCaptureButton" name="littleRightKeyButton">
+              <property name="text">
+               <string>D</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="bigRightLabel">
+              <property name="text">
+               <string>Right Bumper:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="KeyCaptureButton" name="bigRightKeyButton">
+              <property name="text">
+               <string>F</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="systemGroupBox">
+         <property name="title">
+          <string>System</string>
+         </property>
+         <layout class="QFormLayout" name="formLayout_system">
+          <item row="0" column="0">
+           <widget class="QLabel" name="menuLabel">
+            <property name="text">
+             <string>Menu (Select):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="KeyCaptureButton" name="menuKeyButton">
+            <property name="text">
+             <string>Shift</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="pauseLabel">
+            <property name="text">
+             <string>Pause (Start):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="KeyCaptureButton" name="pauseKeyButton">
+            <property name="text">
+             <string>Return</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_resetKeys">
+         <item>
+          <spacer name="horizontalSpacer_resetKeys">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="resetKeysButton">
+           <property name="text">
+            <string>Reset to Defaults</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="biosTab">
+      <attribute name="title">
+       <string>BIOS</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_bios">
+       <item>
+        <widget class="QLabel" name="biosInfoLabel">
+         <property name="text">
+          <string>Optional Boot ROM (BIOS) that runs before any cartridge, e.g. to verify a signed ROM or show a splash screen. Leave blank to use the built-in minimal stub.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_bios">
+         <item>
+          <widget class="QLineEdit" name="biosPathEdit">
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+           <property name="placeholderText">
+            <string>(built-in stub)</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="biosBrowseButton">
+           <property name="text">
+            <string>Browse...</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="biosClearButton">
+           <property name="text">
+            <string>Clear</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_bios">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -308,6 +471,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>KeyCaptureButton</class>
+   <extends>QPushButton</extends>
+   <header>keycapturebutton.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections>
   <connection>

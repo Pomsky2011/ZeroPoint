@@ -51,6 +51,26 @@
     <addaction name="actionStart"/>
     <addaction name="actionStop"/>
     <addaction name="actionReset"/>
+    <addaction name="separator"/>
+    <addaction name="actionBootBios"/>
+   </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>&amp;View</string>
+    </property>
+    <widget class="QMenu" name="menuWindowScale">
+     <property name="title">
+      <string>Window &amp;Scale</string>
+     </property>
+     <addaction name="actionScale1x"/>
+     <addaction name="actionScale2x"/>
+     <addaction name="actionScale3x"/>
+     <addaction name="actionScale4x"/>
+    </widget>
+    <addaction name="menuWindowScale"/>
+    <addaction name="separator"/>
+    <addaction name="actionFullscreen"/>
+    <addaction name="actionShowMenuBar"/>
    </widget>
    <widget class="QMenu" name="menuSettings">
     <property name="title">
@@ -60,6 +80,7 @@
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEmulation"/>
+   <addaction name="menuView"/>
    <addaction name="menuSettings"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -103,9 +124,74 @@
     <bool>false</bool>
    </property>
   </action>
+  <action name="actionBootBios">
+   <property name="text">
+    <string>&amp;Boot BIOS (No Cartridge)</string>
+   </property>
+  </action>
   <action name="actionConfiguration">
    <property name="text">
     <string>&amp;Configuration...</string>
+   </property>
+  </action>
+  <action name="actionScale1x">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>1x</string>
+   </property>
+  </action>
+  <action name="actionScale2x">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>2x</string>
+   </property>
+  </action>
+  <action name="actionScale3x">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>3x</string>
+   </property>
+  </action>
+  <action name="actionScale4x">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>4x</string>
+   </property>
+  </action>
+  <action name="actionFullscreen">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Fullscreen</string>
+   </property>
+   <property name="shortcut">
+    <string>F11</string>
+   </property>
+  </action>
+  <action name="actionShowMenuBar">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show &amp;Menu Bar</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+M</string>
    </property>
   </action>
  </widget>

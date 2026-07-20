@@ -10,8 +10,14 @@ EmulatorWidget::EmulatorWidget(QWidget *parent)
     , frameBuffer(ZeroPoint::FB_WIDTH, ZeroPoint::FULL_HEIGHT, QImage::Format_RGB32)
     , timerId(-1)
     , running(false)
+    , poweredOn(false)
+    , smoothFiltering(false)
 {
-    setFixedSize(ZeroPoint::FB_WIDTH * 2, ZeroPoint::FULL_HEIGHT * 2);
+    // Free to resize/scale - paintEvent letterboxes to the display's 1:1
+    // aspect ratio inside whatever size the window (or fullscreen) gives us,
+    // rather than pinning the widget to one fixed pixel size.
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setMinimumSize(ZeroPoint::FB_WIDTH, ZeroPoint::FULL_HEIGHT);
     setFocusPolicy(Qt::StrongFocus);
 
     fillTestPattern();
@@ -25,13 +31,45 @@ EmulatorWidget::~EmulatorWidget()
     }
 }
 
+QSize EmulatorWidget::sizeHint() const
+{
+    return QSize(ZeroPoint::FB_WIDTH * 2, ZeroPoint::FULL_HEIGHT * 2);
+}
+
+bool EmulatorWidget::applyBootROM()
+{
+    // Empty path: leave the default stub System() already installed alone -
+    // loadBootROM() has replace semantics, so there's nothing to do.
+    if (bootRomPath.isEmpty()) {
+        return true;
+    }
+    return system.loadBootROM(bootRomPath.toStdString());
+}
+
 bool EmulatorWidget::loadROM(const QString &path)
 {
     stop();
     if (!system.loadROM(path.toStdString())) {
         return false;
     }
+    if (!applyBootROM()) {
+        return false;
+    }
     system.powerOn();
+    poweredOn = true;
+    updateFrameBuffer();
+    update();
+    return true;
+}
+
+bool EmulatorWidget::bootBIOS()
+{
+    stop();
+    if (!applyBootROM()) {
+        return false;
+    }
+    system.powerOn();
+    poweredOn = true;
     updateFrameBuffer();
     update();
     return true;
@@ -39,7 +77,7 @@ bool EmulatorWidget::loadROM(const QString &path)
 
 void EmulatorWidget::start()
 {
-    if (!running && system.isROMLoaded()) {
+    if (!running && poweredOn) {
         running = true;
         setFocus();
         // Start timer for ~60 FPS
@@ -60,7 +98,7 @@ void EmulatorWidget::stop()
 
 void EmulatorWidget::reset()
 {
-    if (system.isROMLoaded()) {
+    if (poweredOn) {
         system.reset();
     } else {
         fillTestPattern();
@@ -74,7 +112,15 @@ void EmulatorWidget::paintEvent(QPaintEvent *event)
     Q_UNUSED(event);
 
     QPainter painter(this);
-    painter.drawImage(rect(), frameBuffer);
+    painter.fillRect(rect(), Qt::black);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, smoothFiltering);
+
+    // Letterbox/pillarbox to the largest centered square that fits, since
+    // the display is a fixed 1:1 aspect ratio but the widget (window,
+    // fullscreen, whatever) can be any size.
+    int side = qMin(width(), height());
+    QRect dest((width() - side) / 2, (height() - side) / 2, side, side);
+    painter.drawImage(dest, frameBuffer);
 }
 
 void EmulatorWidget::timerEvent(QTimerEvent *event)
@@ -89,48 +135,58 @@ void EmulatorWidget::timerEvent(QTimerEvent *event)
 
 void EmulatorWidget::keyPressEvent(QKeyEvent *event)
 {
-    switch (event->key()) {
-        case Qt::Key_Up:    keyUp = true; break;
-        case Qt::Key_Down:  keyDown = true; break;
-        case Qt::Key_Left:  keyLeft = true; break;
-        case Qt::Key_Right: keyRight = true; break;
-        case Qt::Key_Z:     keyZ = true; break;
-        case Qt::Key_X:     keyX = true; break;
-        case Qt::Key_C:     keyC = true; break;
-        case Qt::Key_V:     keyV = true; break;
-        case Qt::Key_A:     keyBigLeft = true; break;
-        case Qt::Key_S:     keyLittleLeft = true; break;
-        case Qt::Key_D:     keyLittleRight = true; break;
-        case Qt::Key_F:     keyBigRight = true; break;
-        case Qt::Key_Shift: keyMenu = true; break;
-        case Qt::Key_Return:
-        case Qt::Key_Enter: keyPause = true; break;
-        default: QWidget::keyPressEvent(event); return;
+    const int key = event->key();
+    bool handled = true;
+
+    if (key == keys.up) keyUp = true;
+    else if (key == keys.down) keyDown = true;
+    else if (key == keys.left) keyLeft = true;
+    else if (key == keys.right) keyRight = true;
+    else if (key == keys.button1) keyBtn1 = true;
+    else if (key == keys.button2) keyBtn2 = true;
+    else if (key == keys.button3) keyBtn3 = true;
+    else if (key == keys.button4) keyBtn4 = true;
+    else if (key == keys.bigLeft) keyBigLeft = true;
+    else if (key == keys.littleLeft) keyLittleLeft = true;
+    else if (key == keys.littleRight) keyLittleRight = true;
+    else if (key == keys.bigRight) keyBigRight = true;
+    else if (key == keys.menu) keyMenu = true;
+    else if (key == keys.pause) keyPause = true;
+    else handled = false;
+
+    if (handled) {
+        event->accept();
+    } else {
+        QWidget::keyPressEvent(event);
     }
-    event->accept();
 }
 
 void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
 {
-    switch (event->key()) {
-        case Qt::Key_Up:    keyUp = false; break;
-        case Qt::Key_Down:  keyDown = false; break;
-        case Qt::Key_Left:  keyLeft = false; break;
-        case Qt::Key_Right: keyRight = false; break;
-        case Qt::Key_Z:     keyZ = false; break;
-        case Qt::Key_X:     keyX = false; break;
-        case Qt::Key_C:     keyC = false; break;
-        case Qt::Key_V:     keyV = false; break;
-        case Qt::Key_A:     keyBigLeft = false; break;
-        case Qt::Key_S:     keyLittleLeft = false; break;
-        case Qt::Key_D:     keyLittleRight = false; break;
-        case Qt::Key_F:     keyBigRight = false; break;
-        case Qt::Key_Shift: keyMenu = false; break;
-        case Qt::Key_Return:
-        case Qt::Key_Enter: keyPause = false; break;
-        default: QWidget::keyReleaseEvent(event); return;
+    const int key = event->key();
+    bool handled = true;
+
+    if (key == keys.up) keyUp = false;
+    else if (key == keys.down) keyDown = false;
+    else if (key == keys.left) keyLeft = false;
+    else if (key == keys.right) keyRight = false;
+    else if (key == keys.button1) keyBtn1 = false;
+    else if (key == keys.button2) keyBtn2 = false;
+    else if (key == keys.button3) keyBtn3 = false;
+    else if (key == keys.button4) keyBtn4 = false;
+    else if (key == keys.bigLeft) keyBigLeft = false;
+    else if (key == keys.littleLeft) keyLittleLeft = false;
+    else if (key == keys.littleRight) keyLittleRight = false;
+    else if (key == keys.bigRight) keyBigRight = false;
+    else if (key == keys.menu) keyMenu = false;
+    else if (key == keys.pause) keyPause = false;
+    else handled = false;
+
+    if (handled) {
+        event->accept();
+    } else {
+        QWidget::keyReleaseEvent(event);
     }
-    event->accept();
 }
 
 void EmulatorWidget::updatePlayerInput()
@@ -169,10 +225,10 @@ void EmulatorWidget::updatePlayerInput()
     if (keyPause)       control |= PlayerInput::CTRL_PAUSE;
 
     uint8_t buttons = 0;
-    if (keyZ) buttons |= PlayerInput::BTN_1;
-    if (keyX) buttons |= PlayerInput::BTN_2;
-    if (keyC) buttons |= PlayerInput::BTN_3;
-    if (keyV) buttons |= PlayerInput::BTN_4;
+    if (keyBtn1) buttons |= PlayerInput::BTN_1;
+    if (keyBtn2) buttons |= PlayerInput::BTN_2;
+    if (keyBtn3) buttons |= PlayerInput::BTN_3;
+    if (keyBtn4) buttons |= PlayerInput::BTN_4;
 
     system.getCPU().setPlayerInput(direction, control, buttons);
 }
@@ -191,13 +247,17 @@ void EmulatorWidget::fillTestPattern()
 
 void EmulatorWidget::updateFrameBuffer()
 {
-    // Use getPixel() to read from rolling buffer
-    // Pixels outside the 8-scanline window will be black
+    // getPixel() is a live read from the small rolling buffer - black outside
+    // whatever few scanlines are currently in its window. getScanline() reads
+    // the latched, complete output frame instead (same one the SDL frontend's
+    // getScanlineSDL() uses), which is what a full-frame blit needs.
     const ZeroPoint::Display &display = system.getDisplay();
+    ZeroPoint::Color32 row[ZeroPoint::FB_WIDTH];
     for (int y = 0; y < ZeroPoint::FULL_HEIGHT; y++) {
+        display.getScanline(y, row);
         QRgb *scanline = reinterpret_cast<QRgb*>(frameBuffer.scanLine(y));
         for (int x = 0; x < ZeroPoint::FB_WIDTH; x++) {
-            ZeroPoint::Color32 color = display.getPixel(x, y);
+            ZeroPoint::Color32 color = row[x];
             // RGBA32 format: RRGGBBAA
             uint8_t r = (color >> 24) & 0xFF;
             uint8_t g = (color >> 16) & 0xFF;

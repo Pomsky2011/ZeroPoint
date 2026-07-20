@@ -4,12 +4,14 @@
 #include <QMainWindow>
 #include <QString>
 #include "rom.h"
+#include "keybindings.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class EmulatorWidget;
+class QAction;
 
 class MainWindow : public QMainWindow
 {
@@ -25,7 +27,12 @@ private slots:
     void onStart();
     void onStop();
     void onReset();
+    void onBootBios();
     void onConfiguration();
+    void onScaleAction(QAction *action);
+    void onToggleFullscreen(bool checked);
+    void onToggleMenuBar(bool checked);
+    void onEscapePressed();
 
 private:
     Ui::MainWindow *ui;
@@ -35,10 +42,16 @@ private:
     // Configuration settings
     int windowScale;
     bool vsyncEnabled;
+    bool smoothFiltering;
     bool audioEnabled;
     int volume;
+    QString biosPath;
+    KeyBindings keyBindings;
 
-    void updateEmulationControls(bool romLoaded);
+    void switchToEmulatorView();
+    void applyWindowScale(int scale);
+    void applySettingsToEmulator();
+    void updateEmulationControls(bool active);
     void loadConfiguration();
     void saveConfiguration();
 };
