@@ -23,6 +23,26 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // Menu actions are only added to the (hideable) menu bar's submenus in
+    // the .ui file, so their default Qt::WindowShortcut context ties firing
+    // to that submenu's visibility. Re-registering them on the window itself
+    // keeps every shortcut - including Ctrl+M for actionShowMenuBar - live
+    // even while the menu bar is hidden; otherwise hiding it once strands
+    // the user with no keyboard way to bring it back.
+    addAction(ui->actionLoadROM);
+    addAction(ui->actionExit);
+    addAction(ui->actionStart);
+    addAction(ui->actionStop);
+    addAction(ui->actionReset);
+    addAction(ui->actionBootBios);
+    addAction(ui->actionConfiguration);
+    addAction(ui->actionScale1x);
+    addAction(ui->actionScale2x);
+    addAction(ui->actionScale3x);
+    addAction(ui->actionScale4x);
+    addAction(ui->actionFullscreen);
+    addAction(ui->actionShowMenuBar);
+
     // Connect menu actions
     connect(ui->actionLoadROM, &QAction::triggered, this, &MainWindow::onLoadROM);
     connect(ui->actionExit, &QAction::triggered, this, &MainWindow::onExit);
