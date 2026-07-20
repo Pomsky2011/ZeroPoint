@@ -110,6 +110,10 @@ private:
     void execCMN(uint16_t operand);
     void execCMG(uint16_t operand);
     void execCML(uint16_t operand);
+    void execSTRX(uint16_t operand);  // Indexed load: dataReg = mem[(dp<<8)|offsetReg]  opcode 0x1D
+    void execSTAX(uint16_t operand);  // Indexed store: mem[(dp<<8)|offsetReg] = dataReg  opcode 0x1D
+    void execJMX(uint16_t operand);   // Jump to (Y<<8)|X, no stack push               opcode 0x1E
+    void execJSX(uint16_t operand);   // Jump to (Y<<8)|X, push return address          opcode 0x1E
 
     // Stack helper functions
     void pushByte(uint8_t value);

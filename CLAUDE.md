@@ -29,19 +29,29 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
 ### APU (Audio Processing Unit)
 - **4.250710 MHz** (master/16, ~1.0 MIPS), 8-bit RISC
-- **~47 instruction mnemonics** decoded from a 5-bit opcode field (28 of the 32
+- **~51 instruction mnemonics** decoded from a 5-bit opcode field (30 of the 32
   encodable opcode values are dispatched in `APU::executeInstruction`; many
   opcodes further sub-decode into 2-4 mnemonics off the operand bits — e.g.
-  opcode 0x09 covers LDA/STA/STA$. The remaining 4 opcode values (0x1C-0x1F)
-  halt on execution.)
+  opcode 0x09 covers LDA/STA/STA$. The remaining 2 opcode values (0x1C, 0x1F)
+  halt on execution — 0x1C is also where the `HLT` assembler shorthand
+  encodes to.)
 - **256 8-bit general-purpose registers** (array size), but the ISA only
   reaches **R0-R127** in practice: ALU source operands are hardwired to a
   single bit selecting R0(X)/R1(Y) only, and destination-register fields are
   7 bits (max R127). R128-R255 are unreachable through any instruction.
+  Every memory/jump operand is a compile-time literal baked in at assemble
+  time (no register-indexed addressing) *except* `STRX`/`STAX`/`JMX`/`JSX`
+  (opcodes 0x1D/0x1E, added for the ZPbootROM APU internal BIOS work), which
+  read a runtime X/Y value as the offset or full jump target — the only way
+  to do a data-driven memory sweep or a computed jump without resorting to
+  self-modifying code.
 - **Special registers**: PC (16-bit), SP (16-bit hardware stack), RP, DP, DB, BF, FLAGS (4-bit: Z/G/L/C)
 - **64 KiB + 448 KiB banked AROM**
-- **Instructions**: NOP, JMP, JNZ/JZ, SRP/SDP/SDB, NOR, AND, ADD, SUB, STA/STR, LDA/SCR, flags (SFR/CF/SF/STF), ZOR/ZOA, LST/LFN/BRT/BRP, ADC, SBC, BEQ/BNE, BLT/BGT, JMS, INC/DEC, BSP/RET/PUX/PUY/POX/POY/PUDP/PODP, MOV/EXC, CME/CMN/CMG/CML, CRB, XOR
-  (JSR/JDP/JDPS were part of an earlier ISA draft and were never implemented; only JMS exists)
+- **Instructions**: NOP, JMP, JNZ/JZ, SRP/SDP/SDB, NOR, AND, ADD, SUB, STA/STR, LDA/SCR, flags (SFR/CF/SF/STF), ZOR/ZOA, LST/LFN/BRT/BRP, ADC, SBC, BEQ/BNE, BLT/BGT, JMS/JSR/JDP/JDPS, INC/DEC, BSP/RET/PUX/PUY/POX/POY/PUDP/PODP, MOV/EXC, CME/CMN/CMG/CML, CRB, XOR, STRX/STAX, JMX/JSX
+  (JMS/JSR/JDP/JDPS all share opcode 0x15, dispatched off two bits: useDP
+  selects a rp:offset vs dp:db target, doCall selects a plain goto vs a
+  return-address-pushing call — all four are real, assemblable mnemonics,
+  not an earlier draft)
 - **MMP**: 16 channels with pan (pitch/volume/pan per-channel), **SST**: Sample storage with looping
 
 ### DEF88186 CPU

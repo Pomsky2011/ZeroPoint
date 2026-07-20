@@ -416,6 +416,24 @@ void APU::executeInstruction(uint16_t instruction) {
             }
             break;
         }
+        case 0x1D: {
+            // STRX/STAX — indexed load/store: bit9 selects STAX(1)/STRX(0)
+            if (operand & 0x200) {
+                execSTAX(operand);
+            } else {
+                execSTRX(operand);
+            }
+            break;
+        }
+        case 0x1E: {
+            // JMX/JSX — indexed jump: bit10 selects JSX(1, pushes return addr)/JMX(0)
+            if (operand & 0x400) {
+                execJSX(operand);
+            } else {
+                execJMX(operand);
+            }
+            break;
+        }
         case 0x1A: {
             // CRB — conditional right/left shift via signed nybble
             bool inputReg = (operand >> 10) & 1;  // 0=X, 1=Y
@@ -957,6 +975,34 @@ void APU::execCML(uint16_t operand) {
             pc += (offset * 2);
         }
     }
+}
+
+void APU::execSTRX(uint16_t operand) {
+    // Indexed load: dataReg = memory[(dp<<8) | registers[offsetReg]]
+    uint8_t dataReg   = (operand >> 10) & 0x01;
+    uint8_t offsetReg = (operand >> 8)  & 0x01;
+    uint16_t address = ((uint16_t)dp << 8) | registers[offsetReg];
+    registers[dataReg] = readByte(address);
+}
+
+void APU::execSTAX(uint16_t operand) {
+    // Indexed store: memory[(dp<<8) | registers[offsetReg]] = dataReg
+    uint8_t dataReg   = (operand >> 10) & 0x01;
+    uint8_t offsetReg = (operand >> 8)  & 0x01;
+    uint16_t address = ((uint16_t)dp << 8) | registers[offsetReg];
+    writeByte(address, registers[dataReg]);
+}
+
+void APU::execJMX(uint16_t operand) {
+    (void)operand;
+    pc = ((uint16_t)registers[1] << 8) | registers[0];
+}
+
+void APU::execJSX(uint16_t operand) {
+    (void)operand;
+    uint16_t target = ((uint16_t)registers[1] << 8) | registers[0];
+    pushWord(pc);
+    pc = target;
 }
 
 // Stack operations
