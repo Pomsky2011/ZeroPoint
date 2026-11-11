@@ -53,6 +53,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   return-address-pushing call — all four are real, assemblable mnemonics,
   not an earlier draft)
 - **MMP**: 16 channels with pan (pitch/volume/pan per-channel), **SST**: Sample storage with looping
+- **Sequencer / boot jingle**: ZPA score engine in the APU BIOS (`ZPbootROM/apu/internalBIOS/engine.uas`);
+  `System` plays it through a native HLE BIOS (`src/apu_hle.cpp`) unless `--apu-bios` loads the real
+  image. Tests: `bin/test_zpa_engine`, `bin/test_boot_jingle`; spec `ZPdevtools/docs/apu/zpa.txt`.
 
 ### DEF88186 CPU
 - **17.002839 MHz** (master/4), Hybrid 65C816/8086, 256 opcodes
