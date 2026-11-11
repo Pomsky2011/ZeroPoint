@@ -11,6 +11,8 @@
 // Instruction set: 47 instructions (5-bit opcode + 11-bit operands)
 class APU {
 public:
+    enum class HleMode : uint8_t { None, WaitHeader, Engine };
+
     APU();
     ~APU();
 
@@ -33,6 +35,20 @@ public:
     // execution starts on zero-filled memory (an endless run of NOP).
     void loadBIOS(const uint8_t* data, size_t size);
     bool hasBIOS() const { return !customBios.empty(); }
+
+    // High-level-emulated BIOS (src/apu_hle.cpp): a native C++ stand-in for the
+    // APU internal BIOS (ZPbootROM apu/internalBIOS) used when no BIOS image
+    // is loaded. It waits for a program/score header at $3000, checks the
+    // checksum, runs a $0A program or plays a $0B ZPA score with the same
+    // sequencer semantics as engine.uas, and gives the same MMP register
+    // writes per tick (tools/test_zpa_engine --hle diffs the two). Off by
+    // default so a bare APU (unit tests, demos that load code at $8000) runs
+    // exactly what it is given; System turns it on unless --apu-bios is used.
+    // It only takes over when execution sits at an EMPTY BIOS entry ($8000),
+    // so a program loaded there still runs normally. loadBIOS() turns it off.
+    void enableHLEBios(bool on);
+    bool hleBiosEnabled() const { return hleBios; }
+    bool hleEngineActive() const { return hleMode == HleMode::Engine; }
 
     uint8_t readByte(uint16_t address);
     void writeByte(uint16_t address, uint8_t value);
@@ -185,6 +201,40 @@ private:
 
     WriteHook writeHook = nullptr;
     void* writeHookCtx = nullptr;
+
+    // --- HLE BIOS state (apu_hle.cpp) ---
+    struct HleChannel {
+        uint16_t stl = 0, pending = 0;      // STL address playing / waiting to start
+        bool live = false;                  // a NOTE or SET has given it a pitch
+        bool force = true;                  // nothing written yet: write all fields next
+        uint16_t pitch = 0, vol = 0, pan = 0;   // vol/pan are 8.8; the high byte is the register
+        uint16_t wPitch = 0;
+        uint8_t wVol = 0, wPan = 0;
+        uint8_t slideTicks[3] = {0, 0, 0};  // pitch, vol, pan
+        int16_t slideDelta[3] = {0, 0, 0};
+    };
+    struct HleEngine {
+        HleChannel ch[16];
+        uint16_t ptr = 0;                   // address of the next unread score byte
+        uint16_t cnt = 0;                   // ticks until the next event
+        bool waiting = false;
+        struct Frame { uint16_t ptr; uint8_t count; bool started; } frames[4] = {};
+        int depth = 0;
+        uint32_t tick = 0;
+        uint64_t startCycle = 0;
+    };
+    bool hleBios = false;
+    HleMode hleMode = HleMode::None;
+    HleEngine hle;
+    bool hleIntercept();                    // true if HLE consumed this step()
+    void hleWaitForHeader();
+    void hleStartEngine(uint16_t entry);
+    void hleTick();                         // one 120 Hz engine tick
+    bool hleRunEvent();                     // false on END
+    void hleReadDelta();
+    uint8_t hleFetch();
+    void hleStop(int c);
+    void hleWrite16(uint16_t reg, uint16_t value);
 
     // Flag bits (0bzglc)
     static constexpr uint8_t FLAG_Z = 0x08;  // zero

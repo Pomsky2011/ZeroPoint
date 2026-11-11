@@ -128,6 +128,7 @@ set(CORE_SOURCES
     src/ppu.cpp
     src/ppu_jit.cpp
     src/apu.cpp
+    src/apu_hle.cpp
     src/cpu.cpp
     src/cpu_instructions.cpp
     src/system.cpp

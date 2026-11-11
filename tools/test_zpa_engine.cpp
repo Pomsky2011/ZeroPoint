@@ -2,7 +2,7 @@
 // and print the MMP register writes per engine tick, in the same text format as
 // `zpsnd.py trace` (the golden trace), so the two can simply be diffed.
 //
-//   test_zpa_engine <bios.bin> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing]
+//   test_zpa_engine <bios.bin|--hle> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing]
 //
 // It plays the part of the Boot ROM: DMAs the STL/SST/score images into the APU,
 // writes the header (magic last), zeroes the mailbox, and lets the BIOS run.
@@ -11,6 +11,7 @@
 // is how writes are attributed to ticks. The run stops after <ticks> ticks or
 // when the engine ENDs and the BIOS is back at its entry point.
 //
+// --hle runs the emulator's built-in high-level BIOS instead of a BIOS image.
 // --timing prints the engine's real tick period (APU cycles) to stderr; --timing-all every tick's.
 #include "apu.h"
 #include <algorithm>
@@ -73,10 +74,11 @@ std::vector<uint8_t> slurp(const char* path) {
 
 int main(int argc, char** argv) {
     if (argc < 4) {
-        std::fprintf(stderr, "usage: %s <bios.bin> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <bios.bin|--hle> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing]\n", argv[0]);
         return 2;
     }
-    const auto bios = slurp(argv[1]);
+    const bool hle = !std::strcmp(argv[1], "--hle");
+    const auto bios = hle ? std::vector<uint8_t>() : slurp(argv[1]);
     const auto pack = slurp(argv[2]);
     const int maxTicks = std::atoi(argv[3]);
     std::map<int, int> mailbox;
@@ -87,7 +89,7 @@ int main(int argc, char** argv) {
         else if (const char* eq = std::strchr(argv[i], '='))
             mailbox[std::atoi(argv[i])] = std::strtol(eq + 1, nullptr, 0);
     }
-    if (bios.empty()) { std::fprintf(stderr, "%s: cannot read BIOS image\n", argv[1]); return 1; }
+    if (!hle && bios.empty()) { std::fprintf(stderr, "%s: cannot read BIOS image\n", argv[1]); return 1; }
     if (pack.size() < 16 + 32 || std::memcmp(pack.data(), "ZPA1", 4) != 0) {
         std::fprintf(stderr, "%s: not a ZPA1 pack\n", argv[2]);
         return 1;
@@ -100,7 +102,8 @@ int main(int argc, char** argv) {
     APU apu;
     Tracer tr;
     tr.apu = &apu;
-    apu.loadBIOS(bios.data(), bios.size());
+    if (hle) apu.enableHLEBios(true);
+    else apu.loadBIOS(bios.data(), bios.size());
     apu.reset();
 
     // The Boot ROM's upload: STL, SST, score, then the header with the magic last.
@@ -127,6 +130,7 @@ int main(int argc, char** argv) {
     applyMailbox(0);
 
     bool started = false;
+    uint64_t engineEntryCycle = 0, firstBoundary = 0;
     uint16_t ring[48] = {};
     unsigned ringPos = 0;
     int lastTick = -1;
@@ -138,10 +142,13 @@ int main(int argc, char** argv) {
         apu.step();
         if (apu.isHalted()) break;
         const uint16_t pc = apu.getPC();
+        const bool running = hle ? apu.hleEngineActive() : (pc >= ENGINE_BASE && pc < 0x8F00);
         if (!started) {
-            if (pc >= ENGINE_BASE && pc < 0x8F00) started = true;
-            else continue;
-        } else if (pc == 0x8000) {              // the engine's END hands control back to the BIOS entry
+            if (running) {
+                started = true;
+                engineEntryCycle = apu.getCycleCount();
+            } else continue;
+        } else if (hle ? !running : pc == 0x8000) {    // END hands control back to the BIOS idle loop
             char b[32];
             std::snprintf(b, sizeof b, "t%04d END", tr.tick);
             tr.lines.push_back(b);
@@ -149,6 +156,7 @@ int main(int argc, char** argv) {
         }
         const int t = apu.readByte(TICK_ADDR) | (apu.readByte(TICK_ADDR + 1) << 8);
         if (t != lastTick) {
+            if (t == 1) firstBoundary = apu.getCycleCount();
             if (lastTick >= 0 && timing) periods.push_back(apu.getCycleCount() - lastCycles);
             lastTick = t;
             lastCycles = apu.getCycleCount();
@@ -167,6 +175,9 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "stopped: tick=%d pc=$%04X sp=$%04X halted=%d cycles=%llu\n", tr.tick, apu.getPC(),
                      apu.getSP(), apu.isHalted() ? 1 : 0, (unsigned long long)apu.getCycleCount());
 
+    if (timing)
+        std::fprintf(stderr, "engine entered at APU cycle %llu, end of tick 0 at %llu\n",
+                     (unsigned long long)engineEntryCycle, (unsigned long long)firstBoundary);
     if (timing && periods.size() > 2) {
         std::vector<uint64_t> v(periods.begin() + 1, periods.end());
         uint64_t sum = 0;

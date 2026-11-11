@@ -31,6 +31,8 @@ void APU::reset() {
         std::memcpy(&memory[BIOS_BASE], customBios.data(), customBios.size());
     }
 
+    hleMode = HleMode::None;
+    hle = HleEngine();
     pc = 0x8000;  // Start at BIOS
     sp = 0x0000;  // Stack pointer (should be initialized by BSP instruction)
     rp = 0x80;
@@ -97,6 +99,8 @@ void APU::loadROM(const uint8_t* data, size_t size, uint16_t address) {
 }
 
 void APU::loadBIOS(const uint8_t* data, size_t size) {
+    hleBios = false;   // a real BIOS image runs as LLE
+    hleMode = HleMode::None;
     size_t copySize = std::min(size, (size_t)BIOS_SIZE);
     customBios.assign(data, data + copySize);
     std::memcpy(&memory[BIOS_BASE], customBios.data(), customBios.size());
@@ -240,6 +244,8 @@ void APU::step() {
         cycleCount += 4;
         return;
     }
+
+    if (hleBios && hleIntercept()) return;
 
     // Fetch instruction (16-bit big-endian)
     uint16_t instruction = (readByte(pc) << 8) | readByte(pc + 1);

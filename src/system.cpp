@@ -43,6 +43,10 @@ System::System()
     cpu.setSystem(this);
     ppu.setDisplay(&display);
 
+    // No APU BIOS image yet: stand in for it natively. loadAPUBios() switches
+    // to the real, assembled BIOS (see APU::enableHLEBios()).
+    apu.enableHLEBios(true);
+
     // Setup memory map
     // Allocate Work RAM (banks $80-$9F, 2 MB)
     cpu.allocateRAM(0x80, 32);
