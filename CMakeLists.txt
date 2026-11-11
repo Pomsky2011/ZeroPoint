@@ -260,6 +260,10 @@ target_link_libraries(test_arm64_jit_debug zeropoint_core)
 add_executable(test_apu tools/test_apu.cpp)
 target_link_libraries(test_apu zeropoint_core)
 
+# MMP sample-playback regression test (SST sector loading, loop points, one-shots)
+add_executable(test_mmp tools/test_mmp.cpp)
+target_link_libraries(test_mmp zeropoint_core)
+
 # APU demo runner (with SDL audio) — Linux only (dev tool)
 if(PLATFORM_LINUX)
     add_executable(run_apu_demo tools/run_apu_demo.cpp)
@@ -353,6 +357,10 @@ set_target_properties(test_arm64_jit_debug PROPERTIES
 )
 
 set_target_properties(test_apu PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_mmp PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

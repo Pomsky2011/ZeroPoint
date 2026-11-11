@@ -75,6 +75,7 @@ void APU::resetMMP() {
         ch.active = false;
         ch.sampleDataAddress = 0;
         ch.loopAddress = 0;
+        ch.oneShot = false;
         ch.sampleCache.clear();
     }
 
@@ -173,6 +174,7 @@ void APU::writeByte(uint16_t address, uint8_t value) {
 
                 if (addressChanged) {
                     mmpChannels[channel].sampleCache.clear();
+                    mmpChannels[channel].oneShot = false;
                     mmpChannels[channel].stlAddress = stlAddr;
 
                     if (stlAddr == 0) {
@@ -1053,10 +1055,32 @@ void APU::updateMMP() {
         if (ch.active && ch.stlAddress != 0 && !ch.sampleCache.empty()) {
             ch.samplePosition += ch.pitch;
             uint32_t maxPosition = static_cast<uint32_t>(ch.sampleCache.size()) << 12;
-            if (ch.samplePosition >= maxPosition)
-                ch.samplePosition %= maxPosition;
+            if (ch.samplePosition >= maxPosition) {
+                if (ch.oneShot) {
+                    // Stop, and clear the internal STL address so writing the
+                    // same address again retriggers (the change check in
+                    // writeByte compares against stlAddress).
+                    ch.active = false;
+                    ch.stlAddress = 0;
+                    ch.samplePosition = 0;
+                    continue;
+                }
+                uint32_t loopStart = loopStartSample(ch);
+                uint32_t loopStartPos = loopStart << 12;
+                ch.samplePosition = loopStartPos +
+                    (ch.samplePosition - loopStartPos) % (maxPosition - loopStartPos);
+            }
         }
     }
+}
+
+// Sample index a looping channel wraps back to. An STL loop word of 0 means
+// "loop the whole sample"; a loop word past the end is treated the same way
+// rather than leaving a zero-length loop.
+uint32_t APU::loopStartSample(const MMPChannel& ch) const {
+    if (ch.loopAddress == 0 || ch.loopAddress >= ch.sampleCache.size())
+        return 0;
+    return ch.loopAddress;
 }
 
 int16_t APU::mixChannels(bool right) {
@@ -1072,11 +1096,19 @@ int16_t APU::mixChannels(bool right) {
         if (ch.sampleCache.empty())
             continue;
 
+        // Neighbours for the cubic spline follow the playback path: past the
+        // end a looping channel continues at its loop point, a one-shot holds
+        // its last sample (not wraps to the start, which would click).
         size_t cacheSize = ch.sampleCache.size();
+        size_t loopStart = loopStartSample(ch);
+        auto advance = [&](size_t i) -> size_t {
+            if (i + 1 < cacheSize) return i + 1;
+            return ch.oneShot ? cacheSize - 1 : loopStart;
+        };
         size_t idx  = (ch.samplePosition >> 12) % cacheSize;
-        size_t prev = (idx + cacheSize - 1) % cacheSize;
-        size_t next = (idx + 1) % cacheSize;
-        size_t next2 = (idx + 2) % cacheSize;
+        size_t prev = idx > 0 ? idx - 1 : (ch.oneShot || loopStart > 0 ? 0 : cacheSize - 1);
+        size_t next = advance(idx);
+        size_t next2 = advance(next);
 
         int8_t s0 = static_cast<int8_t>(ch.sampleCache[prev]);
         int8_t s1 = static_cast<int8_t>(ch.sampleCache[idx]);
@@ -1112,15 +1144,19 @@ void APU::processChannel(int channel) {
     // Load sample data from SST on first use
     if (ch.sampleCache.empty() &&
         ch.sampleDataAddress >= SST_BASE &&
-        ch.sampleDataAddress < SST_BASE + STL_SIZE) {
+        ch.sampleDataAddress < SST_BASE + SST_SIZE) {
 
         uint16_t blockAddr = ch.sampleDataAddress;
         bool finalBlock = false;
 
         while (!finalBlock && blockAddr < SST_BASE + SST_SIZE) {
-            // SST block header byte 1: upper nybble = config (W bit = final block), lower = loop start
+            // SST block header byte 1 = (Y << 4) | L, with L = ZW00 (sst.txt):
+            // bit 3 (Z) = play to the end once then stop, bit 2 (W) = final
+            // block of the sector. Z is only honoured on the final block.
             uint8_t header1 = readByte(blockAddr + 1);
-            finalBlock = ((header1 >> 4) & 0x04) != 0;
+            finalBlock = (header1 & 0x04) != 0;
+            if (finalBlock)
+                ch.oneShot = (header1 & 0x08) != 0;
 
             for (int i = 0; i < 12; i++)
                 ch.sampleCache.push_back(readByte(blockAddr + 4 + i));

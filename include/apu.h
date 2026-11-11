@@ -231,11 +231,13 @@ private:
 
         // Sample data (loaded from STL/SST)
         uint16_t sampleDataAddress;
-        uint16_t loopAddress;
+        uint16_t loopAddress;     // STL loop word: sample index to wrap to (0 = whole sample)
+        bool oneShot;             // Z bit of the final block: play to the end once, then stop
         std::vector<uint8_t> sampleCache;
     };
 
     std::array<MMPChannel, 16> mmpChannels;
+    uint32_t loopStartSample(const MMPChannel& ch) const;
 
     // Reserved for future global MMP flags
     uint16_t reserved1;
