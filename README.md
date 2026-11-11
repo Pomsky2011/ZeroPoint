@@ -58,10 +58,10 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 ### APU (Audio Processing Unit)
 - **8-bit RISC processor** @ 4.25 MHz (~1.06 MIPS)
 - **4 cycles per instruction** - 1 million instructions/second
-- **47 instructions** (5-bit opcode + 11-bit operands)
+- **57 instruction mnemonics** (5-bit opcode + 11-bit operands)
 - **16-bit stack** with push/pop operations and function calls
 - **Up to 256 × 8-bit registers** + special registers (PC, SP, RP, DP, DB, BF)
-- **MMP** - Music Mixing Processor for 16 stereo channels
+- **MMP** - Music Mixing Processor for 16 mono channels with per-channel pan
 - **SST** - Sample Storage System with looping and effects
 - **64 KiB addressable memory** + 448 KiB banked ROM
 - **Full-system audio output** - `System` polls the MMP mixer at 48 kHz and the SDL frontend pushes it live to the audio device, so cartridge-generated sound reaches real speakers, not just the standalone APU test tool
@@ -217,7 +217,7 @@ cd ../ZeroPoint/build
 
 ### APU
 - `ZPdevtools/docs/apu/README.txt` - APU documentation index
-- `ZPdevtools/docs/apu/instruction-set.txt` - All 47 instructions
+- `ZPdevtools/docs/apu/instruction-set.txt` - All 57 instruction mnemonics
 - `ZPdevtools/docs/apu/programming-guide.txt` - Complete programming examples
 - `ZPdevtools/docs/apu/mmp.txt` - Music Mixing Processor
 - `ZPdevtools/docs/apu/sst.txt` - Sample Storage System
@@ -228,7 +228,7 @@ cd ../ZeroPoint/build
 
 **PPU**: ✅ **DISPLAY COMPLETE!** Rolling framebuffer with NTSC timing fully functional. Tile system, interrupts, microcode execution, and VOC all operational. Stable batched executor for x86-64/ARM64 (use `--jit` flag; it's a fast interpreter, not native codegen).
 
-**APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 stereo channels) all implemented. SST header bug fixed - clean audio playback confirmed, and the main emulator now streams that audio live to the SDL audio device (not just the standalone `run_apu_demo` tool).
+**APU**: ✅ **MMP AUDIO WORKING!** Full instruction set, stack operations, function calls, and MMP audio mixing (16 mono channels with pan) all implemented. SST header bug fixed - clean audio playback confirmed, and the main emulator now streams that audio live to the SDL audio device (not just the standalone `run_apu_demo` tool).
 
 **DMA**: ✅ **COMPLETE!** All 4 transfer modes implemented with 16-channel support. Fully integrated with CPU memory system and interrupt handling. Comprehensive test suite (7/7 passing).
 

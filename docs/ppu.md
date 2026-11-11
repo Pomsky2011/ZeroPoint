@@ -262,9 +262,9 @@ The PPU should be synchronized with the display controller:
 ## Implementation Notes
 
 ### Not Yet Implemented
-- Boot ROM signature verification is still in progress (the boot ROM itself,
-  including its splash animation, is implemented — see CLAUDE.md's "In
-  Progress" section and `docs/zpb-format.md`)
+- Nothing boot-ROM-related is outstanding on the PPU side: the boot ROM,
+  its splash animation and signature verification are all implemented (see
+  CLAUDE.md and `docs/zpb-format.md`)
 
 Tile rendering (SETTILE/TILEDRAW/CLRTILE/SETTILEBANK), palette management
 (PALETTE16/PALETTE256/CLRPALETTE), and the call stack (DEFCALL/CALL/RET) are

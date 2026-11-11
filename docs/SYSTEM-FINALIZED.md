@@ -76,13 +76,13 @@ system.getDisplay().isVBlank();
 ```
 
 **Clock synchronization**:
-- Master clock: 64 MHz (PPU pixel clock)
+- Master clock: 68.011355 MHz (PPU pixel clock; NTSC colorburst x19)
 - Integer-based: Deterministic 16-cycle pattern (no fractional accumulators)
-- PPU: 64 MHz (every cycle)
-- DMA: 32 MHz (every 2 cycles: 1, 3, 5, 7, 9, 11, 13, 15)
-- CPU: 16 MHz (every 4 cycles: 3, 7, 11, 15)
-- APU: 4 MHz (every 16 cycles: 15)
-- Display: 64 MHz (every cycle)
+- PPU: 68.011355 MHz (every cycle)
+- DMA: 34.005678 MHz (every 2 cycles: 1, 3, 5, 7, 9, 11, 13, 15)
+- CPU: 17.002839 MHz (every 4 cycles: 3, 7, 11, 15)
+- APU: 4.250710 MHz (every 16 cycles: 15)
+- Display: 68.011355 MHz (every cycle)
 
 ### 5. Interrupt Routing ✅
 
@@ -165,11 +165,12 @@ These are documented in **`MISSING-IMPLEMENTATIONS.md`** for your decision.
 
 ### Medium Priority
 
-**Boot ROM** (YOU handle this)
-- Location: Bank $FF
-- Features: Signature verification, initialization
-- You mentioned providing signing key for devs
-- **Status**: Your responsibility
+**Boot ROM**
+- Location: Banks $E0-$E1 (read-only), plus signed-ROM metadata at $E2
+- Features: signature verification, initialization, splash screen
+- **Status**: Implemented in the separate `ZPbootROM` project (opt-in via
+  `--boot`); the bundled 35-byte default stub only hands off to the cartridge.
+  See CLAUDE.md and `docs/zpb-format.md`.
 
 ### Low Priority
 
@@ -279,8 +280,9 @@ cpu.run(1000000);
 
 ### For You to Decide
 
-1. **Boot ROM** - still not provided (bank $FF is unmapped); RSA/SHA-256
-   verification math spec now written in `ZPbootROM/def88186/rsa.def`
+1. **Boot ROM** - implemented in the `ZPbootROM` project at banks $E0-$E1
+   (bank $FF is unmapped); RSA-2048/SHA-256 verification is done in
+   `ZPbootROM/def88186/rsa.def`
 2. Controller format and timer specs were decided and implemented — a
    single-controller design at $D80030-$D80032 (not $C200) and 8 fixed-period
    hardware timers at $D80050-$D80057 (not $C300, and not programmable

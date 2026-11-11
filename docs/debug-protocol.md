@@ -5,9 +5,10 @@
 > the RX_READY/TX_EMPTY bit assignments, and a `DEV_MODE` flag at `$D80048`
 > that the `--dev` CLI flag can set. Everything else described below does
 > not exist:
-> - No boot ROM (bank $FF is unmapped/open-bus; nothing reads DEV_MODE to
->   gate boot behavior; `CPU::reset()` just zeroes PC/PB and `System`
->   jumps straight to the ROM header's entry point)
+> - No debug-loop boot ROM at bank $FF (it is unmapped/open-bus). The real
+>   Boot ROM lives at banks $E0-$E1 (see CLAUDE.md): it does splash and
+>   signature verification, but nothing in it reads DEV_MODE to gate boot
+>   behavior or enters a debug loop
 > - No command processor (no register-dump/breakpoint/memory-read handling
 >   anywhere in `src/`)
 > - No TCP server on port 6502 or any port (no socket code exists at all)

@@ -29,7 +29,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
 ### APU (Audio Processing Unit)
 - **4.250710 MHz** (master/16, ~1.0 MIPS), 8-bit RISC
-- **~51 instruction mnemonics** decoded from a 5-bit opcode field (30 of the 32
+- **57 instruction mnemonics** (plus the `HLT` assembler shorthand) decoded from a 5-bit opcode field (30 of the 32
   encodable opcode values are dispatched in `APU::executeInstruction`; many
   opcodes further sub-decode into 2-4 mnemonics off the operand bits — e.g.
   opcode 0x09 covers LDA/STA/STA$. The remaining 2 opcode values (0x1C, 0x1F)
@@ -82,7 +82,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **macOS**: ARM64/Apple Silicon (native), x86_64/Intel (CI cross-compiles
   via Rosetta Homebrew on an Apple Silicon runner — no dev machine to
   verify locally; see `.github/workflows/build.yml`)
-- **JIT**: x86-64, ARM64 (stable, use `--jit` flag)
+- **JIT** (batched executor): x86-64, ARM64 (use `--jit` flag; ARM64 under QEMU: see Known Issues)
 
 ## Memory Maps
 
@@ -254,7 +254,7 @@ cmake --build . -j
 - **macOS**: ARM64/Apple Silicon (native), x86_64/Intel (CI cross-compiles
   via Rosetta Homebrew on an Apple Silicon runner — no dev machine to
   verify locally; see `.github/workflows/build.yml`)
-- **JIT**: x86-64, ARM64 (experimental, use `--jit` flag)
+- **JIT** (batched executor): x86-64, ARM64 (use `--jit` flag; ARM64 under QEMU: see Known Issues)
 
 ## ZPdevtools
 
@@ -311,7 +311,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 ## Status
 
 ### Complete ✅
-- DEF88186 CPU (256 opcodes), APU (47 instructions), PPU (35 opcodes: 15 basic + 16 extended Preset F + 4 extended Preset E)
+- DEF88186 CPU (256 opcodes), APU (57 mnemonics), PPU (35 opcodes: 15 basic + 16 extended Preset F + 4 extended Preset E)
 - **Clean Instruction Dispatch System** (table-driven, easy to modify/implement)
 - Display system with rolling framebuffer, NTSC timing
 - Tile system (4 modes), palettes (16/256 colors), translucency

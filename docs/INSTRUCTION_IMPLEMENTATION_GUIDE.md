@@ -281,7 +281,7 @@ case PPUOpcode::JUMP_ZG: {
 - **256 x 8-bit registers exist, but only R0-R127 are reachable** — ALU
   source operands are hardwired to a single bit selecting R0(X)/R1(Y) only,
   and destination fields are 7 bits wide (max R127)
-- **4 MHz clock, 4 cycles per instruction**
+- **4.250710 MHz clock, 4 cycles per instruction**
 
 ### Implementing an APU Instruction
 

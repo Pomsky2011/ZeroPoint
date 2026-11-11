@@ -100,14 +100,13 @@ These need design decisions or specifications.
 
 **System boot sequence**
 - **Needed for**: Initialize system on power-on/reset
-- **Status**: NOT IMPLEMENTED (you mentioned this is your responsibility)
-- **Location**: Bank $FF ($FF:0000-$FF:FFFF)
+- **Status**: ✅ DONE — implemented in the separate `ZPbootROM` project (see CLAUDE.md and `zpb-format.md`)
+- **Location**: Banks $E0-$E1 (the original plan of bank $FF was not used)
 - **Features**:
   - Cartridge signature verification (private key system)
   - System initialization
   - Jump to cartridge entry point
-- **Priority**: MEDIUM - Can test without it using direct PC setting
-- **Note**: You said you'll provide the signing key for devs
+- **Priority**: done; the bundled default stub still allows booting without it
 
 ### Interrupt Vector Table
 
@@ -197,7 +196,7 @@ These need design decisions or specifications.
 | DMA Integration | Emulation | MEDIUM | Auto |
 | System Integration Class | Emulation | HIGH | Auto |
 | Interrupt Routing | Emulation | MEDIUM | Auto |
-| Boot ROM | Definition | MEDIUM | You |
+| Boot ROM | Definition | MEDIUM | ✅ Done (ZPbootROM) |
 | Interrupt Vectors | Definition | HIGH | You (confirm) |
 | Controller Input | Definition | LOW | You |
 | Timers | Definition | LOW | You |
@@ -215,7 +214,7 @@ These need design decisions or specifications.
 4. **Interrupt Vectors** - Confirm locations
 5. **APU getSP/setSP()** - Complete I/O registers
 6. **DMA Integration** - Fast transfers
-7. **Boot ROM** - Final piece for complete system
+7. ~~**Boot ROM**~~ - done (ZPbootROM)
 
 After these are done, the basic system will be fully functional!
 
@@ -232,7 +231,6 @@ After these are done, the basic system will be fully functional!
 
 **You need to decide/provide**:
 - Confirm interrupt vector locations
-- Provide boot ROM (when ready)
 - Decide on controller/timer specs (if needed)
 
 **Future work** (low priority):

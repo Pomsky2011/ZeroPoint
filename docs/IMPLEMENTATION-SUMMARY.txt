@@ -67,8 +67,8 @@ HIGH PRIORITY:
       (Standard 65816: $FFFA/FFFC/FFFE)
 
 MEDIUM PRIORITY:
-  [X] Boot ROM - Bank $FF, signature verification
-      (You said you'll handle this)
+  [X] Boot ROM - Banks $E0-$E1 (ZPbootROM project), signature verification
+      (see CLAUDE.md and docs/zpb-format.md)
 
 LOW PRIORITY:
   [ ] Controller format - If needed ($C200)
@@ -161,21 +161,21 @@ SYSTEM SPECIFICATIONS
 CPU (DEF88186):
   - 256 opcodes (65816 + 8086 extensions)
   - 24-bit addressing (16 MB)
-  - Clock: ~64 MHz
+  - Clock: 17.002839 MHz (master/4)
   - Status: ✅ COMPLETE (all opcodes implemented)
 
 PPU:
-  - 64 MHz, 1 inst/cycle
+  - 68.011355 MHz, 1 inst/cycle
   - 64 × 16-bit registers
   - 64 KiB memory
   - 256×256 display (16/32-bit color)
   - Status: ✅ COMPLETE (with CPU communication)
 
 APU:
-  - 4.2 MHz, 4 CPI
-  - 47 instructions
+  - 4.250710 MHz, 4 CPI
+  - 57 instruction mnemonics
   - 64 KiB memory + 448 KiB AROM
-  - 16 stereo channels (MMP)
+  - 16 mono channels with pan (MMP)
   - Status: ✅ COMPLETE (audio working)
 
 Display:
@@ -192,7 +192,7 @@ NEXT STEPS
 1. Test the System class with a ROM
 2. Confirm interrupt vector locations
 3. Add interrupt routing (triggerIRQ/triggerNMI) if needed
-4. Provide boot ROM when ready
+4. (Boot ROM: done - see ZPbootROM)
 5. Start developing games!
 
 ================================================================================
