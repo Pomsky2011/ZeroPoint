@@ -35,10 +35,10 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   opcode 0x09 covers LDA/STA/STA$. The remaining 2 opcode values (0x1C, 0x1F)
   halt on execution — 0x1C is also where the `HLT` assembler shorthand
   encodes to.)
-- **256 8-bit general-purpose registers** (array size), but the ISA only
-  reaches **R0-R127** in practice: ALU source operands are hardwired to a
-  single bit selecting R0(X)/R1(Y) only, and destination-register fields are
-  7 bits (max R127). R128-R255 are unreachable through any instruction.
+- **2 general-purpose 8-bit registers (X=R0, Y=R1)**: every register operand
+  is a single bit. The emulator's 256-entry array is just storage; the 7-bit
+  ALU destination field can index R2-R127 there, but nothing can read those
+  slots back, so they aren't registers.
   Every memory/jump operand is a compile-time literal baked in at assemble
   time (no register-indexed addressing) *except* `STRX`/`STAX`/`JMX`/`JSX`
   (opcodes 0x1D/0x1E, added for the ZPbootROM APU internal BIOS work), which
