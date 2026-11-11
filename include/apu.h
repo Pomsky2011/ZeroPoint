@@ -36,6 +36,12 @@ public:
 
     uint8_t readByte(uint16_t address);
     void writeByte(uint16_t address, uint8_t value);
+
+    // Observe every byte write that reaches RAM/MMP (tests only: the BIOS
+    // engine trace harness uses it to log MMP register writes). Called before
+    // the write is applied; null (the default) costs one branch.
+    using WriteHook = void (*)(void* ctx, uint16_t address, uint8_t value);
+    void setWriteHook(WriteHook hook, void* ctx) { writeHook = hook; writeHookCtx = ctx; }
     uint16_t readWord(uint16_t address);
     void writeWord(uint16_t address, uint16_t value);
 
@@ -176,6 +182,9 @@ private:
     // BIOS_BASE after every reset() since memory.fill(0) would otherwise
     // wipe it. Empty when no custom BIOS has been loaded.
     std::vector<uint8_t> customBios;
+
+    WriteHook writeHook = nullptr;
+    void* writeHookCtx = nullptr;
 
     // Flag bits (0bzglc)
     static constexpr uint8_t FLAG_Z = 0x08;  // zero

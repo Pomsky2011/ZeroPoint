@@ -128,6 +128,8 @@ void APU::writeByte(uint16_t address, uint8_t value) {
         return;
     }
 
+    if (writeHook) writeHook(writeHookCtx, address, value);
+
     // MMP registers (special handling for writes)
     // Register map:
     //   $0000-$001F  Pitch       ch0-15, 2 bytes each

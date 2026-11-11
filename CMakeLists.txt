@@ -268,6 +268,10 @@ target_link_libraries(test_mmp zeropoint_core)
 add_executable(zpa_play tools/zpa_play.cpp)
 target_link_libraries(zpa_play zeropoint_core)
 
+# Runs a ZPA pack through an APU BIOS sequencer and prints its MMP writes (diffed against zpsnd.py trace)
+add_executable(test_zpa_engine tools/test_zpa_engine.cpp)
+target_link_libraries(test_zpa_engine zeropoint_core)
+
 # APU demo runner (with SDL audio) — Linux only (dev tool)
 if(PLATFORM_LINUX)
     add_executable(run_apu_demo tools/run_apu_demo.cpp)
@@ -369,6 +373,10 @@ set_target_properties(test_mmp PROPERTIES
 )
 
 set_target_properties(zpa_play PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_zpa_engine PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
