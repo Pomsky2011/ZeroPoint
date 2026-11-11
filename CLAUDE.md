@@ -36,9 +36,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   halt on execution — 0x1C is also where the `HLT` assembler shorthand
   encodes to.)
 - **2 general-purpose 8-bit registers (X=R0, Y=R1)**: every register operand
-  is a single bit. The emulator's 256-entry array is just storage; the 7-bit
-  ALU destination field can index R2-R127 there, but nothing can read those
-  slots back, so they aren't registers.
+  is a single bit. R2-R127 are debug-only scratch slots (the 7-bit ALU result
+  field can name them, `apuasm` accepts them with a loud warning); nothing can
+  read them back, so they aren't registers.
   Every memory/jump operand is a compile-time literal baked in at assemble
   time (no register-indexed addressing) *except* `STRX`/`STAX`/`JMX`/`JSX`
   (opcodes 0x1D/0x1E, added for the ZPbootROM APU internal BIOS work), which

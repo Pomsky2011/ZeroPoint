@@ -278,7 +278,7 @@ case PPUOpcode::JUMP_ZG: {
   total mnemonics — see CLAUDE.md's APU section)
 - **16-bit big-endian** instructions
 - **Format**: `[OOOOO PPPPPPPPPPP]` (5-bit opcode, 11-bit operand)
-- **Only two registers exist (X and Y)** — the emulator's 256-entry array is storage, not registers; ALU
+- **Only two registers exist (X and Y)** — R2-R127 are debug-only scratch slots (unreadable by any instruction); ALU
   source operands are hardwired to a single bit selecting R0(X)/R1(Y) only,
   and destination fields are 7 bits wide (max R127)
 - **4.250710 MHz clock, 4 cycles per instruction**
