@@ -5,9 +5,14 @@
 #include <QTimer>
 #include <QImage>
 #include <QString>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
 #include "system.h"
 #include "frame_pacer.h"
 #include "keybindings.h"
+#include "audiooutput.h"
 
 class EmulatorWidget : public QWidget
 {
@@ -40,8 +45,16 @@ public:
 
     void setKeyBindings(const KeyBindings &bindings) { keys = bindings; }
     void setSmoothFiltering(bool smooth) { smoothFiltering = smooth; }
+    void setAudioEnabled(bool on) { audio.setEnabled(on); }
+    void setAudioVolume(int percent) { audio.setVolume(percent); }
 
     QSize sizeHint() const override;
+
+signals:
+    // Emulation speed as frames per second out of a full-speed 60: console
+    // seconds actually stepped / wall seconds * 60, so 60 = full speed, 30 = half.
+    // Emitted about once a second while running, and with 0 when emulation stops.
+    void fpsChanged(int fps);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -50,10 +63,23 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
 
 private:
+    // Threading: while running, `system`, `pacer` and `audio.queue()` belong to emuThread alone (emuLoop). The
+    // GUI thread only paints `frameBuffer`, swaps in the newest frame emuThread published, and talks to the
+    // emulator through the atomics below. Everything else touches `system` only while the thread is joined.
     ZeroPoint::System system;
-    QImage frameBuffer;
+    QImage frameBuffer;         // GUI thread: what paintEvent draws
+    QImage publishedFrame;      // newest finished frame; guarded by frameMutex
+    QImage workFrame;           // emuThread's scratch frame, swapped into publishedFrame
+    std::mutex frameMutex;
+    bool frameReady = false;    // publishedFrame is newer than frameBuffer; guarded by frameMutex
     int timerId;
     ZeroPoint::FramePacer pacer;
+    AudioOutput audio;
+    std::thread emuThread;
+    std::atomic<bool> stopRequested{false};
+    std::atomic<bool> resetRequested{false};
+    std::atomic<uint32_t> packedInput{0};   // direction | control << 8 | buttons << 16, see updatePlayerInput()
+    std::chrono::steady_clock::time_point nextTick;   // absolute deadline of the next 60 Hz repaint tick
     bool running;
     bool poweredOn;
     QString bootRomPath;
@@ -71,6 +97,10 @@ private:
 
     bool applyBootROM();
     bool applyApuBios();
+    void scheduleTick(std::chrono::steady_clock::time_point now);
+    void emuLoop();                      // emuThread's body
+    void joinEmuThread();
+    void convertFrame(QImage &dst) const;   // latched display frame -> dst (system must be idle or the caller's)
     void updateFrameBuffer();
     void updatePlayerInput();
     void fillTestPattern();

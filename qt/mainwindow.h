@@ -12,6 +12,7 @@ QT_END_NAMESPACE
 
 class EmulatorWidget;
 class QAction;
+class QLabel;
 
 class MainWindow : public QMainWindow
 {
@@ -37,6 +38,7 @@ private slots:
 private:
     Ui::MainWindow *ui;
     EmulatorWidget *emulatorWidget;
+    QLabel *fpsLabel;
     ZeroPoint::ROM rom;
 
     // Configuration settings

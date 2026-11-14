@@ -1,14 +1,21 @@
 #include "emulatorwidget.h"
 #include <QPainter>
 #include <QTimerEvent>
+#include <algorithm>
 #include <chrono>
 #include <QKeyEvent>
 
 using namespace ZeroPoint;
 
+namespace {
+constexpr double TICK_SECONDS = 1.0 / 60.0;
+}
+
 EmulatorWidget::EmulatorWidget(QWidget *parent)
     : QWidget(parent)
     , frameBuffer(ZeroPoint::FB_WIDTH, ZeroPoint::FULL_HEIGHT, QImage::Format_RGB32)
+    , publishedFrame(ZeroPoint::FB_WIDTH, ZeroPoint::FULL_HEIGHT, QImage::Format_RGB32)
+    , workFrame(ZeroPoint::FB_WIDTH, ZeroPoint::FULL_HEIGHT, QImage::Format_RGB32)
     , timerId(-1)
     , running(false)
     , poweredOn(false)
@@ -27,6 +34,7 @@ EmulatorWidget::EmulatorWidget(QWidget *parent)
 
 EmulatorWidget::~EmulatorWidget()
 {
+    joinEmuThread();
     if (timerId != -1) {
         killTimer(timerId);
     }
@@ -98,9 +106,12 @@ void EmulatorWidget::start()
     if (!running && poweredOn) {
         running = true;
         setFocus();
-        // Start timer for ~60 FPS
+        // Stepping runs on its own thread; this timer only repaints at ~60 Hz.
         pacer.reset();
-        timerId = startTimer(16); // ~60 Hz
+        stopRequested = false;
+        updatePlayerInput();
+        emuThread = std::thread(&EmulatorWidget::emuLoop, this);
+        scheduleTick(std::chrono::steady_clock::now());
     }
 }
 
@@ -108,20 +119,36 @@ void EmulatorWidget::stop()
 {
     if (running) {
         running = false;
+        joinEmuThread();
+        {   // the thread's last frame is the one to leave on screen
+            std::lock_guard<std::mutex> lock(frameMutex);
+            if (frameReady) {
+                frameBuffer.swap(publishedFrame);
+                frameReady = false;
+            }
+        }
+        update();
         if (timerId != -1) {
             killTimer(timerId);
             timerId = -1;
         }
+        audio.flush();   // don't keep playing the tail of the queue after Stop
+        emit fpsChanged(0);
     }
 }
 
 void EmulatorWidget::reset()
 {
+    if (running) {
+        resetRequested = true;   // emuThread owns `system`; it resets between frames
+        return;
+    }
     if (poweredOn) {
         system.reset();
     } else {
         fillTestPattern();
     }
+    audio.flush();
     updateFrameBuffer();
     update();
 }
@@ -145,23 +172,116 @@ void EmulatorWidget::paintEvent(QPaintEvent *event)
 void EmulatorWidget::timerEvent(QTimerEvent *event)
 {
     if (event->timerId() == timerId && running) {
-        updatePlayerInput();
-        // A System frame is ~1.3 ms of console time, not 1/60 s: step as many as the console clock is behind
-        // the wall clock (frame_pacer.h), then draw once.
         const auto tickStart = std::chrono::steady_clock::now();
-        const int due = pacer.framesDue(std::chrono::duration<double>(tickStart.time_since_epoch()).count());
-        int done = 0;
-        while (done < due) {
-            system.stepFrame();
-            done++;
-            if (std::chrono::duration<double>(std::chrono::steady_clock::now() - tickStart).count() >=
-                ZeroPoint::FramePacer::STEP_BUDGET_SECONDS) break;   // a slow frame must not starve the UI
+        updatePlayerInput();
+        bool fresh = false;
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            if (frameReady) {
+                frameBuffer.swap(publishedFrame);
+                frameReady = false;
+                fresh = true;
+            }
         }
-        pacer.stepped(done);
-        system.clearAudioBuffer();   // this frontend has no audio device; don't let the mixer's samples pile up
-        updateFrameBuffer();
-        update();
+        if (fresh) {
+            update();
+        }
+        scheduleTick(tickStart);
     }
+}
+
+void EmulatorWidget::joinEmuThread()
+{
+    if (emuThread.joinable()) {
+        stopRequested = true;
+        emuThread.join();
+    }
+}
+
+// emuThread's body. A System frame is ~1.3 ms of console time, not 1/60 s: step as many as the console clock is
+// behind the wall clock (frame_pacer.h), hand audio to the device, and publish a finished frame for the GUI
+// about once per 1/60 s. Painting and the host's event loop never take time from stepping.
+void EmulatorWidget::emuLoop()
+{
+    using Clock = std::chrono::steady_clock;
+    constexpr int MAX_BATCH = 16;   // ~21 ms of console time: keeps audio and frames flowing while catching up
+    const auto publishEvery = std::chrono::duration_cast<Clock::duration>(
+        std::chrono::duration<double>(TICK_SECONDS));
+    system.setVideoThread(ZeroPoint::System::videoThreadDefault());   // PPU/display catch-up beside the CPU
+    auto fpsWindowStart = Clock::now();
+    auto lastPublish = fpsWindowStart;
+    int fpsSystemFrames = 0;   // System frames stepped in the current FPS window
+
+    while (!stopRequested.load(std::memory_order_relaxed)) {
+        if (resetRequested.exchange(false)) {
+            system.reset();
+            audio.flush();
+        }
+        const uint32_t input = packedInput.load(std::memory_order_relaxed);
+        system.getCPU().setPlayerInput(input & 0xFF, (input >> 8) & 0xFF, (input >> 16) & 0xFF);
+
+        const auto now = Clock::now();
+        int due = pacer.framesDue(std::chrono::duration<double>(now.time_since_epoch()).count());
+        if (due > MAX_BATCH) due = MAX_BATCH;
+        for (int i = 0; i < due; i++) {
+            system.getDisplay().setLatchEnabled(i + 1 == due);   // only the last raster is published below
+            system.stepFrame();
+        }
+        pacer.stepped(due);
+        fpsSystemFrames += due;
+
+        if (due > 0) {
+            const auto &samples = system.getAudioBuffer();
+            audio.queue(samples.data(), static_cast<int>(samples.size() / 2));
+            system.clearAudioBuffer();
+        }
+
+        const auto after = Clock::now();
+        if (due > 0 && after - lastPublish >= publishEvery) {
+            convertFrame(workFrame);
+            {
+                std::lock_guard<std::mutex> lock(frameMutex);
+                publishedFrame.swap(workFrame);
+                frameReady = true;
+            }
+            lastPublish = after;
+        }
+
+        const double fpsElapsed = std::chrono::duration<double>(after - fpsWindowStart).count();
+        if (fpsElapsed >= 1.0) {
+            const double consoleSeconds = fpsSystemFrames * ZeroPoint::FramePacer::FRAME_SECONDS;
+            emit fpsChanged(static_cast<int>(consoleSeconds / fpsElapsed / TICK_SECONDS + 0.5));
+            fpsWindowStart = after;
+            fpsSystemFrames = 0;
+        }
+
+        if (due == 0) {
+            std::this_thread::sleep_for(std::chrono::microseconds(200));   // ahead of the wall clock
+        }
+    }
+}
+
+// Qt timers only take whole milliseconds, so a fixed 16 ms interval runs at 62.5 Hz. Instead each tick is
+// scheduled against an absolute 1/60 s deadline (re-armed with the whole ms left until it), so the rounding
+// averages out to exactly 60 Hz.
+void EmulatorWidget::scheduleTick(std::chrono::steady_clock::time_point now)
+{
+    const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(TICK_SECONDS));
+    if (timerId == -1) {
+        nextTick = now;   // first tick of a run
+    }
+    nextTick += period;
+    if (nextTick < now) {
+        nextTick = now + period;   // fell behind (slow tick): don't burst to catch up, the pacer does that
+    }
+    const auto untilNext = std::chrono::duration_cast<std::chrono::milliseconds>(
+        nextTick - std::chrono::steady_clock::now() + std::chrono::microseconds(500));   // round, not floor
+    if (timerId != -1) {
+        killTimer(timerId);
+    }
+    timerId = startTimer(std::max<std::chrono::milliseconds>(untilNext, std::chrono::milliseconds(1)),
+                         Qt::PreciseTimer);
 }
 
 void EmulatorWidget::keyPressEvent(QKeyEvent *event)
@@ -186,6 +306,7 @@ void EmulatorWidget::keyPressEvent(QKeyEvent *event)
     else handled = false;
 
     if (handled) {
+        updatePlayerInput();
         event->accept();
     } else {
         QWidget::keyPressEvent(event);
@@ -214,6 +335,7 @@ void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
     else handled = false;
 
     if (handled) {
+        updatePlayerInput();
         event->accept();
     } else {
         QWidget::keyReleaseEvent(event);
@@ -261,7 +383,10 @@ void EmulatorWidget::updatePlayerInput()
     if (keyBtn3) buttons |= PlayerInput::BTN_3;
     if (keyBtn4) buttons |= PlayerInput::BTN_4;
 
-    system.getCPU().setPlayerInput(direction, control, buttons);
+    // emuThread applies it to the CPU's port registers at the top of each batch of frames
+    packedInput.store(static_cast<uint32_t>(direction) | (static_cast<uint32_t>(control) << 8) |
+                          (static_cast<uint32_t>(buttons) << 16),
+                      std::memory_order_relaxed);
 }
 
 void EmulatorWidget::fillTestPattern()
@@ -278,6 +403,11 @@ void EmulatorWidget::fillTestPattern()
 
 void EmulatorWidget::updateFrameBuffer()
 {
+    convertFrame(frameBuffer);
+}
+
+void EmulatorWidget::convertFrame(QImage &dst) const
+{
     // getPixel() is a live read from the small rolling buffer - black outside
     // whatever few scanlines are currently in its window. getScanline() reads
     // the latched, complete output frame instead (same one the SDL frontend's
@@ -286,7 +416,7 @@ void EmulatorWidget::updateFrameBuffer()
     ZeroPoint::Color32 row[ZeroPoint::FB_WIDTH];
     for (int y = 0; y < ZeroPoint::FULL_HEIGHT; y++) {
         display.getScanline(y, row);
-        QRgb *scanline = reinterpret_cast<QRgb*>(frameBuffer.scanLine(y));
+        QRgb *scanline = reinterpret_cast<QRgb*>(dst.scanLine(y));
         for (int x = 0; x < ZeroPoint::FB_WIDTH; x++) {
             ZeroPoint::Color32 color = row[x];
             // RGBA32 format: RRGGBBAA

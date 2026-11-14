@@ -4,6 +4,7 @@
 #include "emulatorwidget.h"
 #include "display.h"
 #include <QFileDialog>
+#include <QLabel>
 #include <QMessageBox>
 #include <QSettings>
 #include <QVBoxLayout>
@@ -71,6 +72,13 @@ MainWindow::MainWindow(QWidget *parent)
     // Create emulator widget (initially hidden)
     emulatorWidget = new EmulatorWidget(this);
     emulatorWidget->hide();
+
+    // Bottom-right of the status bar. Empty while stopped.
+    fpsLabel = new QLabel(this);
+    ui->statusbar->addPermanentWidget(fpsLabel);
+    connect(emulatorWidget, &EmulatorWidget::fpsChanged, this, [this](int fps) {
+        fpsLabel->setText(fps > 0 ? tr("%1 FPS").arg(fps) : QString());
+    });
 
     // Load saved configuration
     loadConfiguration();
@@ -290,6 +298,8 @@ void MainWindow::applySettingsToEmulator()
     }
     emulatorWidget->setKeyBindings(keyBindings);
     emulatorWidget->setSmoothFiltering(smoothFiltering);
+    emulatorWidget->setAudioEnabled(audioEnabled);
+    emulatorWidget->setAudioVolume(volume);
     emulatorWidget->setBootROMPath(biosPath);
     emulatorWidget->setApuBiosPath(apuBiosPath);
 }

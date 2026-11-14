@@ -182,6 +182,7 @@ set(QT_SOURCES
     qt/mainwindow.cpp
     qt/configdialog.cpp
     qt/emulatorwidget.cpp
+    qt/audiooutput.cpp
     qt/keycapturebutton.cpp
 )
 
@@ -189,6 +190,7 @@ set(QT_HEADERS
     qt/mainwindow.h
     qt/configdialog.h
     qt/emulatorwidget.h
+    qt/audiooutput.h
     qt/keycapturebutton.h
     qt/keybindings.h
 )
@@ -206,19 +208,37 @@ add_executable(zeropoint_qt ${QT_SOURCES} ${QT_HEADERS} ${QT_UI})
 target_include_directories(zeropoint_qt PRIVATE ${CMAKE_SOURCE_DIR}/qt)
 
 # Qt never touches window.h/vulkan_window.h — it renders via QImage — so it
-# links only the core and Qt itself, no SDL2/Vulkan.
+# links no Vulkan and no SDL window. It does link SDL2, but only for audio
+# (qt/audiooutput.cpp), the same push-mode device the SDL frontend uses.
+if(CROSS_WINDOWS OR PLATFORM_WINDOWS)
+    set(ZP_SDL2_TARGET SDL2::SDL2)
+else()
+    set(ZP_SDL2_TARGET ${SDL2_LIBRARIES})
+endif()
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(zeropoint_qt
         zeropoint_core
         Qt6::Core
         Qt6::Widgets
+        ${ZP_SDL2_TARGET}
     )
 else()
     target_link_libraries(zeropoint_qt
         zeropoint_core
         Qt5::Core
         Qt5::Widgets
+        ${ZP_SDL2_TARGET}
     )
+endif()
+
+# Offscreen harness for the Qt frontend's tick loop (prints the status-bar FPS)
+add_executable(bench_qt_tick tools/bench_qt_tick.cpp qt/emulatorwidget.cpp qt/audiooutput.cpp qt/emulatorwidget.h qt/audiooutput.h)
+target_include_directories(bench_qt_tick PRIVATE ${CMAKE_SOURCE_DIR}/qt)
+set_target_properties(bench_qt_tick PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if(QT_VERSION_MAJOR EQUAL 6)
+    target_link_libraries(bench_qt_tick zeropoint_core Qt6::Core Qt6::Widgets ${ZP_SDL2_TARGET})
+else()
+    target_link_libraries(bench_qt_tick zeropoint_core Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
 endif()
 
 # Test ROM creation tools
