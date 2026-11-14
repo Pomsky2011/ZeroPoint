@@ -207,6 +207,17 @@ public:
     // the Boot ROM's own code grows, the same way GBA's SWI vector is a
     // fixed BIOS address rather than something callers resolve dynamically.
     static constexpr uint16_t BOOT_SVC_ENTRY = 0x0004;
+    // COP #$F0-#$FE: one signature per Boot ROM math service (trig.def: SIN, COS,
+    // SINCOS, ATAN2, ATAN, SQRT, HYPOT = $F0-$F6, the rest reserved). Slot n is a
+    // 4-byte `jml` at BOOT_SVC_TABLE + 4*(sig - BOOT_SVC_MATH_FIRST), right after
+    // the two fixed vectors. Unlike COP #$FF these are unprivileged: they don't
+    // set bootServiceActive.
+    static constexpr uint8_t BOOT_SVC_MATH_FIRST = 0xF0;
+    static constexpr uint8_t BOOT_SVC_MATH_LAST = 0xFE;
+    static constexpr uint16_t BOOT_SVC_TABLE = 0x0008;
+    // The table ends here; a Boot ROM shorter than this (System's 35-byte
+    // default stub) has no slots, so those signatures stay the cartridge's own.
+    static constexpr uint16_t BOOT_SVC_TABLE_END = BOOT_SVC_TABLE + 4 * (BOOT_SVC_MATH_LAST - BOOT_SVC_MATH_FIRST + 1);
 
     // Setup all I/O registers (requires PPU, APU, Display to be set first)
     void setupIORegisters();
@@ -540,6 +551,7 @@ private:
 
     // Boot ROM state (see loadBootROM()).
     bool bootROMLoaded = false;
+    size_t bootROMSize = 0;   // bytes passed to loadBootROM()
     uint32_t cartridgeEntryPoint = 0;
 
     // v3-trailer runtime chunk-verification gating (see configureDataGating()

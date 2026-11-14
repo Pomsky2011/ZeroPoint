@@ -1521,6 +1521,18 @@ void CPU::opCOP() {
         return;
     }
 
+    // Boot ROM math services (trig.def). Needs a Boot ROM big enough to hold
+    // the slot table (not the default stub), and no bootServiceActive: they
+    // have no privilege to guard, and a raw `jml` into them gains a cartridge
+    // nothing it didn't have.
+    if (bootROMLoaded && bootROMSize >= BOOT_SVC_TABLE_END &&
+        sig >= BOOT_SVC_MATH_FIRST && sig <= BOOT_SVC_MATH_LAST) {
+        PC = BOOT_SVC_TABLE + 4 * (sig - BOOT_SVC_MATH_FIRST);
+        PB = 0xE0;
+        cycleCount += 7;
+        return;
+    }
+
     // Vector through the COP handler at $00:FFE4-FFE5 (native 65C816), one
     // slot below BRK's $00:FFE6 in the same vector table. Like BRK, this is a
     // direct CPU-internal software trap — it does not go through the shared
@@ -1776,6 +1788,7 @@ void CPU::loadBootROM(const uint8_t* data, size_t size) {
     }
     loadROM(data, size, 0xE0);
     bootROMLoaded = true;
+    bootROMSize = size;
 }
 
 void CPU::loadSignedROMMetadata(const uint8_t* data, size_t size) {

@@ -277,6 +277,10 @@ target_link_libraries(test_zpa_engine zeropoint_core)
 add_executable(test_boot_jingle tools/test_boot_jingle.cpp)
 target_link_libraries(test_boot_jingle zeropoint_core)
 
+# Runs the Boot ROM's COP #$F0-#$F6 trig services against ZPbootROM's trig_model.py (needs build.sh output)
+add_executable(test_boot_trig tools/test_boot_trig.cpp)
+target_link_libraries(test_boot_trig zeropoint_core)
+
 # APU demo runner (with SDL audio) — Linux only (dev tool)
 if(PLATFORM_LINUX)
     add_executable(run_apu_demo tools/run_apu_demo.cpp)
@@ -386,6 +390,10 @@ set_target_properties(test_zpa_engine PROPERTIES
 )
 
 set_target_properties(test_boot_jingle PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_boot_trig PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
