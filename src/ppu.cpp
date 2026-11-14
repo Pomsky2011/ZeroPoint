@@ -270,13 +270,17 @@ void PPU::tickMany(uint32_t n) {
     // The body of tick(), n times, with the per-cycle function calls and checks hoisted out of the loop and
     // the idle cycles of a multi-cycle stall collapsed. Per cycle, in this order, exactly like tick():
     // advance the blit channels, latch blank edges, then burn a stall cycle / take an interrupt / issue.
+    bool latched = false;   // the blank lines are constant for the whole call, so one latch is the same as n
     while (n > 0) {
         if (state != PPUState::Running) [[unlikely]] {
             return;   // tick() returns at once while not running; nothing changes
         }
         n--;
         if (busyBlitChannelCount != 0) advanceBlitChannels(1);
-        latchInterruptEdges();
+        if (!latched) {
+            latchInterruptEdges();
+            latched = true;
+        }
 
         if (stallCycles > 0) {
             stallCycles--;
@@ -1173,6 +1177,35 @@ void PPU::executeBlit(const BlitChannel& channel) {
     // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp
     bool is4bpp = (channel.tileMode & 0x02) == 0;
     bool is32bit = (channel.tileMode & 0x01) != 0;
+
+    // No blending (the common case): nothing reads the framebuffer back, so build each 8-pixel row and hand it
+    // to the display in one go - same colors, same order, one rolling-buffer lookup per row instead of per pixel.
+    if (channel.blendMode == 0) {
+        const auto& tile = tileStorage[channel.tileBank][channel.tileId];
+        for (int ty = 0; ty < 8; ty++) {
+            uint32_t rowColors[8];
+            for (int tx = 0; tx < 8; tx++) {
+                uint32_t color;
+                if (is4bpp) {
+                    const uint8_t pixelByte = tile[(ty * 8 + tx) / 2];
+                    const uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
+                    color = palette16Expanded[paletteIndex];
+                } else {
+                    const uint8_t paletteIndex = tile[ty * 8 + tx];
+                    if (is32bit) {
+                        color = palette256[paletteIndex];
+                    } else if (paletteIndex < 16) {
+                        color = palette16Expanded[paletteIndex];
+                    } else {
+                        color = (paletteIndex << 24) | (paletteIndex << 16) | (paletteIndex << 8) | 0xFF;
+                    }
+                }
+                rowColors[tx] = applyTranslucency(color, channel.tileId);
+            }
+            display->setPixelRow32(x, y + ty, rowColors, 8);
+        }
+        return;
+    }
 
     for (int ty = 0; ty < 8; ty++) {
         for (int tx = 0; tx < 8; tx++) {

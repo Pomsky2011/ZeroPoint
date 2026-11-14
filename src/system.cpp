@@ -339,15 +339,23 @@ uint64_t System::quietCycles() const {
     const uint64_t c = masterCycleCount;
     uint64_t q = static_cast<uint64_t>(display.quietTicks());
 
+    // The CPU/APU run an instruction on the cycle their budget first goes positive. Budget accrues by 1 on every
+    // 4th (CPU) / 16th (APU) cycle and an instruction debits its cost, so after an instruction the next one is
+    // not due until budget climbs back above 0: the accrual cycles in between do nothing but count, and
+    // advanceQuiet() adds them in bulk. (Stopping at every accrual instead ran ~cost full steps per instruction.)
     if (cpu.getState() == CPUState::Running) {
         if (cpuCycleBudget > 0) return 0;                 // an instruction is due now
-        const uint64_t toAccrual = (3 - (c & 3)) & 3;     // budget accrues when c % 4 == 3
-        if (toAccrual < q) q = toAccrual;
+        const uint64_t need = static_cast<uint64_t>(1 - cpuCycleBudget);          // accruals until budget > 0
+        const uint64_t firstAccrual = (3 - (c & 3)) & 3;  // budget accrues when c % 4 == 3
+        const uint64_t due = firstAccrual + 4 * (need - 1);
+        if (due < q) q = due;
     }
     if (!apu.isHalted()) {
         if (apuCycleBudget > 0) return 0;
-        const uint64_t toAccrual = 15 - (c & 15);         // ... c % 16 == 15
-        if (toAccrual < q) q = toAccrual;
+        const uint64_t need = static_cast<uint64_t>(1 - apuCycleBudget);
+        const uint64_t firstAccrual = 15 - (c & 15);      // ... c % 16 == 15
+        const uint64_t due = firstAccrual + 16 * (need - 1);
+        if (due < q) q = due;
     }
     if (nextTimerEventCycle != UINT64_MAX) {              // updateTimers() fires when c >= nextTimerEventCycle
         const uint64_t toTimer = nextTimerEventCycle > c ? nextTimerEventCycle - c : 0;
@@ -361,6 +369,14 @@ uint64_t System::quietCycles() const {
 }
 
 void System::advanceQuiet(uint64_t cycles) {
+    // Budget accruals that tickComponents() would have made on the skipped cycles [c, c + cycles): one per
+    // cycle with c % 4 == 3 (CPU, if running) / c % 16 == 15 (APU, if not halted). By construction none of them
+    // makes the budget positive: that cycle is the event cycle after this stretch.
+    const uint64_t c = masterCycleCount;
+    if (cpu.getState() == CPUState::Running)
+        cpuCycleBudget += static_cast<int64_t>((c + cycles) / 4 - c / 4);
+    if (!apu.isHalted())
+        apuCycleBudget += static_cast<int64_t>((c + cycles) / 16 - c / 16);
     ppu.tickMany(static_cast<uint32_t>(cycles));
     display.advanceQuiet(static_cast<int>(cycles));
     audioSampleAccum += AUDIO_SAMPLE_RATE * cycles;

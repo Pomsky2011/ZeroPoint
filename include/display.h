@@ -114,6 +114,10 @@ public:
     // Note: Writes to scanlines outside the current 8-scanline window will be forgotten
     void setPixel(int x, int y, Color16 color);
 
+    // setPixel32 for `count` pixels along one row, resolving the rolling-buffer slot once (what a tile blit's
+    // 8-pixel rows want). Same checks and result as count calls to setPixel32(x + i, y, colors[i]).
+    void setPixelRow32(int x, int y, const Color32* colors, int count);
+
     // Set a pixel in the framebuffer (32-bit)
     // Note: Writes to scanlines outside the current 8-scanline window will be forgotten
     void setPixel32(int x, int y, Color32 color);

@@ -336,7 +336,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
   (needs `--boot`; the default stub leaves those signatures to the cartridge). 16-bit binary angles,
   Q1.15. Test: `bin/test_boot_trig`; see `docs/boot-math-services.md`.
 - **Batched master clock**: `System::runCycles`/`stepFrame` apply quiet cycles (only PPU ticks + pixel counter) in
-  bulk and run event cycles through `step()`; state-identical, checked by `bin/test_batched`. ~1.4-1.8x so far; see
+  bulk and run event cycles through `step()`; state-identical, checked by `bin/test_batched`. ~1.9-3x so far (busy PPU ~1x real time); see
   `docs/batched-clock.md` for the profile and what a 3x target still needs (PPU JIT).
 - **Boot ROM PPU handoff**: after a good signature the splash fades to black and the PPU is reset (idle, black);
   the cartridge loads its own PPU program with `COP #$F7`. Test: `ZPbootROM/tests/handoff/run_test.sh`

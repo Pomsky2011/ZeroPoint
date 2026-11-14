@@ -7,9 +7,10 @@
 // --dump prints just the per-cycle hashes (to diff against an older build's: a refactor of the PPU's timing
 // must not change them).
 //
-// Prints each mode's wall time (so the speedup is visible) and fails at the first checkpoint that differs.
+// Prints each mode's CPU time (so the speedup is visible, and holds up under other load) and fails at the first checkpoint that differs.
 #include "system.h"
 #include <chrono>
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -57,7 +58,7 @@ Result run(const char* boot, const char* rom, double seconds, int checkpointFram
     sys.powerOn();
     const uint64_t frames = (uint64_t)(seconds * 68011355.0 / System::CYCLES_PER_FRAME);
     Result r;
-    auto t0 = std::chrono::steady_clock::now();
+    const std::clock_t c0 = std::clock();   // process CPU time: unaffected by other load on the host
     for (uint64_t f = 0; f < frames; f += checkpointFrames) {
         const uint64_t cycles = (uint64_t)checkpointFrames * System::CYCLES_PER_FRAME;
         if (batched) {
@@ -68,7 +69,7 @@ Result run(const char* boot, const char* rom, double seconds, int checkpointFram
         r.hashes.push_back(machineHash(sys));
         sys.clearAudioBuffer();
     }
-    r.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    r.seconds = static_cast<double>(std::clock() - c0) / CLOCKS_PER_SEC;
     r.cycles = frames * System::CYCLES_PER_FRAME;
     return r;
 }
@@ -88,8 +89,8 @@ int main(int argc, char** argv) {
         return 0;
     }
     Result b = run(argv[1], argv[2], seconds, cp, true);
-    std::printf("per-cycle: %.2f s wall for %.2f s of console time (%.2fx real time)\n", a.seconds, seconds, seconds / a.seconds);
-    std::printf("batched  : %.2f s wall for %.2f s of console time (%.2fx real time), %.2fx faster\n", b.seconds, seconds,
+    std::printf("per-cycle: %.2f s CPU for %.2f s of console time (%.2fx real time)\n", a.seconds, seconds, seconds / a.seconds);
+    std::printf("batched  : %.2f s CPU for %.2f s of console time (%.2fx real time), %.2fx faster\n", b.seconds, seconds,
                 seconds / b.seconds, a.seconds / b.seconds);
     size_t n = std::min(a.hashes.size(), b.hashes.size());
     for (size_t i = 0; i < n; i++) {

@@ -24,11 +24,26 @@ checkpoints; it fails at the first difference and prints both modes' wall time. 
 per-cycle hashes, to diff against an older build's (done once against the pre-refactor tree: identical over
 8 s of boot, fade, handoff and PPU load). Any change to PPU/Display/System timing should keep both green.
 
+## Budget accruals in bulk
+
+The CPU/APU run an instruction on the cycle their budget first goes positive; budget accrues by 1 every
+4th/16th cycle and an instruction debits its cost. So after an instruction the accrual cycles up to the next
+one do nothing but count. `quietCycles()` jumps straight to the cycle the next instruction is due and
+`advanceQuiet()` adds the skipped accruals (`(c+n)/4 - c/4`) to the budget. This took the event count from
+~cost per CPU instruction (and ~4 per APU instruction) down to 1, and was the largest single win.
+
 ## Where the time goes now
 
-Measured (non-LTO, perf): with a busy PPU, ~70% of host time is the PPU interpreter (~10-14 ns per PPU
-cycle including blits; the console needs 68 M of them per second); with the PPU idle and the CPU spinning,
-~70% is scheduler overhead per CPU instruction (an event every ~12 cycles). So the batching alone is worth
-~1.4x (boot workload) to ~1.8x (idle PPU). A 3x-headroom target needs the PPU at ~4 ns/cycle, i.e. a PPU JIT
-sitting on this scheduler; and a catch-up scheduler (run the CPU ahead until it touches PPU-visible state) for
-CPU-heavy games.
+Measured (non-LTO, perf), CPU time, state-identical to per-cycle stepping on all three:
+
+| workload | per-cycle | batched | |
+|---|---|---|---|
+| boot ROM + splash, CPU hashing (8 s) | 0.56x real time | 1.03x | 1.83x |
+| cartridge loading a PPU program (8 s) | 0.52x | 0.98x | 1.88x |
+| PPU idle, CPU spinning, APU engine (10 s) | 1.05x | 2.99x | 2.85x |
+
+With a busy PPU the profile is now: PPU interpreter ~30% (`tickMany`, `executeInstruction`, `executePresetF`),
+blits ~24% (`executeBlit`, `Display::setPixelRow32`), scheduler ~14%, the rest CPU and display. The PPU still
+needs ~10 ns per PPU cycle against 68 M cycles/s, so a busy PPU alone costs about 0.7 s per console second. A
+3x-headroom target needs the PPU at ~4 ns/cycle: a PPU JIT/fused-block executor on this scheduler (safe inside a
+quiet stretch: nothing can raise an interrupt in the middle of it), and cheaper blit pixel writes.

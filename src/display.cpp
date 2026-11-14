@@ -248,6 +248,40 @@ void Display::setPixel32(int x, int y, Color32 color) {
     }
 }
 
+void Display::setPixelRow32(int x, int y, const Color32* colors, int count) {
+    if (y < 0 || y >= FULL_HEIGHT) return;
+    int offsetInBank;
+    int bank = getBufferBank(y, offsetInBank);
+    if (bank < 0) return;   // Outside buffer window
+    const size_t rowBase = static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank;
+
+    if (renderMode == RenderMode::RGBA32) {
+        for (int i = 0; i < count; i++) {
+            const int px = x + i;
+            if (px < 0 || px >= FB_WIDTH) continue;
+            const size_t offset = rowBase + static_cast<size_t>(px) * 4;
+            if (offset + 3 < framebuffer.size()) {
+                const Color32 color = colors[i];
+                framebuffer[offset] = (color >> 24) & 0xFF;
+                framebuffer[offset + 1] = (color >> 16) & 0xFF;
+                framebuffer[offset + 2] = (color >> 8) & 0xFF;
+                framebuffer[offset + 3] = color & 0xFF;
+            }
+        }
+    } else {
+        for (int i = 0; i < count; i++) {
+            const int px = x + i;
+            if (px < 0 || px >= FB_WIDTH) continue;
+            const size_t offset = rowBase + static_cast<size_t>(px) * 2;
+            if (offset + 1 < framebuffer.size()) {
+                const Color16 color16 = color32To16(colors[i]);
+                framebuffer[offset] = color16 & 0xFF;
+                framebuffer[offset + 1] = (color16 >> 8) & 0xFF;
+            }
+        }
+    }
+}
+
 Color32 Display::getPixel(int x, int y) const {
     if (x < 0 || x >= FB_WIDTH || y < 0 || y >= FULL_HEIGHT) {
         return 0x00000000; // Out of bounds
