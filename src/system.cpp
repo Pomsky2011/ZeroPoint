@@ -1,5 +1,6 @@
 #include "system.h"
 #include "default_boot_rom.h"
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -16,6 +17,7 @@ System::System()
       nextTimerEventCycle(UINT64_MAX), timersLastUpdateCycle(0),
       cpuCycleBudget(0), apuCycleBudget(0),
       audioSampleAccum(0),
+      nextAudioCycle(audioCyclesUntilSample(0)),
       vblankIRQEnabled(false), hblankIRQEnabled(false),
       lastVBlank(false), lastHBlank(false),
       devMode(false)
@@ -81,6 +83,7 @@ System::System()
 }
 
 System::~System() {
+    stopVideoThread();
 }
 
 void System::reset() {
@@ -90,11 +93,21 @@ void System::reset() {
     dma.reset();
 
     masterCycleCount = 0;
+    videoCycle = 0;
+    {
+        std::lock_guard<std::mutex> lock(vtMutex);   // the worker is idle between runCycles() calls
+        vtRequest = 0;
+    }
+    vtDone = 0;
+    videoPublished = 0;
+    videoLazy = false;
+    videoAccessed = false;
     nextTimerEventCycle = UINT64_MAX;   // no timers enabled -> nothing scheduled
     timersLastUpdateCycle = 0;
     cpuCycleBudget = 0;
     apuCycleBudget = 0;
     audioSampleAccum = 0;
+    nextAudioCycle = audioCyclesUntilSample(0);   // from master cycle 0
     audioBuffer.clear();
 
     intc.reset();
@@ -331,13 +344,18 @@ void System::stepFrame() {
     runCycles(CYCLES_PER_FRAME);
 }
 
-uint64_t System::quietCycles() const {
+uint64_t System::quietCycles(uint64_t& displayQuiet) const {
     // Everything tickComponents()/step() does besides ppu.tick() and display.tick()'s increment, and the first
-    // cycle at which it can matter. The cycle numbers below are masterCycleCount values; "quiet" is how many
-    // cycles come before the first such one.
-    if (!dma.tickIsNoOp()) return 0;
+    // cycle at which it can matter. "quiet" is how many cycles come before the first such one.
+    if (!dma.tickIsNoOp()) { displayQuiet = 0; return 0; }
+    displayQuiet = static_cast<uint64_t>(display.quietTicks());
+    return quietCyclesNonVideo();
+}
+
+uint64_t System::quietCyclesNonVideo() const {
+    // The cycle numbers below are masterCycleCount values. Callers have checked that DMA is idle.
     const uint64_t c = masterCycleCount;
-    uint64_t q = static_cast<uint64_t>(display.quietTicks());
+    uint64_t q = UINT64_MAX;
 
     // The CPU/APU run an instruction on the cycle their budget first goes positive. Budget accrues by 1 on every
     // 4th (CPU) / 16th (APU) cycle and an instruction debits its cost, so after an instruction the next one is
@@ -362,13 +380,118 @@ uint64_t System::quietCycles() const {
         if (toTimer < q) q = toTimer;
     }
     // Audio: a sample is emitted on the cycle the accumulator reaches a full second's worth.
-    const uint64_t need = TIMER_SECOND_PERIOD - audioSampleAccum;
-    const uint64_t toSample = (need + AUDIO_SAMPLE_RATE - 1) / AUDIO_SAMPLE_RATE - 1;
+    const uint64_t toSample = nextAudioCycle > c ? nextAudioCycle - c : 0;
     if (toSample < q) q = toSample;
     return q;
 }
 
-void System::advanceQuiet(uint64_t cycles) {
+void System::advanceNonVideo(uint64_t cycles) {
+    // advanceQuiet() without the video chips: the budget accruals and audio accumulation of `cycles` skipped
+    // cycles, and the clock itself.
+    const uint64_t c = masterCycleCount;
+    if (cpu.getState() == CPUState::Running)
+        cpuCycleBudget += static_cast<int64_t>((c + cycles) / 4 - c / 4);
+    if (!apu.isHalted())
+        apuCycleBudget += static_cast<int64_t>((c + cycles) / 16 - c / 16);
+    audioSampleAccum += AUDIO_SAMPLE_RATE * cycles;
+    masterCycleCount += cycles;
+}
+
+void System::tickVideoTo(uint64_t targetCycle) {
+    // Tick the PPU and display for the master cycles videoCycle .. targetCycle - 1, in step()'s order (ppu, then
+    // display, then the blank status hand-off to the PPU). Between display edges the blank lines are constant, so
+    // those stretches go through PPU::tickMany; the edge ticks (H-blank start, end of line) and any tick where
+    // the PPU's idea of the blank lines is out of date (power-on, after a PPU reset) run one cycle at a time.
+    uint64_t vc = videoCycle.load(std::memory_order_relaxed);
+    while (vc < targetCycle) {
+        uint64_t q = 0;
+        if (ppu.blankStatusIs(display.isVBlank(), display.isHBlank())) {
+            q = static_cast<uint64_t>(display.quietTicks());
+            if (q > targetCycle - vc) q = targetCycle - vc;
+        }
+        if (q > 0) {
+            ppu.tickMany(static_cast<uint32_t>(q));
+            display.advanceQuiet(static_cast<int>(q));
+            vc += q;
+        } else {
+            ppu.tick();
+            display.tick();
+            ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
+            vc++;
+        }
+        videoCycle.store(vc, std::memory_order_relaxed);
+    }
+}
+
+void System::syncVideo(uint64_t targetCycle) {
+    if (videoThread.joinable()) waitVideoIdle();
+    tickVideoTo(targetCycle);
+    const uint64_t vc = videoCycle.load(std::memory_order_relaxed);
+    if (vc > videoPublished) videoPublished = vc;   // accesses this frequent keep the stretches below VIDEO_CHUNK
+}
+
+void System::setVideoThread(bool on) {
+    videoThreadWanted = on && std::thread::hardware_concurrency() >= 2;
+    if (!videoThreadWanted) stopVideoThread();
+}
+
+bool System::videoThreadDefault() {
+    const char* env = std::getenv("ZEROPOINT_VIDEO_THREAD");
+    return !(env && env[0] == '0');
+}
+
+void System::startVideoThread() {
+    if (videoThread.joinable()) return;
+    {
+        std::lock_guard<std::mutex> lock(vtMutex);
+        vtQuit = false;
+    }
+    videoThread = std::thread(&System::videoThreadMain, this);
+}
+
+void System::stopVideoThread() {
+    if (!videoThread.joinable()) return;
+    {
+        std::lock_guard<std::mutex> lock(vtMutex);
+        vtQuit = true;
+    }
+    vtWake.notify_one();
+    videoThread.join();
+}
+
+void System::videoThreadMain() {
+    std::unique_lock<std::mutex> lock(vtMutex);
+    for (;;) {
+        vtWake.wait(lock, [this] { return vtQuit || videoCycle.load(std::memory_order_relaxed) < vtRequest; });
+        if (vtQuit) return;
+        const uint64_t target = vtRequest;
+        lock.unlock();
+        tickVideoTo(target);
+        vtDone.store(target, std::memory_order_release);
+        lock.lock();                 // the runner checks vtDone under this mutex before it sleeps: no lost wake-up
+        vtIdle.notify_all();
+    }
+}
+
+void System::waitVideoIdle() {
+    const uint64_t request = vtRequest;   // only this thread ever writes it
+    for (int spin = 0; spin < 2000; spin++) {
+        if (vtDone.load(std::memory_order_acquire) == request) return;
+    }
+    std::unique_lock<std::mutex> lock(vtMutex);
+    vtIdle.wait(lock, [&] { return vtDone.load(std::memory_order_acquire) == request; });
+}
+
+void System::publishVideo(uint64_t targetCycle) {
+    {
+        std::lock_guard<std::mutex> lock(vtMutex);
+        vtRequest = targetCycle;
+    }
+    videoPublished = targetCycle;
+    vtWake.notify_one();
+}
+
+void System::advanceQuiet(uint64_t cycles, bool foldEventTick) {
     // Budget accruals that tickComponents() would have made on the skipped cycles [c, c + cycles): one per
     // cycle with c % 4 == 3 (CPU, if running) / c % 16 == 15 (APU, if not halted). By construction none of them
     // makes the budget positive: that cycle is the event cycle after this stretch.
@@ -377,8 +500,9 @@ void System::advanceQuiet(uint64_t cycles) {
         cpuCycleBudget += static_cast<int64_t>((c + cycles) / 4 - c / 4);
     if (!apu.isHalted())
         apuCycleBudget += static_cast<int64_t>((c + cycles) / 16 - c / 16);
-    ppu.tickMany(static_cast<uint32_t>(cycles));
-    display.advanceQuiet(static_cast<int>(cycles));
+    const uint64_t ticks = cycles + (foldEventTick ? 1 : 0);   // the event cycle's own ppu/display tick
+    ppu.tickMany(static_cast<uint32_t>(ticks));
+    display.advanceQuiet(static_cast<int>(ticks));
     audioSampleAccum += AUDIO_SAMPLE_RATE * cycles;
     masterCycleCount += cycles;
 }
@@ -386,12 +510,95 @@ void System::advanceQuiet(uint64_t cycles) {
 void System::runCycles(uint64_t cycles) {
     const uint64_t target = masterCycleCount + cycles;
     while (masterCycleCount < target && !cpu.isHalted()) {
-        uint64_t q = quietCycles();
-        if (q > target - masterCycleCount) q = target - masterCycleCount;
-        if (q > 0) advanceQuiet(q);
-        if (masterCycleCount >= target) break;
-        step();
+        if (!vblankIRQEnabled && !hblankIRQEnabled && dma.tickIsNoOp()) {
+            // Nothing can make the CPU need the video chips except its own accesses to them (which sync them
+            // first, see syncVideoForAccess()): no blank IRQ to deliver on a display edge and no DMA ticking
+            // alongside. Run the CPU/APU/timers/audio events ahead and let the PPU/display catch up in long
+            // stretches.
+            if (!videoLazy) {
+                videoLazy = true;
+                videoCycle = masterCycleCount;
+                if (videoThreadWanted) {
+                    startVideoThread();
+                    {
+                        std::lock_guard<std::mutex> lock(vtMutex);   // the worker is idle: nothing to do yet
+                        vtRequest = masterCycleCount;
+                    }
+                    vtDone.store(masterCycleCount, std::memory_order_release);
+                }
+                videoPublished = masterCycleCount;
+            }
+            runAhead(target);
+        } else {
+            leaveRunAhead();
+            lockstepEvent(target);
+        }
     }
+    leaveRunAhead();
+}
+
+void System::leaveRunAhead() {
+    if (!videoLazy) return;
+    syncVideo(masterCycleCount);
+    videoLazy = false;
+    // What checkInterrupts() would have left behind: the display's blank lines after the last tick.
+    lastVBlank = display.isVBlank();
+    lastHBlank = display.isHBlank();
+}
+
+void System::runAhead(uint64_t target) {
+    // Events (a CPU/APU instruction, a timer, an audio sample) in order, state-identical to step()ing through
+    // them except that nothing here ticks the video chips: whatever the CPU/APU do that depends on them goes
+    // through syncVideoForAccess(), which ticks them through this very cycle first, as step() would have.
+    while (masterCycleCount < target && !cpu.isHalted() && dma.tickIsNoOp()) {
+        runCpuBurst(target);
+        if (masterCycleCount >= target || cpu.isHalted() || !dma.tickIsNoOp()) continue;
+        const uint64_t left = target - masterCycleCount;
+        const uint64_t q = quietCyclesNonVideo();
+        if (q >= left) {
+            advanceNonVideo(left);
+            return;
+        }
+        advanceNonVideo(q);
+        bool currentVBlank = false, currentHBlank = false;
+        videoAccessed = false;
+        tickRest(static_cast<int>(masterCycleCount % 16), currentVBlank, currentHBlank, false);
+        if (videoAccessed) {
+            // step() hands the PPU the display's blank lines at the end of every cycle, after the CPU has run
+            // (a PPU reset in that instruction clears them): the video chips are exactly at this cycle now.
+            ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
+        }
+        updateTimers();
+        masterCycleCount++;
+        if (videoThread.joinable() && masterCycleCount - videoPublished >= VIDEO_CHUNK) {
+            publishVideo(masterCycleCount);   // video may now run through cycle master-1; the CPU's next access needs master
+        }
+    }
+}
+
+void System::lockstepEvent(uint64_t target) {
+    uint64_t displayQuiet;
+    const uint64_t q = quietCycles(displayQuiet);
+    const uint64_t left = target - masterCycleCount;
+    if (q < displayQuiet && q < left) {
+        // A pure event cycle (CPU/APU instruction, timer or audio sample) with no display edge on it and DMA
+        // idle: the PPU and display tick of that cycle come first in step() and nothing between them and the
+        // quiet stretch before it can tell them apart, so tick them together with the stretch (one
+        // PPU::tickMany entry instead of two) and run only the rest of the cycle for real. Same order as
+        // step(): ppu, display, [idle DMA: nothing], CPU/APU/audio, interrupts, timers, count.
+        advanceQuiet(q, true);
+        const int phase = static_cast<int>(masterCycleCount % 16);
+        bool currentVBlank, currentHBlank;
+        tickRest(phase, currentVBlank, currentHBlank);
+        checkInterrupts(currentVBlank, currentHBlank);
+        updateTimers();
+        masterCycleCount++;
+        return;
+    }
+    const uint64_t quiet = q < displayQuiet ? q : displayQuiet;
+    if (quiet > 0) advanceQuiet(quiet < left ? quiet : left);
+    if (masterCycleCount >= target) return;
+    step();
 }
 
 void System::tickComponents(bool& outVBlank, bool& outHBlank) {
@@ -416,6 +623,18 @@ void System::tickComponents(bool& outVBlank, bool& outHBlank) {
         dma.tick();
     }
 
+    tickRest(cyclePhase, outVBlank, outHBlank);
+}
+
+#if defined(_MSC_VER)
+#define ZP_ALWAYS_INLINE __forceinline
+#else
+#define ZP_ALWAYS_INLINE inline __attribute__((always_inline))
+#endif
+
+// What one master cycle does for the CPU, the APU and the audio sampler (not the video chips): shared by tickRest()
+// and the run-ahead burst loop, so there is one definition of it.
+ZP_ALWAYS_INLINE void System::cpuApuAudioCycle(int cyclePhase) {
     // CPU runs at master/4 (~17 MHz). Accrue one CPU cycle of budget every
     // 4 master cycles, then execute whole instructions while budget remains,
     // debiting each instruction's real cycle cost. This makes a 7-cycle
@@ -442,21 +661,90 @@ void System::tickComponents(bool& outVBlank, bool& outHBlank) {
         apuCycleBudget -= static_cast<int64_t>(apu.getCycleCount() - before);
     }
 
-    // Sample the display's blank state once, now that it has ticked. Feed it to
-    // the PPU and return it so checkInterrupts() doesn't recompute it.
-    outVBlank = display.isVBlank();
-    outHBlank = display.isHBlank();
-    ppu.setBlankStatus(outVBlank, outHBlank);
-
     // MMP mixer runs independently of the APU's CPU (it's a hardware
     // sequencer driven by channel registers, not fetch/decode/execute), so
     // sample it on its own schedule regardless of apu.isHalted().
     audioSampleAccum += AUDIO_SAMPLE_RATE;
     if (audioSampleAccum >= TIMER_SECOND_PERIOD) {
         audioSampleAccum -= TIMER_SECOND_PERIOD;
+        nextAudioCycle = masterCycleCount + 1 + audioCyclesUntilSample(audioSampleAccum);   // from the next cycle on
         apu.updateMMP();
         audioBuffer.push_back(apu.getMixedSampleLeft());
         audioBuffer.push_back(apu.getMixedSampleRight());
+    }
+}
+
+void System::tickRest(int cyclePhase, bool& outVBlank, bool& outHBlank, bool sampleVideo) {
+    cpuApuAudioCycle(cyclePhase);
+
+    // Sample the display's blank state once, now that it has ticked. Feed it to
+    // the PPU and return it so checkInterrupts() doesn't recompute it.
+    if (sampleVideo) {
+        outVBlank = display.isVBlank();
+        outHBlank = display.isHBlank();
+        ppu.setBlankStatus(outVBlank, outHBlank);
+    }
+}
+
+void System::runCpuBurst(uint64_t target) {
+    // Run-ahead's common case, made cheap: stretches where the only events are CPU instructions. The first cycle of a
+    // non-CPU event (an APU instruction, a timer, an audio sample) is computed once; CPU events before it then run
+    // back to back with just the budget arithmetic between them, through the same cpuApuAudioCycle() a full
+    // tickRest() uses. A CPU instruction can change what is due (it can write the timer control register, start the
+    // APU or a DMA), so those are rechecked after every event and the horizon recomputed (or the burst ended).
+    auto horizon = [this]() -> uint64_t {
+        const uint64_t c = masterCycleCount;
+        uint64_t h = nextAudioCycle > c ? nextAudioCycle : c;
+        if (nextTimerEventCycle != UINT64_MAX) {
+            const uint64_t t = nextTimerEventCycle > c ? nextTimerEventCycle : c;
+            if (t < h) h = t;
+        }
+        if (!apu.isHalted()) {
+            if (apuCycleBudget > 0) return c;                                           // an APU instruction is due now
+            const uint64_t need = static_cast<uint64_t>(1 - apuCycleBudget);
+            const uint64_t due = c + (15 - (c & 15)) + 16 * (need - 1);                 // as quietCyclesNonVideo()
+            if (due < h) h = due;
+        }
+        return h;
+    };
+
+    uint64_t h = horizon();
+    uint64_t timerSnap = nextTimerEventCycle;
+    bool apuHaltedSnap = apu.isHalted();
+    while (cpu.getState() == CPUState::Running) {
+        const uint64_t c = masterCycleCount;
+        uint64_t e = c;                                                // the cycle of the CPU's next instruction
+        if (cpuCycleBudget <= 0) {
+            const uint64_t need = static_cast<uint64_t>(1 - cpuCycleBudget);
+            e = c + ((3 - (c & 3)) & 3) + 4 * (need - 1);
+        }
+        if (e >= h || e >= target) return;                             // not this burst's: the generic path takes it
+
+        if (e > c) {                                                   // the quiet cycles before it
+            cpuCycleBudget += static_cast<int64_t>(e / 4 - c / 4);
+            if (!apuHaltedSnap) apuCycleBudget += static_cast<int64_t>(e / 16 - c / 16);
+            audioSampleAccum += AUDIO_SAMPLE_RATE * (e - c);
+            masterCycleCount = e;
+        }
+        videoAccessed = false;
+        cpuApuAudioCycle(static_cast<int>(e & 15));
+        if (videoAccessed) {
+            // as runAhead(): the video chips are exactly at this cycle now, and step() would have handed the PPU the
+            // display's blank lines after the CPU ran
+            ppu.setBlankStatus(display.isVBlank(), display.isHBlank());
+        }
+        updateTimers();
+        masterCycleCount++;
+        if (videoThread.joinable() && masterCycleCount - videoPublished >= VIDEO_CHUNK) {
+            publishVideo(masterCycleCount);
+        }
+
+        if (cpu.isHalted() || !dma.tickIsNoOp()) return;
+        if (nextTimerEventCycle != timerSnap || apu.isHalted() != apuHaltedSnap) {
+            h = horizon();
+            timerSnap = nextTimerEventCycle;
+            apuHaltedSnap = apu.isHalted();
+        }
     }
 }
 

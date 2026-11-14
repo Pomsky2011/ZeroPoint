@@ -29,6 +29,10 @@ CPU::CPU()
     P.I = true;
 
     bankFast.fill(nullptr);
+    bankData.fill(nullptr);
+    bankReadable.fill(0);
+    bankWriteData.fill(nullptr);
+    bankWritable.fill(0);
     bankScan.fill(false);
 }
 
@@ -79,6 +83,14 @@ uint8_t CPU::readByte(uint32_t address) {
     // - unlike the DMA path (see readByteForDMA()), there's no window
     // between "decide if this is privileged" and "do the read" for a
     // cartridge to exploit.
+    // Flat per-bank view for the common case. Chunk gating (see readByteGated) only applies to cartridge banks
+    // read by code that is not the Boot ROM: for the Boot ROM's own reads (the verify routine hashing the
+    // cartridge) the gated and ungated results are the same byte, so they take the flat path too.
+    const uint8_t bank = (address >> 16) & 0xFF;
+    const uint32_t offset = address & 0xFFFF;
+    if (offset < bankReadable[bank] && !(dataGatingActive && bank <= 0x7F && PB != 0xE0) && useMemoryMap) [[likely]] {
+        return bankData[bank][offset];
+    }
     return readByteGated(address, PB == 0xE0);
 }
 
@@ -89,6 +101,15 @@ uint8_t CPU::readByteForDMA(uint32_t address, bool transferPrivileged) {
 uint8_t CPU::readByteGated(uint32_t address, bool exemptFromGating) {
     // If memory mapping is enabled, use it (optimized flag check)
     if (useMemoryMap) [[likely]] {
+        // Fastest path: a plain ROM/RAM byte of a bank that is not subject to chunk-verification gating (see
+        // below): flat per-bank lookup, same bytes as the region walk that follows.
+        {
+            const uint8_t flatBank = (address >> 16) & 0xFF;
+            const uint32_t flatOffset = address & 0xFFFF;
+            if (flatOffset < bankReadable[flatBank] && !(dataGatingActive && flatBank <= 0x7F)) [[likely]] {
+                return bankData[flatBank][flatOffset];
+            }
+        }
         // Fast path: a bank served by a single full-range ROM/RAM region maps
         // offset->data linearly (bankFast is prebuilt for exactly these). This
         // is nearly every access — instruction fetch and RAM/ROM data reads —
@@ -133,6 +154,14 @@ uint8_t CPU::readByteGated(uint32_t address, bool exemptFromGating) {
 void CPU::writeByte(uint32_t address, uint8_t value) {
     // If memory mapping is enabled, use it (optimized flag check)
     if (useMemoryMap) [[likely]] {
+        {   // flat per-bank RAM view (see bankWriteData): the same store as the region walk below
+            const uint8_t flatBank = (address >> 16) & 0xFF;
+            const uint32_t flatOffset = address & 0xFFFF;
+            if (flatOffset < bankWritable[flatBank]) [[likely]] {
+                bankWriteData[flatBank][flatOffset] = value;
+                return;
+            }
+        }
         // Fast path mirrors readByte: RAM writes go straight to the backing
         // array, ROM writes are dropped. Only windows/IO (side-effecting) need
         // the full writeMapped() path.
@@ -190,24 +219,11 @@ void CPU::writeLong(uint32_t address, uint32_t value) {
 }
 
 // Fetch operations
-uint8_t CPU::fetch() {
+uint8_t CPU::fetchSlow() {
     uint32_t addr = (PB << 16) | PC;
     uint8_t value = readByte(addr);
     PC++;
     return value;
-}
-
-uint16_t CPU::fetch16() {
-    uint8_t lo = fetch();
-    uint8_t hi = fetch();
-    return (hi << 8) | lo;
-}
-
-uint32_t CPU::fetch24() {
-    uint8_t lo = fetch();
-    uint8_t mid = fetch();
-    uint8_t hi = fetch();
-    return (hi << 16) | (mid << 8) | lo;
 }
 
 // Stack operations
@@ -1615,9 +1631,26 @@ void CPU::rebuildBankTable() {
         }
     }
 
+    bankData.fill(nullptr);
+    bankReadable.fill(0);
+    bankWriteData.fill(nullptr);
+    bankWritable.fill(0);
+
     for (int b = 0; b < 256; ++b) {
         if (count[b] == 1 && fullRegion[b]) {
             bankFast[b] = fullRegion[b];       // single whole-bank region
+            const MemoryRegion* r = fullRegion[b];
+            if (r->data) {
+                const size_t bankOffset = static_cast<size_t>(b - r->startBank) * 65536;
+                if (r->dataSize > bankOffset) {
+                    bankData[b] = r->data + bankOffset;
+                    bankReadable[b] = static_cast<uint32_t>(std::min<size_t>(65536, r->dataSize - bankOffset));
+                    if (r->type == MemoryRegion::RAM) {
+                        bankWriteData[b] = r->data + bankOffset;
+                        bankWritable[b] = bankReadable[b];
+                    }
+                }
+            }
         } else if (count[b] >= 1) {
             bankScan[b] = true;                // partial/multiple: needs scan
         }
@@ -1659,6 +1692,8 @@ uint8_t CPU::readMapped(uint32_t address) {
 
     uint8_t bank = (address >> 16) & 0xFF;
     uint16_t offset = address & 0xFFFF;
+
+    if (region->touchesVideo && systemPtr) systemPtr->syncVideoForAccess();
 
     switch (region->type) {
         case MemoryRegion::ROM:
@@ -1707,6 +1742,8 @@ void CPU::writeMapped(uint32_t address, uint8_t value) {
 
     uint8_t bank = (address >> 16) & 0xFF;
     uint16_t offset = address & 0xFFFF;
+
+    if (region->touchesVideo && systemPtr) systemPtr->syncVideoForAccess();
 
     switch (region->type) {
         case MemoryRegion::ROM: {
@@ -1923,7 +1960,7 @@ void CPU::allocateRAM(uint8_t startBank, uint8_t numBanks) {
 }
 
 void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
-                           IOReadCallback readFn, IOWriteCallback writeFn) {
+                           IOReadCallback readFn, IOWriteCallback writeFn, bool touchesVideo) {
     MemoryRegion region;
     region.type = MemoryRegion::IO_REGISTERS;
     region.startBank = bank;
@@ -1932,6 +1969,7 @@ void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
     region.endOffset = baseOffset + size - 1;
     region.ioRead = readFn;
     region.ioWrite = writeFn;
+    region.touchesVideo = touchesVideo;
 
     memoryMap.push_back(region);
     useMemoryMap = true;  // Enable memory mapping
@@ -1941,6 +1979,7 @@ void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
 void CPU::mapPPUWindow(uint8_t bank) {
     MemoryRegion region;
     region.type = MemoryRegion::PPU_WINDOW;
+    region.touchesVideo = true;
     region.startBank = bank;
     region.endBank = bank;
     region.startOffset = 0x0000;
@@ -2080,6 +2119,7 @@ void CPU::setupIORegisters() {
                     break;
             }
         }
+        , true  // touchesVideo
     );
 
     // ========================================================================
@@ -2368,6 +2408,7 @@ void CPU::setupIORegisters() {
         },
         // Write handler (read-only, writes ignored)
         [](uint16_t, uint8_t) { /* Read-only block */ }
+        , true  // touchesVideo
     );
 
     // ========================================================================

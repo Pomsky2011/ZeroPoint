@@ -226,8 +226,9 @@ public:
     // I/O register callbacks
     using IOReadCallback = std::function<uint8_t(uint16_t offset)>;
     using IOWriteCallback = std::function<void(uint16_t offset, uint8_t value)>;
+    // touchesVideo: the registers read or write PPU/display state (see MemoryRegion::touchesVideo).
     void registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
-                          IOReadCallback readFn, IOWriteCallback writeFn);
+                          IOReadCallback readFn, IOWriteCallback writeFn, bool touchesVideo = false);
 
     // Register access
     uint16_t getA() const { return A; }
@@ -265,6 +266,7 @@ public:
 
     // Fetch operations
     uint8_t fetch();
+    uint8_t fetchSlow();   // fetch() when the flat view does not apply
     uint16_t fetch16();
     uint32_t fetch24();
 
@@ -487,6 +489,9 @@ private:
         size_t dataSize;
         IOReadCallback ioRead;
         IOWriteCallback ioWrite;
+        // An access reads or changes PPU/display state, so a System that runs the CPU ahead of the video chips
+        // must bring them up to date first (System::syncVideoForAccess()).
+        bool touchesVideo = false;
 
         MemoryRegion() : type(UNMAPPED), startBank(0), endBank(0),
                         startOffset(0), endOffset(0xFFFF),
@@ -508,6 +513,15 @@ private:
     // Rebuilt whenever the memory map changes.
     std::array<MemoryRegion*, 256> bankFast;
     std::array<bool, 256> bankScan;
+    // Flat read view of the same banks, so a plain ROM/RAM read is one bounds check and one load instead of a walk
+    // through bankFast[bank] -> region -> startBank/dataSize/data: bankData[bank] is the byte for offset 0 of that
+    // bank, bankReadable[bank] how many bytes (<= 65536) are really backed by data. 0 for windows, I/O and unmapped
+    // banks, which take the full path.
+    std::array<const uint8_t*, 256> bankData;
+    std::array<uint32_t, 256> bankReadable;
+    // Same for writes: only RAM banks (a write to ROM is dropped by the full path).
+    std::array<uint8_t*, 256> bankWriteData;
+    std::array<uint32_t, 256> bankWritable;
     void rebuildBankTable();
 
     // Legacy memory interface
@@ -597,6 +611,30 @@ private:
     // Execution
     void executeInstruction();
 };
+
+// Instruction fetch is the hottest read there is, so it is inline here: the common case (a plain ROM/RAM byte of the
+// executing bank, not subject to chunk gating) is one bounds check and one load.
+inline uint8_t CPU::fetch() {
+    // Same flat-view shortcut as readByte(): the executing bank is PB, so "is PB the Boot ROM" is a plain compare.
+    if (PC < bankReadable[PB] && !(dataGatingActive && PB <= 0x7F && PB != 0xE0) && useMemoryMap) [[likely]] {
+        return bankData[PB][PC++];
+    }
+    return fetchSlow();
+}
+
+inline uint16_t CPU::fetch16() {
+    uint8_t lo = fetch();
+    uint8_t hi = fetch();
+    return (hi << 8) | lo;
+}
+
+inline uint32_t CPU::fetch24() {
+    uint8_t lo = fetch();
+    uint8_t mid = fetch();
+    uint8_t hi = fetch();
+    return (hi << 16) | (mid << 8) | lo;
+}
+
 
 } // namespace ZeroPoint
 

@@ -55,6 +55,7 @@ PPU::PPU()
     , cycleCounter(0)
     , stallCycles(0)
     , instrCycles(CYC_BASE)
+    , decoded(65536)
     , display(nullptr)
     , currentTileId(0)
     , currentTileBank(0)
@@ -80,6 +81,7 @@ void PPU::reset() {
 
     // Clear memory
     memory.fill(0);
+    for (auto& d : decoded) d.fn = nullptr;
 
     // Reset state
     executionPointer = 0;
@@ -154,6 +156,7 @@ void PPU::reset() {
 void PPU::loadMicrocode(const uint8_t* code, size_t length, uint16_t offset) {
     size_t copyLength = (length + offset > 65536) ? (65536 - offset) : length;
     std::memcpy(&memory[offset], code, copyLength);
+    codeWrittenRange(offset, static_cast<uint32_t>(copyLength));
 }
 
 void PPU::start() {
@@ -266,45 +269,60 @@ void PPU::tick() {
     stallCycles = instrCycles - 1;
 }
 
-void PPU::tickMany(uint32_t n) {
-    // The body of tick(), n times, with the per-cycle function calls and checks hoisted out of the loop and
-    // the idle cycles of a multi-cycle stall collapsed. Per cycle, in this order, exactly like tick():
-    // advance the blit channels, latch blank edges, then burn a stall cycle / take an interrupt / issue.
-    bool latched = false;   // the blank lines are constant for the whole call, so one latch is the same as n
-    while (n > 0) {
-        if (state != PPUState::Running) [[unlikely]] {
-            return;   // tick() returns at once while not running; nothing changes
+void PPU::burnBlitCycles(uint32_t k) {
+    // k cycles' worth of advanceBlitChannels(1), without the per-cycle call: blitClock moves by k unless a blit
+    // completes inside them, and a completion draws pixels and must run in its own cycle (the one that brings
+    // blitClock to blitNextDone), so stop one short of it and take that cycle singly.
+    while (k > 0 && busyBlitChannelCount != 0) {
+        const uint64_t room = blitNextDone - blitClock;   // advances until the next completion cycle
+        if (room > k) {
+            blitClock += k;
+            return;
         }
+        if (room > 1) blitClock += room - 1;
+        advanceBlitChannels(1);
+        k -= room > 1 ? static_cast<uint32_t>(room) : 1;
+    }
+}
+
+void PPU::tickMany(uint32_t n) {
+    // tick() n times, assuming the blank lines don't change meanwhile, one instruction at a time instead of one
+    // cycle at a time. Per cycle tick() does, in this order: advance the blit channels, latch the blank edges,
+    // then burn a stall cycle / take an interrupt / issue an instruction. The blank lines are constant, so the
+    // edge latch is the same on every cycle and can come first; a stall is just that many blit-advancing cycles
+    // with nothing else happening; and interrupts can only be pending from that latch or from before the call, so
+    // whether any is pending is a local that only a serviced interrupt can change.
+    if (n == 0 || state != PPUState::Running) [[unlikely]] return;
+    latchInterruptEdges();
+    bool pending = cpuIrqPending | vblankPending | hblankPending;
+    uint32_t stall = stallCycles;
+    for (;;) {
+        if (stall > 0) {
+            const uint32_t k = stall < n ? stall : n;
+            if (busyBlitChannelCount != 0) burnBlitCycles(k);
+            stall -= k;
+            n -= k;
+            if (n == 0) break;
+        }
+        // An instruction boundary: this cycle advances the blits, then takes an interrupt or issues.
         n--;
         if (busyBlitChannelCount != 0) advanceBlitChannels(1);
-        if (!latched) {
-            latchInterruptEdges();
-            latched = true;
-        }
-
-        if (stallCycles > 0) {
-            stallCycles--;
-            // Further stall cycles only advance the blit clock and latch (a no-op: the blank lines are constant
-            // here). Collapse as many as can go by without a blit completing in them: a completion draws pixels
-            // and must happen in its own cycle.
-            uint32_t m = stallCycles < n ? stallCycles : n;
-            if (busyBlitChannelCount != 0) {
-                const uint64_t room = blitNextDone - blitClock;          // cycles until the next completion
-                const uint64_t safe = room > 1 ? room - 1 : 0;
-                if (safe < m) m = static_cast<uint32_t>(safe);
-                blitClock += m;
+        if (pending) [[unlikely]] {
+            stallCycles = 0;
+            const bool taken = serviceInterrupts();
+            pending = cpuIrqPending | vblankPending | hblankPending;
+            if (taken) {
+                stall = stallCycles;
+                if (n == 0) break;
+                continue;
             }
-            stallCycles -= m;
-            n -= m;
-            continue;
-        }
-
-        if ((cpuIrqPending | vblankPending | hblankPending) && serviceInterrupts()) {
-            continue;
         }
         executeInstruction();
-        stallCycles = instrCycles - 1;
+        stall = instrCycles - 1;
+        if (state != PPUState::Running) [[unlikely]] break;   // an instruction (a write to the VOC halt bit) stopped it
+        if (n == 0) break;
     }
+    stallCycles = stall;
 }
 
 uint32_t PPU::runBatch(uint32_t cycles) {
@@ -346,451 +364,352 @@ uint32_t PPU::runBatch(uint32_t cycles) {
     return cycles - remaining;
 }
 
-void PPU::executeInstruction() {
-    // OPTIMIZED: Inline fetch and decode
-    // Fetch instruction (big-endian, 2 bytes)
-    uint16_t ep = executionPointer;
-    uint16_t instruction = (memory[ep] << 8) | memory[ep + 1];
-    executionPointer = ep + 2;
+// ---------------------------------------------------------------------------------------------------------------
+// Instruction semantics. Each PPU instruction is decoded once, the first time it runs from an address, into a
+// DecodedOp (handler + the fields its encoding carries + its base cycle cost) cached per code address; anything
+// that writes PPU memory drops the cached decodes covering the written byte (codeWritten()). Handlers are the
+// only definition of what an instruction does: tick(), tickMany() and runBatch() all go through
+// executeInstruction().
+// ---------------------------------------------------------------------------------------------------------------
 
-    // Decode: 4-bit opcode, 12-bit operand
-    uint8_t opcode = instruction >> 12;  // No need to mask, only 4 bits
-    uint16_t operand = instruction & 0x0FFF;
+void PPU::opDEFCALL(const DecodedOp& d) { callTable[registers[d.a] & 0xFF] = registers[d.b]; }
+// movxp Y: copy execution pointer + 2 to register Y (the pointer has already moved past this instruction)
+void PPU::opMOVXP(const DecodedOp& d) { registers[d.b] = executionPointer + 2; }
+void PPU::opNOP(const DecodedOp&) {}
+void PPU::opSWAPREG(const DecodedOp& d) {
+    uint16_t temp = registers[d.a];
+    registers[d.a] = registers[d.b];
+    registers[d.b] = temp;
+}
+void PPU::opCLR(const DecodedOp& d) { registers[d.b] = 0; }
+void PPU::opCMP(const DecodedOp& d) { updateFlags(registers[d.a] - registers[d.b], registers[d.a], registers[d.b]); }
+void PPU::opCLRF(const DecodedOp&) { clearFlags(); }
+void PPU::opJMZ(const DecodedOp&) {
+    const bool taken = flags.zero;
+    if (taken) executionPointer = registers[REG_PC];
+    instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
+}
+void PPU::opJMG(const DecodedOp&) {
+    const bool taken = flags.greater;
+    if (taken) executionPointer = registers[REG_PC];
+    instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
+}
+void PPU::opJNZ(const DecodedOp&) {
+    const bool taken = !flags.zero;
+    if (taken) executionPointer = registers[REG_PC];
+    instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
+}
+// jng/jml: taken if not greater (<=)
+void PPU::opJNG(const DecodedOp&) {
+    const bool taken = !flags.greater;
+    if (taken) executionPointer = registers[REG_PC];
+    instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
+}
+void PPU::opINC(const DecodedOp& d) { registers[d.b]++; }
+void PPU::opDEC(const DecodedOp& d) { registers[d.b]--; }
+void PPU::opADD(const DecodedOp& d) { registers[d.a] += registers[d.b]; }
+void PPU::opSUB(const DecodedOp& d) { registers[d.a] -= registers[d.b]; }
+void PPU::opMUL(const DecodedOp& d) { registers[d.a] *= registers[d.b]; }   // cost CYC_MUL: the decoded base cost
+void PPU::opINTDIV(const DecodedOp& d) {                                    // cost CYC_DIV: the decoded base cost
+    if (registers[d.b] != 0) [[likely]] registers[d.a] /= registers[d.b];   // division by zero leaves X alone
+}
 
-    // Pre-extract common operand patterns (for most instructions)
-    // This avoids re-extracting in each case
-    uint8_t regX = (operand >> 6) & 0x3F;
-    uint8_t regY = operand & 0x3F;
+// Preset E. a/b/operand carry the fields of the encoding, see decodeOp().
+void PPU::opTARREG(const DecodedOp& d) {
+    // tarreg T, Y, X: a = T, operand = Y (byte select), b = X (source register)
+    targetRegisters[d.a] = d.b;
+    targetBytes[d.a] = static_cast<uint8_t>(d.operand);
+}
+void PPU::opSETBYTE(const DecodedOp& d) {
+    // setbyte T, imm: a = T, b = immediate
+    const uint8_t regIndex = targetRegisters[d.a];
+    if (targetBytes[d.a] == 0) {
+        registers[regIndex] = (registers[regIndex] & 0xFF00) | d.b;
+    } else {
+        registers[regIndex] = (registers[regIndex] & 0x00FF) | (d.b << 8);
+    }
+}
+void PPU::opBUILD(const DecodedOp& d) {
+    // build T1, T2, X: a = T1 (MSB source), b = T2 (LSB source), operand = X (destination register)
+    const uint8_t regIndex1 = targetRegisters[d.a];
+    const uint8_t regIndex2 = targetRegisters[d.b];
+    const uint8_t msb = (targetBytes[d.a] == 0) ? (registers[regIndex1] & 0xFF) : ((registers[regIndex1] >> 8) & 0xFF);
+    const uint8_t lsb = (targetBytes[d.b] == 0) ? (registers[regIndex2] & 0xFF) : ((registers[regIndex2] >> 8) & 0xFF);
+    registers[d.operand] = (msb << 8) | lsb;
+}
+void PPU::opCPREG(const DecodedOp& d) {
+    // cpreg X, Y: a = X, b = Y, both 4-bit register ids extended by the register banks (SETREGBANK)
+    const uint8_t regX = d.a | (regBankX << 4);
+    const uint8_t regY = d.b | (regBankY << 4);
+    registers[regY] = registers[regX];
+}
 
-    // Default cost: a single-cycle datapath op. Multi-cycle ops (MUL/DIV,
-    // branches, presets) override this below; tick() reads it after we return.
-    instrCycles = CYC_BASE;
+// Preset F.
+void PPU::opSETPOS(const DecodedOp& d) {
+    // setpos X, Y: a, b = 4-bit register ids extended by the register banks. Writes the same memory-mapped position
+    // cells TILEDRAW reads ($0200-$0203), so SETPOS and a raw poke to that region are interchangeable.
+    const uint8_t regX = d.a | (regBankX << 4);
+    const uint8_t regY = d.b | (regBankY << 4);
+    const uint16_t x = registers[regX];
+    const uint16_t y = registers[regY];
+    memory[0x0200] = x & 0xFF;
+    memory[0x0201] = (x >> 8) & 0xFF;
+    memory[0x0202] = y & 0xFF;
+    memory[0x0203] = (y >> 8) & 0xFF;
+    codeWrittenRange(0x0200, 4);
+}
+void PPU::opSETTILE(const DecodedOp& d) {
+    currentTileId = registers[d.a] & 0xFF;
+    currentTileMode = static_cast<uint8_t>(d.b);
+}
+void PPU::opSETDP(const DecodedOp& d) { registers[REG_DP] = registers[d.a]; }
+void PPU::opMOVDP(const DecodedOp& d) {
+    // mov(dp) X: move register X to the address DP points at
+    const uint16_t addr = registers[REG_DP];
+    if (addr < 65535) {
+        memory[addr] = registers[d.a] & 0xFF;
+        memory[addr + 1] = (registers[d.a] >> 8) & 0xFF;
+        codeWritten(addr);
+        codeWritten(addr + 1);
 
+        // Check for memory-mapped I/O
+        handleMemoryWrite(addr, memory[addr]);
+        handleMemoryWrite(addr + 1, memory[addr + 1]);
+    }
+    instrCycles = CYC_MEM;  // word store to (DP)
+}
+void PPU::opSETRENDMOD(const DecodedOp& d) {
+    if (display != nullptr) {
+        const bool is32bit = (d.operand & 0x80) != 0;
+        display->setRenderMode(is32bit ? RenderMode::RGBA32 : RenderMode::RGBA16);
+    }
+}
+void PPU::opPALETTE16_LOAD(const DecodedOp&) {
+    loadPalette16();
+    instrCycles = CYC_PAL_BASE + 16 * CYC_PAL_PER_ENTRY;  // stream 16 words
+}
+void PPU::opPALETTE256_LOAD(const DecodedOp&) {
+    loadPalette256();
+    instrCycles = CYC_PAL_BASE + 256 * CYC_PAL_PER_ENTRY;  // stream 256 words
+}
+void PPU::opJMR(const DecodedOp&) {
+    executionPointer = registers[REG_PC];
+    instrCycles = CYC_BRANCH_TAKEN;  // unconditional jump: always taken
+}
+void PPU::opMOV(const DecodedOp& d) {
+    // mov X (dp): move from the address DP points at to register X
+    const uint16_t addr = registers[REG_DP];
+    if (addr < 65535) {
+        const uint8_t low = handleMemoryRead(addr);
+        const uint8_t high = handleMemoryRead(addr + 1);
+        registers[d.a] = low | (high << 8);
+    }
+    instrCycles = CYC_MEM;  // word load from (DP)
+}
+void PPU::opSETREGBANK(const DecodedOp& d) {
+    regBankX = d.a;
+    regBankY = d.b;
+}
+void PPU::opCLRTILE(const DecodedOp&) {
+        // clrtile - clear tile storage (all banks)
+        for (auto& bank : tileStorage) {
+            for (auto& tile : bank) {
+                tile.fill(0);
+            }
+        }
+        instrCycles = CYC_CLRTILE;  // bulk fixed-function clear
+}
+void PPU::opCLRPALETTE(const DecodedOp&) {
+        // clrpalette - clear both palettes to default grayscale
+        for (int i = 0; i < 16; i++) {
+            uint8_t gray = (i << 4) | i;
+            palette16[i] = ((gray >> 3) << 11) | ((gray >> 3) << 6) | ((gray >> 3) << 1) | 1;
+        }
+        refreshPalette16Expanded();
+        for (int i = 0; i < 256; i++) {
+            palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;
+        }
+        instrCycles = CYC_CLRPAL;  // bulk fixed-function reset
+}
+void PPU::opTILEDRAW(const DecodedOp&) {
+        // tiledraw - snapshot the current draw state (position, tile,
+        // mode, blend settings) into a free blit channel and dispatch
+        // it to run concurrently - see BlitChannel's comment in ppu.h.
+        // The actual pixel writes happen in executeBlit() when the
+        // channel's own completeAt is reached, not here.
+        int freeChannel = -1;
+        for (size_t i = 0; i < NUM_BLIT_CHANNELS; i++) {
+            if (!blitChannels[i].busy) {
+                freeChannel = static_cast<int>(i);
+                break;
+            }
+        }
+
+        uint32_t blitCost = CYC_TILE_BASE +
+                             TILE_PIXELS * (tileBlendMode != 0 ? CYC_TILE_PX_BLEND
+                                                               : CYC_TILE_PX);
+
+        if (freeChannel >= 0) {
+            BlitChannel& ch = blitChannels[freeChannel];
+            ch.busy = true;
+            busyBlitChannelCount++;
+            ch.completeAt = blitClock + blitCost;
+            if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
+            ch.x = memory[0x0200] | (memory[0x0201] << 8);
+            ch.y = memory[0x0202] | (memory[0x0203] << 8);
+            ch.tileBank = currentTileBank;
+            ch.tileId = currentTileId;
+            ch.tileMode = currentTileMode;
+            ch.blendMode = tileBlendMode;
+            ch.translucency = tileTranslucency;
+
+            // Dispatch-only cost: the PPU is free to issue its next
+            // instruction (e.g. scheduling another TILEDRAW into a
+            // different channel) while this one runs in the background.
+            instrCycles = CYC_TILE_BASE;
+        } else {
+            // All channels busy: fall back to the old fully-synchronous
+            // blit rather than drop this draw or corrupt an in-flight
+            // one. Never worse than pre-concurrency behavior, and with
+            // sane pacing (channels free up faster than a well-tuned
+            // scheduler re-issues TILEDRAW) this path shouldn't trigger.
+            BlitChannel synchronous;
+            synchronous.x = memory[0x0200] | (memory[0x0201] << 8);
+            synchronous.y = memory[0x0202] | (memory[0x0203] << 8);
+            synchronous.tileBank = currentTileBank;
+            synchronous.tileId = currentTileId;
+            synchronous.tileMode = currentTileMode;
+            synchronous.blendMode = tileBlendMode;
+            synchronous.translucency = tileTranslucency;
+            executeBlit(synchronous);
+            instrCycles = blitCost;
+        }
+}
+void PPU::opSETTILEBANK(const DecodedOp& d) {
+    currentTileBank = static_cast<uint8_t>(registers[d.a] % MAX_TILE_BANKS);
+}
+void PPU::opCALL(const DecodedOp& d) {
+    // call X: call the function registered under slot X (via DEFCALL). Pushes the return address the same way blank
+    // interrupt entry does, so the ppuasm RET shorthand can pop it back.
+    pushReturnAddress(executionPointer);
+    executionPointer = callTable[d.operand];
+    instrCycles = CYC_CALL;
+}
+void PPU::opGBLS(const DecodedOp& d) {
+    if (vblank) {
+        registers[d.a] = 0;
+    } else if (hblank) {
+        registers[d.a] = 1;
+    } else {
+        registers[d.a] = 65535;
+    }
+}
+
+// A handler as a plain function pointer, so dispatch is one indirect call to a direct, inlined body: the trampoline
+// binds the member function at compile time.
+#define ZP_OP(h) (&PPU::opTrampoline<&PPU::h>)
+
+PPU::DecodedOp PPU::decodeOp(uint16_t ep) const {
+    const uint16_t instruction = (memory[ep] << 8) | memory[(ep + 1) & 0xFFFF];
+    const uint8_t opcode = instruction >> 12;
+    const uint16_t operand = instruction & 0x0FFF;
+    const uint8_t regX = (operand >> 6) & 0x3F;
+    const uint8_t regY = operand & 0x3F;
+
+    DecodedOp d;
+    d.operand = 0;
+    d.a = d.b = 0;
+    d.cost = CYC_BASE;    // a single-cycle datapath op; multi-cycle ones override it here or in their handler
     switch (static_cast<PPUOpcode>(opcode)) {
-        case PPUOpcode::DEFCALL: {
-            // defcall X, Y - register registers[Y] as the entry point for call
-            // slot registers[X] (masked to the table's 8-bit range, matching
-            // CALL's 8-bit operand). Encoding: 0000 XXXXXX YYYYYY.
-            callTable[registers[regX] & 0xFF] = registers[regY];
+        case PPUOpcode::DEFCALL:   d.fn = ZP_OP(opDEFCALL); d.a = regX; d.b = regY; break;
+        case PPUOpcode::MOVXP_NOP:
+            if ((operand & 0x800) == 0) { d.fn = ZP_OP(opMOVXP); d.b = regY; }
+            else d.fn = ZP_OP(opNOP);
             break;
-        }
-
-        case PPUOpcode::MOVXP_NOP: {
-            // Encoding: 0001 D 00000 XXXXXX
-            // D=0: movxp X - copy execution pointer + 2 to register X
-            // D=1: nop - do nothing
-            if ((operand & 0x800) == 0) [[likely]] {  // Likely MOVXP
-                // MOVXP X - copy EP+2 to register X
-                registers[regY] = executionPointer + 2;  // Uses regY (lower 6 bits)
-            }
-            // If bit 11 set, it's NOP - do nothing
-            break;
-        }
-
-        case PPUOpcode::SWAPREG: {
-            // swapreg X Y - swap registers X and Y (regX, regY pre-extracted)
-            uint16_t temp = registers[regX];
-            registers[regX] = registers[regY];
-            registers[regY] = temp;
-            break;
-        }
-
-        case PPUOpcode::CLR: {
-            // clr X - clear register X (regY = lower 6 bits)
-            registers[regY] = 0;
-            break;
-        }
-
-        case PPUOpcode::CMP: {
-            // cmp X Y - compare X and Y (regX, regY pre-extracted)
-            updateFlags(registers[regX] - registers[regY], registers[regX], registers[regY]);
-            break;
-        }
-
-        case PPUOpcode::CLRF: {
-            // clrf - clear flags
-            clearFlags();
-            break;
-        }
-
-        case PPUOpcode::JUMP_ZG: {
-            // Bit 11: 0 = jmz, 1 = jmg
-            bool isGreater = (operand & 0x800) != 0;
-            bool taken = isGreater ? flags.greater : flags.zero;
-            if (taken) {
-                executionPointer = registers[REG_PC];
-            }
-            instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
-            break;
-        }
-
-        case PPUOpcode::JUMP_NZG: {
-            // Bit 11: 0 = jnz, 1 = jng (jml)
-            bool isNotGreater = (operand & 0x800) != 0;
-            // jng/jml: taken if not greater (<=); jnz: taken if not zero.
-            bool taken = isNotGreater ? !flags.greater : !flags.zero;
-            if (taken) {
-                executionPointer = registers[REG_PC];
-            }
-            instrCycles = taken ? CYC_BRANCH_TAKEN : CYC_BRANCH_NOT;
-            break;
-        }
-
-        case PPUOpcode::INC: {
-            // inc X - increment register X (regY = lower 6 bits)
-            registers[regY]++;
-            break;
-        }
-
-        case PPUOpcode::DEC: {
-            // dec X - decrement register X (regY = lower 6 bits)
-            registers[regY]--;
-            break;
-        }
-
-        case PPUOpcode::ADD: {
-            // add X Y - X = X + Y (regX, regY pre-extracted)
-            registers[regX] += registers[regY];
-            break;
-        }
-
-        case PPUOpcode::SUB: {
-            // sub X Y - X = X - Y (regX, regY pre-extracted)
-            registers[regX] -= registers[regY];
-            break;
-        }
-
-        case PPUOpcode::MUL: {
-            // mul X Y - X = X * Y (regX, regY pre-extracted)
-            registers[regX] *= registers[regY];
-            instrCycles = CYC_MUL;
-            break;
-        }
-
-        case PPUOpcode::INTDIV: {
-            // intdiv X Y - X = X / Y (regX, regY pre-extracted)
-            if (registers[regY] != 0) [[likely]] {  // Division by zero is unlikely
-                registers[regX] /= registers[regY];
-            }
-            instrCycles = CYC_DIV;
-            break;
-        }
-
+        case PPUOpcode::SWAPREG:   d.fn = ZP_OP(opSWAPREG); d.a = regX; d.b = regY; break;
+        case PPUOpcode::CLR:       d.fn = ZP_OP(opCLR); d.b = regY; break;
+        case PPUOpcode::CMP:       d.fn = ZP_OP(opCMP); d.a = regX; d.b = regY; break;
+        case PPUOpcode::CLRF:      d.fn = ZP_OP(opCLRF); break;
+        case PPUOpcode::JUMP_ZG:   d.fn = (operand & 0x800) ? ZP_OP(opJMG) : ZP_OP(opJMZ); break;
+        case PPUOpcode::JUMP_NZG:  d.fn = (operand & 0x800) ? ZP_OP(opJNG) : ZP_OP(opJNZ); break;
+        case PPUOpcode::INC:       d.fn = ZP_OP(opINC); d.b = regY; break;
+        case PPUOpcode::DEC:       d.fn = ZP_OP(opDEC); d.b = regY; break;
+        case PPUOpcode::ADD:       d.fn = ZP_OP(opADD); d.a = regX; d.b = regY; break;
+        case PPUOpcode::SUB:       d.fn = ZP_OP(opSUB); d.a = regX; d.b = regY; break;
+        case PPUOpcode::MUL:       d.fn = ZP_OP(opMUL); d.a = regX; d.b = regY; d.cost = CYC_MUL; break;
+        case PPUOpcode::INTDIV:    d.fn = ZP_OP(opINTDIV); d.a = regX; d.b = regY; d.cost = CYC_DIV; break;
         case PPUOpcode::PRESET_E: {
-            // preset E Z W - immediate/byte operations
-            uint8_t subopcode = (operand >> 10) & 0x03;  // 2 bits for sub-opcode (bits 11-10)
-            uint16_t suboperand = operand & 0x3FF;        // 10 bits for operand (bits 9-0)
-            instrCycles = CYC_PRESET_E;  // extra decode stage; handler may override
-            executePresetE(subopcode, suboperand);
-            break;
-        }
-
-        case PPUOpcode::PRESET_F: {
-            // preset F Z W - extended instructions
-            uint8_t subopcode = (operand >> 8) & 0x0F;  // 4 bits for sub-opcode
-            uint8_t suboperand = operand & 0xFF;
-            instrCycles = CYC_PRESET_F;  // extra decode stage; handler may override
-            executePresetF(subopcode, suboperand);
-            break;
-        }
-    }
-}
-
-void PPU::executePresetE(uint8_t subopcode, uint16_t operand) {
-    switch (static_cast<PresetEOpcode>(subopcode)) {
-        case PresetEOpcode::TARREG: {
-            // tarreg T, Y, X - set target register T to point to register X, target byte Y
-            // Encoding: 00 TT Y 0 XXXXXX (bits 11-10: subop, bits 9-8: TT, bit 7: Y, bit 6: unused, bits 5-0: XXXXXX)
-            uint8_t targetReg = (operand >> 8) & 0x03;     // 2 bits for target register (bits 9-8)
-            uint8_t targetByte = (operand >> 7) & 0x01;    // 1 bit for byte select (bit 7)
-            uint8_t sourceReg = operand & 0x3F;            // 6 bits for source register (bits 5-0)
-
-            targetRegisters[targetReg] = sourceReg;
-            targetBytes[targetReg] = targetByte;
-            break;
-        }
-
-        case PresetEOpcode::SETBYTE: {
-            // setbyte T, 0xXX - set byte in target register to immediate value
-            // Encoding: 01 TT XXXXXXXX (bits 11-10: subop, bits 9-8: TT, bits 7-0: XXXXXXXX)
-            uint8_t targetReg = (operand >> 8) & 0x03;     // 2 bits for target register (bits 9-8)
-            uint8_t immediate = operand & 0xFF;            // 8 bits immediate value (bits 7-0)
-
-            // Get the register pointed to by target register
-            uint8_t regIndex = targetRegisters[targetReg];
-            uint8_t byteSel = targetBytes[targetReg];
-
-            if (byteSel == 0) {
-                // LSB
-                registers[regIndex] = (registers[regIndex] & 0xFF00) | immediate;
-            } else {
-                // MSB
-                registers[regIndex] = (registers[regIndex] & 0x00FF) | (immediate << 8);
-            }
-            break;
-        }
-
-        case PresetEOpcode::BUILD: {
-            // build T1, T2, X - set register X's MSB from target T1, LSB from target T2
-            // Encoding: 10 TT TT XXXXXX (T1 at bits 9-8, T2 at bits 7-6, dest at
-            // bits 5-0 of the 10-bit suboperand - matches ppuasm.c's encoder:
-            // suboperand = (T1<<8)|(T2<<6)|(dest&0x3F). This used to read T1/T2
-            // two bits too low (>>6/>>4), which both silently corrupted T1 and
-            // made dest's low 2 bits alias T2's field - see ucode.txt's changelog.
-            uint8_t targetReg1 = (operand >> 8) & 0x03;    // First target (MSB source)
-            uint8_t targetReg2 = (operand >> 6) & 0x03;    // Second target (LSB source)
-            uint8_t destReg = operand & 0x3F;              // Destination register (0-63)
-
-            // Get values from the registers pointed to by target registers
-            uint8_t regIndex1 = targetRegisters[targetReg1];
-            uint8_t regIndex2 = targetRegisters[targetReg2];
-            uint8_t byteSel1 = targetBytes[targetReg1];
-            uint8_t byteSel2 = targetBytes[targetReg2];
-
-            // Extract the bytes
-            uint8_t msb = (byteSel1 == 0) ? (registers[regIndex1] & 0xFF) : ((registers[regIndex1] >> 8) & 0xFF);
-            uint8_t lsb = (byteSel2 == 0) ? (registers[regIndex2] & 0xFF) : ((registers[regIndex2] >> 8) & 0xFF);
-
-            // Build the 16-bit value
-            registers[destReg] = (msb << 8) | lsb;
-            break;
-        }
-
-        case PresetEOpcode::CPREG: {
-            // cpreg X, Y - copy register X to register Y (using register banks)
-            // Encoding: 11 00 XXXX YYYY
-            uint8_t regX = ((operand >> 4) & 0x0F) | (regBankX << 4);  // 4-bit reg ID with bank
-            uint8_t regY = (operand & 0x0F) | (regBankY << 4);         // 4-bit reg ID with bank
-
-            registers[regY] = registers[regX];
-            break;
-        }
-    }
-}
-
-void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
-    switch (static_cast<PresetFOpcode>(subopcode)) {
-        case PresetFOpcode::SETPOS: {
-            // setpos X, Y - set tile-draw position from two 4-bit register
-            // IDs, extended via SETREGBANK the same way CPREG extends its
-            // operands. Encoding: 0000 XXXX YYYY.
-            // Writes into the same memory-mapped position cells TILEDRAW
-            // reads ($0200-$0203), so SETPOS and a raw poke to that region
-            // are interchangeable.
-            uint8_t regX = ((operand >> 4) & 0x0F) | (regBankX << 4);
-            uint8_t regY = (operand & 0x0F) | (regBankY << 4);
-            uint16_t x = registers[regX];
-            uint16_t y = registers[regY];
-            memory[0x0200] = x & 0xFF;
-            memory[0x0201] = (x >> 8) & 0xFF;
-            memory[0x0202] = y & 0xFF;
-            memory[0x0203] = (y >> 8) & 0xFF;
-            break;
-        }
-
-        case PresetFOpcode::SETTILE: {
-            // settile X, Y - set tile pointed to by register X, in mode Y
-            // Encoding: 0001 XXXXXX YY
-            uint8_t regX = (operand >> 2) & 0x3F;   // 6 bits for register
-            uint8_t mode = operand & 0x03;          // 2 bits for mode (0-3)
-
-            currentTileId = registers[regX] & 0xFF;
-            currentTileMode = mode;
-            break;
-        }
-
-        case PresetFOpcode::SETDP: {
-            // setdp X - set DP register
-            uint8_t regX = (operand >> 2) & 0x3F;
-            registers[REG_DP] = registers[regX];
-            break;
-        }
-
-        case PresetFOpcode::MOVDP: {
-            // mov(dp) X - move register X to address pointed by DP
-            uint8_t regX = (operand >> 2) & 0x3F;
-            uint16_t addr = registers[REG_DP];
-            if (addr < 65535) {
-                memory[addr] = registers[regX] & 0xFF;
-                memory[addr + 1] = (registers[regX] >> 8) & 0xFF;
-
-                // Check for memory-mapped I/O
-                handleMemoryWrite(addr, memory[addr]);
-                handleMemoryWrite(addr + 1, memory[addr + 1]);
-            }
-            instrCycles = CYC_MEM;  // word store to (DP)
-            break;
-        }
-
-        case PresetFOpcode::SETRENDMOD: {
-            // setrendmod - set render mode
-            if (display != nullptr) {
-                bool is32bit = (operand & 0x80) != 0;
-                display->setRenderMode(is32bit ? RenderMode::RGBA32 : RenderMode::RGBA16);
-            }
-            break;
-        }
-
-        case PresetFOpcode::PALETTE16_LOAD: {
-            // 16cpaletteload(dp) - load 16-color palette from DP
-            loadPalette16();
-            instrCycles = CYC_PAL_BASE + 16 * CYC_PAL_PER_ENTRY;  // stream 16 words
-            break;
-        }
-
-        case PresetFOpcode::PALETTE256_LOAD: {
-            // 256cpaletteload(dp) - load 256-color palette from DP
-            loadPalette256();
-            instrCycles = CYC_PAL_BASE + 256 * CYC_PAL_PER_ENTRY;  // stream 256 words
-            break;
-        }
-
-        case PresetFOpcode::JMR: {
-            // jmr (pc) - jump relative to PC
-            executionPointer = registers[REG_PC];
-            instrCycles = CYC_BRANCH_TAKEN;  // unconditional jump: always taken
-            break;
-        }
-
-        case PresetFOpcode::MOV: {
-            // mov X (dp) - move from address pointed by DP to register X
-            uint8_t regX = (operand >> 2) & 0x3F;
-            uint16_t addr = registers[REG_DP];
-            if (addr < 65535) {
-                uint8_t low = handleMemoryRead(addr);
-                uint8_t high = handleMemoryRead(addr + 1);
-                registers[regX] = low | (high << 8);
-            }
-            instrCycles = CYC_MEM;  // word load from (DP)
-            break;
-        }
-
-        case PresetFOpcode::SETREGBANK: {
-            // setregbank Z W - set register banks for setpos
-            regBankX = (operand >> 4) & 0x03;
-            regBankY = (operand >> 2) & 0x03;
-            break;
-        }
-
-        case PresetFOpcode::CLRTILE: {
-            // clrtile - clear tile storage (all banks)
-            for (auto& bank : tileStorage) {
-                for (auto& tile : bank) {
-                    tile.fill(0);
-                }
-            }
-            instrCycles = CYC_CLRTILE;  // bulk fixed-function clear
-            break;
-        }
-
-        case PresetFOpcode::CLRPALETTE: {
-            // clrpalette - clear both palettes to default grayscale
-            for (int i = 0; i < 16; i++) {
-                uint8_t gray = (i << 4) | i;
-                palette16[i] = ((gray >> 3) << 11) | ((gray >> 3) << 6) | ((gray >> 3) << 1) | 1;
-            }
-            refreshPalette16Expanded();
-            for (int i = 0; i < 256; i++) {
-                palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;
-            }
-            instrCycles = CYC_CLRPAL;  // bulk fixed-function reset
-            break;
-        }
-
-        case PresetFOpcode::TILEDRAW: {
-            // tiledraw - snapshot the current draw state (position, tile,
-            // mode, blend settings) into a free blit channel and dispatch
-            // it to run concurrently - see BlitChannel's comment in ppu.h.
-            // The actual pixel writes happen in executeBlit() when the
-            // channel's own completeAt is reached, not here.
-            int freeChannel = -1;
-            for (size_t i = 0; i < NUM_BLIT_CHANNELS; i++) {
-                if (!blitChannels[i].busy) {
-                    freeChannel = static_cast<int>(i);
+            const uint8_t subopcode = (operand >> 10) & 0x03;   // bits 11-10
+            const uint16_t sub = operand & 0x3FF;               // bits 9-0
+            d.cost = CYC_PRESET_E;                              // extra decode stage; a handler may override
+            switch (static_cast<PresetEOpcode>(subopcode)) {
+                case PresetEOpcode::TARREG:
+                    d.fn = ZP_OP(opTARREG);
+                    d.a = (sub >> 8) & 0x03;                    // target register
+                    d.operand = (sub >> 7) & 0x01;              // byte select
+                    d.b = sub & 0x3F;                           // source register
                     break;
-                }
-            }
-
-            uint32_t blitCost = CYC_TILE_BASE +
-                                 TILE_PIXELS * (tileBlendMode != 0 ? CYC_TILE_PX_BLEND
-                                                                   : CYC_TILE_PX);
-
-            if (freeChannel >= 0) {
-                BlitChannel& ch = blitChannels[freeChannel];
-                ch.busy = true;
-                busyBlitChannelCount++;
-                ch.completeAt = blitClock + blitCost;
-                if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
-                ch.x = memory[0x0200] | (memory[0x0201] << 8);
-                ch.y = memory[0x0202] | (memory[0x0203] << 8);
-                ch.tileBank = currentTileBank;
-                ch.tileId = currentTileId;
-                ch.tileMode = currentTileMode;
-                ch.blendMode = tileBlendMode;
-                ch.translucency = tileTranslucency;
-
-                // Dispatch-only cost: the PPU is free to issue its next
-                // instruction (e.g. scheduling another TILEDRAW into a
-                // different channel) while this one runs in the background.
-                instrCycles = CYC_TILE_BASE;
-            } else {
-                // All channels busy: fall back to the old fully-synchronous
-                // blit rather than drop this draw or corrupt an in-flight
-                // one. Never worse than pre-concurrency behavior, and with
-                // sane pacing (channels free up faster than a well-tuned
-                // scheduler re-issues TILEDRAW) this path shouldn't trigger.
-                BlitChannel synchronous;
-                synchronous.x = memory[0x0200] | (memory[0x0201] << 8);
-                synchronous.y = memory[0x0202] | (memory[0x0203] << 8);
-                synchronous.tileBank = currentTileBank;
-                synchronous.tileId = currentTileId;
-                synchronous.tileMode = currentTileMode;
-                synchronous.blendMode = tileBlendMode;
-                synchronous.translucency = tileTranslucency;
-                executeBlit(synchronous);
-                instrCycles = blitCost;
+                case PresetEOpcode::SETBYTE:
+                    d.fn = ZP_OP(opSETBYTE);
+                    d.a = (sub >> 8) & 0x03;
+                    d.b = sub & 0xFF;                           // immediate
+                    break;
+                case PresetEOpcode::BUILD:
+                    d.fn = ZP_OP(opBUILD);
+                    d.a = (sub >> 8) & 0x03;                    // MSB source target
+                    d.b = (sub >> 6) & 0x03;                    // LSB source target
+                    d.operand = sub & 0x3F;                     // destination register
+                    break;
+                case PresetEOpcode::CPREG:
+                    d.fn = ZP_OP(opCPREG);
+                    d.a = (sub >> 4) & 0x0F;
+                    d.b = sub & 0x0F;
+                    break;
             }
             break;
         }
-
-        case PresetFOpcode::SETTILEBANK: {
-            // settilebank X - select tile bank from register X. Same
-            // encoding shape as SETDP/MOVDP (0001 XXXXXX --): a plain
-            // register operand in bits 2-7, low 2 bits unused. Widens total
-            // addressable tiles past the 8-bit SETTILE ID field by paging,
-            // not by changing that field's width - see tileStorage's comment.
-            uint8_t regX = (operand >> 2) & 0x3F;
-            currentTileBank = static_cast<uint8_t>(registers[regX] % MAX_TILE_BANKS);
-            break;
-        }
-
-        case PresetFOpcode::CALL: {
-            // call X - call the function registered under slot X (via DEFCALL).
-            // Pushes the return address the same way blank/CPU interrupt entry
-            // does (SP grows upward), so the ppuasm RET shorthand
-            // (SETDP SP; DEC SP; DEC SP; MOV PC; JMR) can pop it back.
-            pushReturnAddress(executionPointer);
-            executionPointer = callTable[operand];
-            instrCycles = CYC_CALL;
-            break;
-        }
-
-        case PresetFOpcode::GBLS: {
-            // gbls - get blank status
-            uint8_t regX = (operand >> 2) & 0x3F;
-            if (vblank) {
-                registers[regX] = 0;
-            } else if (hblank) {
-                registers[regX] = 1;
-            } else {
-                registers[regX] = 65535;
+        case PPUOpcode::PRESET_F: {
+            const uint8_t subopcode = (operand >> 8) & 0x0F;
+            const uint8_t sub = operand & 0xFF;
+            d.cost = CYC_PRESET_F;                              // extra decode stage; a handler may override
+            switch (static_cast<PresetFOpcode>(subopcode)) {
+                case PresetFOpcode::SETPOS:          d.fn = ZP_OP(opSETPOS); d.a = (sub >> 4) & 0x0F; d.b = sub & 0x0F; break;
+                case PresetFOpcode::SETTILE:         d.fn = ZP_OP(opSETTILE); d.a = (sub >> 2) & 0x3F; d.b = sub & 0x03; break;
+                case PresetFOpcode::SETDP:           d.fn = ZP_OP(opSETDP); d.a = (sub >> 2) & 0x3F; break;
+                case PresetFOpcode::MOVDP:           d.fn = ZP_OP(opMOVDP); d.a = (sub >> 2) & 0x3F; break;
+                case PresetFOpcode::SETRENDMOD:      d.fn = ZP_OP(opSETRENDMOD); d.operand = sub; break;
+                case PresetFOpcode::PALETTE16_LOAD:  d.fn = ZP_OP(opPALETTE16_LOAD); break;
+                case PresetFOpcode::PALETTE256_LOAD: d.fn = ZP_OP(opPALETTE256_LOAD); break;
+                case PresetFOpcode::JMR:             d.fn = ZP_OP(opJMR); break;
+                case PresetFOpcode::MOV:             d.fn = ZP_OP(opMOV); d.a = (sub >> 2) & 0x3F; break;
+                case PresetFOpcode::SETREGBANK:      d.fn = ZP_OP(opSETREGBANK); d.a = (sub >> 4) & 0x03; d.b = (sub >> 2) & 0x03; break;
+                case PresetFOpcode::CLRTILE:         d.fn = ZP_OP(opCLRTILE); break;
+                case PresetFOpcode::CLRPALETTE:      d.fn = ZP_OP(opCLRPALETTE); break;
+                case PresetFOpcode::TILEDRAW:        d.fn = ZP_OP(opTILEDRAW); break;
+                case PresetFOpcode::SETTILEBANK:     d.fn = ZP_OP(opSETTILEBANK); d.a = (sub >> 2) & 0x3F; break;
+                case PresetFOpcode::CALL:            d.fn = ZP_OP(opCALL); d.operand = sub; break;
+                case PresetFOpcode::GBLS:            d.fn = ZP_OP(opGBLS); d.a = (sub >> 2) & 0x3F; break;
             }
             break;
         }
     }
+    return d;
 }
 
-// updateFlags and clearFlags are now inline in ppu.h
+#undef ZP_OP
+
+void PPU::executeInstruction() {
+    // Fetch: the cached decode of the instruction at the execution pointer, decoding it on first use.
+    const uint16_t ep = executionPointer;
+    DecodedOp* d = &decoded[ep];
+    if (!d->fn) [[unlikely]] {
+        *d = decodeOp(ep);
+    }
+    executionPointer = ep + 2;
+    instrCycles = d->cost;   // handlers that cost more than their base override it
+    d->fn(*this, *d);
+}
+
 
 uint8_t PPU::handleMemoryRead(uint16_t address) const {
     // Current scanline (read-only), 16-bit little-endian at $00E0-$00E1. Lets
@@ -1055,10 +974,11 @@ void PPU::loadPalette16() {
     // Load 16-color palette from memory address pointed to by DP
     uint16_t addr = registers[REG_DP];
 
-    // Read 16 palette entries (16-bit format: BBGGGRRRRR-A)
+    // Read 16 palette entries (16-bit format: BBGGGRRRRR-A). The address wraps at 16 bits like the PPU stack does
+    // (a DP near $FFFF used to read past the end of `memory`).
     for (int i = 0; i < 16; i++) {
-        uint8_t low = memory[addr + i * 2];
-        uint8_t high = memory[addr + i * 2 + 1];
+        uint8_t low = memory[(addr + i * 2) & 0xFFFF];
+        uint8_t high = memory[(addr + i * 2 + 1) & 0xFFFF];
         palette16[i] = (high << 8) | low;
     }
     refreshPalette16Expanded();
@@ -1075,11 +995,12 @@ void PPU::loadPalette256() {
     uint16_t addr = registers[REG_DP];
 
     // Read 256 palette entries (32-bit format: RRGGBBAA, b0=R first in memory)
+    // (Wraps at 16 bits, see loadPalette16.)
     for (int i = 0; i < 256; i++) {
-        uint8_t b0 = memory[addr + i * 4];
-        uint8_t b1 = memory[addr + i * 4 + 1];
-        uint8_t b2 = memory[addr + i * 4 + 2];
-        uint8_t b3 = memory[addr + i * 4 + 3];
+        uint8_t b0 = memory[(addr + i * 4) & 0xFFFF];
+        uint8_t b1 = memory[(addr + i * 4 + 1) & 0xFFFF];
+        uint8_t b2 = memory[(addr + i * 4 + 2) & 0xFFFF];
+        uint8_t b3 = memory[(addr + i * 4 + 3) & 0xFFFF];
         palette256[i] = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
     }
 }
@@ -1182,6 +1103,55 @@ void PPU::executeBlit(const BlitChannel& channel) {
     // to the display in one go - same colors, same order, one rolling-buffer lookup per row instead of per pixel.
     if (channel.blendMode == 0) {
         const auto& tile = tileStorage[channel.tileBank][channel.tileId];
+        if (is4bpp) {
+            // 4bpp: both color modes read the 16-entry palette, and translucency depends only on the color, so
+            // apply it to the 16 entries once and decode each row (4 bytes) straight into 8 colors.
+            uint32_t lut[16];
+            for (int i = 0; i < 16; i++) lut[i] = applyTranslucency(palette16Expanded[i], channel.tileId);
+            // Whole-row stores straight into the framebuffer when the tile is on screen and the window holds
+            // the row (nearly always); setPixelRow32 below is the clipped / out-of-window path.
+            const bool mode16 = display->getRenderMode() == RenderMode::RGBA16;
+            uint16_t lut16[16];
+            if (mode16) {
+                for (int i = 0; i < 16; i++) lut16[i] = Display::color32To16(lut[i]);
+            }
+            for (int ty = 0; ty < 8; ty++) {
+                const uint8_t* src = &tile[ty * 4];
+                if (uint8_t* dst = display->rowSpan(x, y + ty, 8)) {
+                    if (mode16) {
+                        for (int k = 0; k < 4; k++) {
+                            const uint16_t a = lut16[src[k] >> 4];
+                            const uint16_t b = lut16[src[k] & 0x0F];
+                            dst[4 * k] = a & 0xFF;
+                            dst[4 * k + 1] = a >> 8;
+                            dst[4 * k + 2] = b & 0xFF;
+                            dst[4 * k + 3] = b >> 8;
+                        }
+                    } else {
+                        for (int k = 0; k < 4; k++) {
+                            const uint32_t a = lut[src[k] >> 4];
+                            const uint32_t b = lut[src[k] & 0x0F];
+                            dst[8 * k] = a >> 24;
+                            dst[8 * k + 1] = (a >> 16) & 0xFF;
+                            dst[8 * k + 2] = (a >> 8) & 0xFF;
+                            dst[8 * k + 3] = a & 0xFF;
+                            dst[8 * k + 4] = b >> 24;
+                            dst[8 * k + 5] = (b >> 16) & 0xFF;
+                            dst[8 * k + 6] = (b >> 8) & 0xFF;
+                            dst[8 * k + 7] = b & 0xFF;
+                        }
+                    }
+                    continue;
+                }
+                uint32_t rowColors[8];
+                for (int k = 0; k < 4; k++) {
+                    rowColors[2 * k] = lut[src[k] >> 4];
+                    rowColors[2 * k + 1] = lut[src[k] & 0x0F];
+                }
+                display->setPixelRow32(x, y + ty, rowColors, 8);
+            }
+            return;
+        }
         for (int ty = 0; ty < 8; ty++) {
             uint32_t rowColors[8];
             for (int tx = 0; tx < 8; tx++) {

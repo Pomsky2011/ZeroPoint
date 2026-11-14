@@ -8,8 +8,12 @@
 #include "display.h"
 #include "rom.h"
 #include "interrupt_controller.h"
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace ZeroPoint {
@@ -59,6 +63,25 @@ public:
     // moving, are applied in bulk (see quietCycles()) and only the cycles where something else can happen run
     // through step(). test_batched checks the two paths against each other.
     void runCycles(uint64_t cycles);               // Run CYCLES_PER_FRAME cycles, or until the CPU halts
+
+    // Let the PPU/display catch-up (see syncVideoForAccess) run on a worker thread alongside the CPU/APU events
+    // whenever the CPU is not touching them: bit-exact (the CPU's own accesses still wait for the worker to reach
+    // exactly their cycle), and only worth it with 2+ cores, so it is ignored on a single-core host. Call between
+    // runCycles() calls; off by default.
+    void setVideoThread(bool on);
+    // What a frontend should pass to setVideoThread(): on, unless ZEROPOINT_VIDEO_THREAD=0 is set.
+    static bool videoThreadDefault();
+
+    // Called by the CPU on every access to something that reads or changes PPU/display state (the PPU window and
+    // the PPU/display I/O blocks). While runCycles() is running the CPU ahead of the video chips (the catch-up
+    // scheduler, see docs/batched-clock.md) this brings them up to date through the current cycle first, exactly
+    // where a lockstep step() would already have ticked them. A no-op otherwise.
+    void syncVideoForAccess() {
+        if (videoLazy) {
+            syncVideo(masterCycleCount + 1);
+            videoAccessed = true;
+        }
+    }
     bool loadROM(const std::string& filename);
 
     // Replace the default Boot ROM stub (installed at construction) with an
@@ -257,6 +280,13 @@ private:
     // MASTER_CLOCK_HZ / AUDIO_SAMPLE_RATE isn't an integer. No drift over
     // an arbitrarily long run.
     uint64_t audioSampleAccum;
+    // The master cycle on which the accumulator next reaches a full second's worth and a sample is emitted. The
+    // accumulator advances by AUDIO_SAMPLE_RATE every cycle whatever else happens, so this is fixed between
+    // emissions; keeping it (instead of dividing on every scheduler query) is what quietCyclesNonVideo() reads.
+    uint64_t nextAudioCycle;
+    static uint64_t audioCyclesUntilSample(uint64_t accum) {   // cycles before the one that emits, from `accum`
+        return (TIMER_SECOND_PERIOD - accum + AUDIO_SAMPLE_RATE - 1) / AUDIO_SAMPLE_RATE - 1;
+    }
     std::vector<int16_t> audioBuffer;
 
     // Clock cycle pattern (repeats every 16 master cycles)
@@ -280,11 +310,58 @@ private:
     // state via out-params so checkInterrupts() reuses it instead of resampling.
     void tickComponents(bool& outVBlank, bool& outHBlank);
 
+    // Catch-up scheduling: while videoLazy, the PPU and display have been ticked through master cycle
+    // videoCycle - 1 only, and the CPU/APU/timers/audio run ahead of them (runAhead()). videoLazy is false
+    // (and the video chips are exactly at masterCycleCount) whenever control is outside runCycles(), and while
+    // it runs the old lockstep path (DMA busy, or a blank IRQ enabled).
+    bool videoLazy = false;
+    bool videoAccessed = false;     // the CPU touched the video chips during the current event cycle
+    std::atomic<uint64_t> videoCycle{0};
+    void tickVideoTo(uint64_t targetCycle);   // the catch-up itself, on whichever thread owns the video chips
+    void syncVideo(uint64_t targetCycle);     // owner: waits for the worker (if any), then catches up inline
+
+    // Video worker thread. The video chips (PPU, display) have exactly one owner at a time: the worker while
+    // vtDone < vtRequest, the thread running runCycles() otherwise. The runner hands work over by raising
+    // vtRequest (always <= the cycle it is at, so the worker never passes a cycle the CPU may still touch) and
+    // takes the chips back by waiting for vtDone == vtRequest; both directions are release/acquire.
+    bool videoThreadWanted = false;
+    std::thread videoThread;
+    std::mutex vtMutex;
+    std::condition_variable vtWake;      // runner -> worker: vtRequest raised, or quit
+    std::condition_variable vtIdle;      // worker -> runner: vtDone advanced
+    uint64_t vtRequest = 0;              // guarded by vtMutex (only the runner writes it)
+    std::atomic<uint64_t> vtDone{0};
+    bool vtQuit = false;                 // guarded by vtMutex
+    uint64_t videoPublished = 0;         // runner only: the last cycle handed to the worker (or synced inline)
+    static constexpr uint64_t VIDEO_CHUNK = 4096;   // hand the worker a stretch only once this much has built up
+    void videoThreadMain();
+    void startVideoThread();
+    void stopVideoThread();
+    void waitVideoIdle();
+    void publishVideo(uint64_t targetCycle);
+    void leaveRunAhead();
+    void runAhead(uint64_t target);
+    void lockstepEvent(uint64_t target);
+    uint64_t quietCyclesNonVideo() const;
+    void advanceNonVideo(uint64_t cycles);
+
+    // The part of a master cycle after ppu/display/dma have ticked: CPU and APU budget and instructions, blank
+    // status hand-off to the PPU, audio sampler. tickComponents() ends with it; runCycles() calls it directly on
+    // an event cycle whose ppu/display ticks it already folded into the batch before.
+    void tickRest(int cyclePhase, bool& outVBlank, bool& outHBlank, bool sampleVideo = true);
+    inline void cpuApuAudioCycle(int cyclePhase);   // the CPU/APU/audio part of tickRest(), forced inline
+    void runCpuBurst(uint64_t target);
+
     // How many of the next master cycles are "quiet": only ppu.tick() and display.tick()'s pixel increment
     // happen (no CPU/APU instruction or budget accrual, DMA tick, timer, audio sample, H-blank edge or end of
-    // line). 0 when the very next cycle needs the full step().
-    uint64_t quietCycles() const;
-    void advanceQuiet(uint64_t cycles);
+    // line). 0 when the very next cycle needs the full step(). `displayQuiet` gets the display's share of that
+    // (how many of the next ticks are a bare pixel increment); the return value is the cycles before the first
+    // non-display event, so the cycle after those is an event cycle, and a pure one (nothing the display does
+    // on it) when the return value < displayQuiet.
+    uint64_t quietCycles(uint64_t& displayQuiet) const;
+    // Apply `cycles` quiet cycles. `foldEventTick` also ticks the PPU and display once more, for the pure event
+    // cycle that follows (see quietCycles()): its CPU/APU/audio/timer work is left to the caller.
+    void advanceQuiet(uint64_t cycles, bool foldEventTick = false);
     void checkInterrupts(bool currentVBlank, bool currentHBlank);
     void updateTimers();
 

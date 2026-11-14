@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <array>
+#include <vector>
 
 namespace ZeroPoint {
 
@@ -127,6 +128,8 @@ public:
         this->hblank = hblank;
     }
 
+    bool blankStatusIs(bool vblank, bool hblank) const { return this->vblank == vblank && this->hblank == hblank; }
+
     // Set display pointer (for memory-mapped display I/O)
     void setDisplay(Display* disp) {
         display = disp;
@@ -155,6 +158,7 @@ public:
 
     void writeMemory(uint16_t address, uint8_t value) {
         memory[address] = value;
+        codeWritten(address);
         handleMemoryWrite(address, value);
     }
 
@@ -240,7 +244,7 @@ private:
     // cycle it is issued, then occupies the PPU for the remaining cycles of its
     // cost. While stallCycles > 0 the PPU is "busy" and tick() does nothing but
     // count down. instrCycles is the cost of the instruction most recently
-    // issued (set during executeInstruction / executePresetF).
+    // issued (set during executeInstruction / the op handlers).
     uint32_t stallCycles;
     uint16_t instrCycles;
 
@@ -278,7 +282,7 @@ private:
     // state inside dma.cpp for no benefit over keeping it where the state
     // already lives. If every channel is busy when TILEDRAW issues, it falls
     // back to the old fully-synchronous blit (never drops a draw, only ever
-    // costs extra cycles in that pathological case) - see executePresetF's
+    // costs extra cycles in that pathological case) - see opTILEDRAW's
     // TILEDRAW case and advanceBlitChannels().
     struct BlitChannel {
         bool busy = false;
@@ -347,8 +351,36 @@ private:
 
     // Execution methods
     void executeInstruction();
-    void executePresetE(uint8_t subopcode, uint16_t operand);
-    void executePresetF(uint8_t subopcode, uint8_t operand);
+    // Decoded-instruction cache (see the "Instruction semantics" block in ppu.cpp): one entry per code address
+    // (an instruction is 2 bytes at any address), filled on first execution, dropped when a byte of it is written.
+    struct DecodedOp;
+    using OpFn = void (*)(PPU&, const DecodedOp&);
+    struct DecodedOp {
+        OpFn fn = nullptr;       // null = not decoded (or invalidated)
+        uint16_t operand = 0;    // a field that does not fit a/b, per instruction
+        uint8_t a = 0, b = 0;    // the instruction's register/immediate fields
+        uint16_t cost = 1;       // base cycle cost; a handler that costs more overrides instrCycles itself
+    };
+    template <void (PPU::*Handler)(const DecodedOp&)>
+    static void opTrampoline(PPU& ppu, const DecodedOp& d) { (ppu.*Handler)(d); }
+    std::vector<DecodedOp> decoded;
+    DecodedOp decodeOp(uint16_t ep) const;
+    void codeWritten(uint16_t address) {
+        decoded[address].fn = nullptr;
+        decoded[(address - 1) & 0xFFFF].fn = nullptr;
+    }
+    void codeWrittenRange(uint32_t first, uint32_t count) {
+        for (uint32_t i = 0; i <= count; i++) decoded[(first + i - 1) & 0xFFFF].fn = nullptr;
+    }
+#define ZP_PPU_OPS(X) X(DEFCALL) X(MOVXP) X(NOP) X(SWAPREG) X(CLR) X(CMP) X(CLRF) X(JMZ) X(JMG) X(JNZ) X(JNG) \
+    X(INC) X(DEC) X(ADD) X(SUB) X(MUL) X(INTDIV) X(TARREG) X(SETBYTE) X(BUILD) X(CPREG) X(SETPOS) X(SETTILE) \
+    X(SETDP) X(MOVDP) X(SETRENDMOD) X(PALETTE16_LOAD) X(PALETTE256_LOAD) X(JMR) X(MOV) X(SETREGBANK) X(CLRTILE) \
+    X(CLRPALETTE) X(TILEDRAW) X(SETTILEBANK) X(CALL) X(GBLS)
+#define ZP_DECLARE_OP(name) void op##name(const DecodedOp& d);
+    ZP_PPU_OPS(ZP_DECLARE_OP)
+#undef ZP_DECLARE_OP
+#undef ZP_PPU_OPS
+
 
     // Edge-detect vblank/hblank and latch into vblankPending/hblankPending.
     // Must be called every cycle, including mid-stall - see its own comment
@@ -369,6 +401,7 @@ private:
     // blit's completion timing is identical however the PPU's own
     // instruction stream happens to be interleaved around it.
     void advanceBlitChannels(uint32_t elapsed);
+    void burnBlitCycles(uint32_t k);   // k single-cycle advanceBlitChannels(1)s, collapsed where no blit completes
 
     // Perform one channel's blit (the pixel loop TILEDRAW used to run
     // synchronously), reading only the snapshotted state captured at
@@ -384,6 +417,8 @@ private:
         registers[REG_SP] += 2;
         memory[registers[REG_SP]] = returnAddr & 0xFF;
         memory[(registers[REG_SP] + 1) & 0xFFFF] = (returnAddr >> 8) & 0xFF;
+        codeWritten(registers[REG_SP]);
+        codeWritten(registers[REG_SP] + 1);
     }
 
     // Helper methods

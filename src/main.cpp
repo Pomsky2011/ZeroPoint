@@ -101,6 +101,7 @@ int main(int argc, char** argv) {
 
     // Full-system mode: drive CPU, PPU, APU, DMA, and display through System.
     System system;
+    system.setVideoThread(System::videoThreadDefault());   // PPU/display catch-up beside the CPU (2+ cores)
     if (devMode) {
         system.setDevMode(true);
     }
@@ -125,6 +126,8 @@ int main(int argc, char** argv) {
             const int due = pacer.framesDue(std::chrono::duration<double>(frameStart.time_since_epoch()).count());
             int done = 0;
             while (done < due) {
+                system.getDisplay().setLatchEnabled(FramePacer::shouldLatch(
+                    done, due, std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count()));
                 system.stepFrame();
                 done++;
                 if (std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count() >=
@@ -170,6 +173,8 @@ int main(int argc, char** argv) {
         const int due = pacer.framesDue(std::chrono::duration<double>(frameStart.time_since_epoch()).count());
         int done = 0;
         while (done < due && !system.getCPU().isHalted()) {
+            system.getDisplay().setLatchEnabled(FramePacer::shouldLatch(
+                done, due, std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count()));
             system.stepFrame();
             done++;
             if (std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count() >=

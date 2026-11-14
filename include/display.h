@@ -62,6 +62,12 @@ public:
     }
     void advanceQuiet(int n) { currentPixel += n; }
 
+    // Latching copies each finished scanline into the frame a frontend reads (getScanline*()); nothing in the
+    // machine reads it back. A frontend that steps several rasters per displayed frame can switch it off for all
+    // but the last one (the only one it shows). Does not change anything else: the rolling buffer, the PPU and
+    // the CPU see no difference. Default on.
+    void setLatchEnabled(bool on) { latchEnabled = on; }
+
     // Get current scanline (0-260)
     int getCurrentScanline() const { return currentScanline; }
 
@@ -118,6 +124,20 @@ public:
     // 8-pixel rows want). Same checks and result as count calls to setPixel32(x + i, y, colors[i]).
     void setPixelRow32(int x, int y, const Color32* colors, int count);
 
+    // Direct pointer to the framebuffer bytes of `count` pixels starting at (x, y), in the current render mode's
+    // layout (2 bytes/pixel little-endian Color16, or 4 bytes/pixel R,G,B,A), so a blit can store a whole run
+    // without per-pixel calls. Null when setPixelRow32 would write anything less than the full run: y off the
+    // screen or outside the rolling window, or the run not wholly inside the scanline. Valid until the next
+    // call that moves the window.
+    uint8_t* rowSpan(int x, int y, int count) {
+        if (y < 0 || y >= FULL_HEIGHT || x < 0 || x + count > FB_WIDTH) return nullptr;
+        int offsetInBank;
+        const int bank = getBufferBank(y, offsetInBank);
+        if (bank < 0) return nullptr;
+        const size_t bpp = renderMode == RenderMode::RGBA16 ? 2 : 4;
+        return &framebuffer[static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank + static_cast<size_t>(x) * bpp];
+    }
+
     // Set a pixel in the framebuffer (32-bit)
     // Note: Writes to scanlines outside the current 8-scanline window will be forgotten
     void setPixel32(int x, int y, Color32 color);
@@ -147,12 +167,6 @@ public:
     static Color16 color32To16(Color32 color);
 
 private:
-    // Lookup table for RGBA16 -> RGBA32 (outputFrame format) conversion.
-    // Pre-computed to eliminate per-pixel bit manipulation in latchScanline().
-    static uint32_t color16To32_LUT[65536];
-    static bool lutInitialized;
-    static void initializeLUT();
-
     // Rolling framebuffer: 8 banks × 1 KiB = 8 KiB, mapped at $E000-$FFFF in
     // PPU memory. Holds a sliding window of scanlines (16 in RGBA16, 8 in
     // RGBA32); scanline y lives in slot (y % window). Writes outside the
@@ -162,6 +176,7 @@ private:
     // Latched full-frame output (RGBA32). As each visible scanline is scanned
     // out, it is copied here from the rolling buffer, so the frontend can read
     // a complete 256×256 frame even though the live buffer only holds a window.
+    bool latchEnabled = true;
     std::array<Color32, FB_WIDTH * FULL_HEIGHT> outputFrame;  // 256 KiB
 
     // Current render mode

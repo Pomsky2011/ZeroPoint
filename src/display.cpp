@@ -3,31 +3,12 @@
 
 namespace ZeroPoint {
 
-// Static lookup table for color conversion
-uint32_t Display::color16To32_LUT[65536];
-bool Display::lutInitialized = false;
-
-void Display::initializeLUT() {
-    if (lutInitialized) return;
-
-    // Pre-compute all 65536 RGBA16 -> RGBA32 conversions in the same packing as
-    // color16To32() / outputFrame: (R<<24)|(G<<16)|(B<<8)|A.
-    for (uint32_t color16 = 0; color16 < 65536; color16++) {
-        color16To32_LUT[color16] = color16To32(static_cast<Color16>(color16));
-    }
-
-    lutInitialized = true;
-}
-
 Display::Display()
     : renderMode(RenderMode::RGBA16)
     , currentScanline(0)
     , currentPixel(0)
     , windowStart(0)
 {
-    // Initialize lookup table on first Display creation
-    initializeLUT();
-
     // Initialize rolling buffer and latched output frame to black
     framebuffer.fill(0);
     outputFrame.fill(0);
@@ -43,7 +24,7 @@ void Display::tick() {
     if (currentPixel >= TOTAL_PIXELS_PER_LINE) [[unlikely]] {
         // End of scanline (H-Blank). Latch the scanline we just displayed into
         // the full-frame output before the rolling window slides past it.
-        if (currentScanline >= 1 && currentScanline <= VISIBLE_SCANLINES) [[likely]] {
+        if (latchEnabled && currentScanline >= 1 && currentScanline <= VISIBLE_SCANLINES) [[likely]] {
             latchScanline(currentScanline - 1);
         }
 
@@ -172,10 +153,16 @@ void Display::latchScanline(int fbY) {
 
     size_t base = static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank;
     if (renderMode == RenderMode::RGBA16) {
+        // Same packing as color16To32(), written branch-free so the loop vectorizes (a 64K-entry LUT here was a
+        // 256 KB table hit 50M times a second, a cache miss per few pixels).
+        const uint8_t* src = &framebuffer[base];
         for (int x = 0; x < FB_WIDTH; x++) {
-            uint8_t low  = framebuffer[base + x * 2];
-            uint8_t high = framebuffer[base + x * 2 + 1];
-            out[x] = color16To32_LUT[(high << 8) | low];
+            const uint32_t c = static_cast<uint32_t>(src[x * 2 + 1] << 8) | src[x * 2];
+            const uint32_t r5 = (c >> 1) & 0x1F;
+            const uint32_t g5 = (c >> 6) & 0x1F;
+            const uint32_t b5 = (c >> 11) & 0x1F;
+            out[x] = (((r5 << 3) | (r5 >> 2)) << 24) | (((g5 << 3) | (g5 >> 2)) << 16) |
+                     (((b5 << 3) | (b5 >> 2)) << 8) | (0u - (c & 1u) & 0xFFu);
         }
     } else {
         for (int x = 0; x < FB_WIDTH; x++) {
@@ -254,6 +241,29 @@ void Display::setPixelRow32(int x, int y, const Color32* colors, int count) {
     int bank = getBufferBank(y, offsetInBank);
     if (bank < 0) return;   // Outside buffer window
     const size_t rowBase = static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank;
+
+    // A whole run inside the scanline (every tile blit but the clipped ones at the screen edge) needs no
+    // per-pixel bounds checks: the rolling buffer is always big enough for a full scanline.
+    if (x >= 0 && x + count <= FB_WIDTH) {
+        if (renderMode == RenderMode::RGBA32) {
+            uint8_t* dst = &framebuffer[rowBase + static_cast<size_t>(x) * 4];
+            for (int i = 0; i < count; i++) {
+                const Color32 color = colors[i];
+                dst[4 * i] = (color >> 24) & 0xFF;
+                dst[4 * i + 1] = (color >> 16) & 0xFF;
+                dst[4 * i + 2] = (color >> 8) & 0xFF;
+                dst[4 * i + 3] = color & 0xFF;
+            }
+        } else {
+            uint8_t* dst = &framebuffer[rowBase + static_cast<size_t>(x) * 2];
+            for (int i = 0; i < count; i++) {
+                const Color16 color16 = color32To16(colors[i]);
+                dst[2 * i] = color16 & 0xFF;
+                dst[2 * i + 1] = (color16 >> 8) & 0xFF;
+            }
+        }
+        return;
+    }
 
     if (renderMode == RenderMode::RGBA32) {
         for (int i = 0; i < count; i++) {

@@ -44,6 +44,17 @@ public:
 
     void stepped(int frames) { console += frames * FRAME_SECONDS; }
 
+    // Whether the raster about to be stepped should be latched into the frame the frontend shows (see
+    // Display::setLatchEnabled): `done` of `due` rasters are stepped so far this tick, `elapsed` seconds in. Only
+    // one raster per tick is ever shown, but a tick that runs out of STEP_BUDGET_SECONDS stops early, so "the
+    // last one due" alone would never come on a host that is too slow, and the frame would stay black. So also
+    // latch the first raster (there is always a recent whole frame) and the one after which the average raster
+    // cost says the budget runs out.
+    static bool shouldLatch(int done, int due, double elapsed) {
+        if (done == 0 || done + 1 >= due) return true;
+        return elapsed + elapsed / done >= STEP_BUDGET_SECONDS;
+    }
+
     void reset() { started = false; console = 0; }
 
 private:
