@@ -207,8 +207,9 @@ public:
     // the Boot ROM's own code grows, the same way GBA's SWI vector is a
     // fixed BIOS address rather than something callers resolve dynamically.
     static constexpr uint16_t BOOT_SVC_ENTRY = 0x0004;
-    // COP #$F0-#$FE: one signature per Boot ROM math service (trig.def: SIN, COS,
-    // SINCOS, ATAN2, ATAN, SQRT, HYPOT = $F0-$F6, the rest reserved). Slot n is a
+    // COP #$F0-#$FE: one signature per Boot ROM service (trig.def: SIN, COS, SINCOS,
+    // ATAN2, ATAN, SQRT, HYPOT = $F0-$F6; handoff.def: PPU_LOAD = $F7; the rest
+    // reserved). Slot n is a
     // 4-byte `jml` at BOOT_SVC_TABLE + 4*(sig - BOOT_SVC_MATH_FIRST), right after
     // the two fixed vectors. Unlike COP #$FF these are unprivileged: they don't
     // set bootServiceActive.

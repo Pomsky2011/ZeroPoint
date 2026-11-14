@@ -53,6 +53,15 @@ public:
     // Clock the display by one pixel
     void tick();
 
+    // Bulk advance for a batching scheduler. quietTicks() is how many of the next tick()s are guaranteed to do
+    // nothing but currentPixel++ (no H-blank edge at pixel VISIBLE_PIXELS_PER_LINE, no end of line); advanceQuiet(n)
+    // applies n <= quietTicks() of them at once. The tick after those is the one that must be run for real.
+    int quietTicks() const {
+        const int next = currentPixel < VISIBLE_PIXELS_PER_LINE ? VISIBLE_PIXELS_PER_LINE : TOTAL_PIXELS_PER_LINE;
+        return next - currentPixel - 1;
+    }
+    void advanceQuiet(int n) { currentPixel += n; }
+
     // Get current scanline (0-260)
     int getCurrentScanline() const { return currentScanline; }
 
@@ -122,6 +131,10 @@ public:
     // Fills buffer with 256 pixels in SDL ARGB8888 format
     // Returns false if scanline is outside rolling buffer window
     bool getScanlineSDL(int y, uint32_t* buffer) const;
+
+    // FNV-1a hash of all emulated state (rolling buffer, latched frame, raster position, window).
+    // For regression tests that compare two paths that must be state-identical.
+    uint64_t stateHash() const;
 
     // Helper: Convert 16-bit color to 32-bit
     static Color32 color16To32(Color16 color);

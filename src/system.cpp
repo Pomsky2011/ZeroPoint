@@ -328,8 +328,52 @@ void System::run(uint64_t cycles) {
 }
 
 void System::stepFrame() {
-    for (uint64_t i = 0; i < CYCLES_PER_FRAME; i++) {
-        if (cpu.isHalted()) break;
+    runCycles(CYCLES_PER_FRAME);
+}
+
+uint64_t System::quietCycles() const {
+    // Everything tickComponents()/step() does besides ppu.tick() and display.tick()'s increment, and the first
+    // cycle at which it can matter. The cycle numbers below are masterCycleCount values; "quiet" is how many
+    // cycles come before the first such one.
+    if (!dma.tickIsNoOp()) return 0;
+    const uint64_t c = masterCycleCount;
+    uint64_t q = static_cast<uint64_t>(display.quietTicks());
+
+    if (cpu.getState() == CPUState::Running) {
+        if (cpuCycleBudget > 0) return 0;                 // an instruction is due now
+        const uint64_t toAccrual = (3 - (c & 3)) & 3;     // budget accrues when c % 4 == 3
+        if (toAccrual < q) q = toAccrual;
+    }
+    if (!apu.isHalted()) {
+        if (apuCycleBudget > 0) return 0;
+        const uint64_t toAccrual = 15 - (c & 15);         // ... c % 16 == 15
+        if (toAccrual < q) q = toAccrual;
+    }
+    if (nextTimerEventCycle != UINT64_MAX) {              // updateTimers() fires when c >= nextTimerEventCycle
+        const uint64_t toTimer = nextTimerEventCycle > c ? nextTimerEventCycle - c : 0;
+        if (toTimer < q) q = toTimer;
+    }
+    // Audio: a sample is emitted on the cycle the accumulator reaches a full second's worth.
+    const uint64_t need = TIMER_SECOND_PERIOD - audioSampleAccum;
+    const uint64_t toSample = (need + AUDIO_SAMPLE_RATE - 1) / AUDIO_SAMPLE_RATE - 1;
+    if (toSample < q) q = toSample;
+    return q;
+}
+
+void System::advanceQuiet(uint64_t cycles) {
+    ppu.tickMany(static_cast<uint32_t>(cycles));
+    display.advanceQuiet(static_cast<int>(cycles));
+    audioSampleAccum += AUDIO_SAMPLE_RATE * cycles;
+    masterCycleCount += cycles;
+}
+
+void System::runCycles(uint64_t cycles) {
+    const uint64_t target = masterCycleCount + cycles;
+    while (masterCycleCount < target && !cpu.isHalted()) {
+        uint64_t q = quietCycles();
+        if (q > target - masterCycleCount) q = target - masterCycleCount;
+        if (q > 0) advanceQuiet(q);
+        if (masterCycleCount >= target) break;
         step();
     }
 }

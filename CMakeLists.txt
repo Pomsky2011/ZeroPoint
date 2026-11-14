@@ -281,6 +281,22 @@ target_link_libraries(test_boot_jingle zeropoint_core)
 add_executable(test_boot_trig tools/test_boot_trig.cpp)
 target_link_libraries(test_boot_trig zeropoint_core)
 
+# Boot ROM -> cartridge PPU handoff (splash fade-out, COP #$F7 PPU load); needs ZPbootROM's build + test carts
+add_executable(test_boot_handoff tools/test_boot_handoff.cpp)
+target_link_libraries(test_boot_handoff zeropoint_core)
+
+# System::runCycles (batched master clock) must be state-identical to per-cycle step()
+add_executable(test_batched tools/test_batched.cpp)
+target_link_libraries(test_batched zeropoint_core)
+
+# FramePacer (console clock vs wall clock) unit test
+add_executable(test_frame_pacer tools/test_frame_pacer.cpp)
+target_link_libraries(test_frame_pacer zeropoint_core)
+
+# Runs a ROM in the whole System headlessly and writes its audio to a WAV
+add_executable(zpb_wav tools/zpb_wav.cpp)
+target_link_libraries(zpb_wav zeropoint_core)
+
 # APU demo runner (with SDL audio) — Linux only (dev tool)
 if(PLATFORM_LINUX)
     add_executable(run_apu_demo tools/run_apu_demo.cpp)
@@ -394,6 +410,22 @@ set_target_properties(test_boot_jingle PROPERTIES
 )
 
 set_target_properties(test_boot_trig PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(zpb_wav PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_frame_pacer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_batched PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_boot_handoff PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

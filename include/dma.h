@@ -97,6 +97,11 @@ public:
     void clearInterrupt();
     bool isInterruptActive() const { return interruptActive; }
 
+    // True when tick() would do nothing for the foreseeable future: DMA is paused for an interrupt, or
+    // there is nothing transferring and nothing queued (the same two early-outs tick() takes first).
+    // Only a register write or an interrupt edge changes that, so a batching scheduler can skip ticks.
+    bool tickIsNoOp() const { return interruptActive || (busyChannels == 0 && pendingQueue.empty()); }
+
     // Reset all DMA transfers
     void reset();
 

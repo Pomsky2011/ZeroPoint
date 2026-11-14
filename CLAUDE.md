@@ -335,6 +335,12 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - **Boot ROM math services**: `COP #$F0-#$F6` = SIN/COS/SINCOS/ATAN2/ATAN/SQRT/HYPOT in the real ZPbootROM
   (needs `--boot`; the default stub leaves those signatures to the cartridge). 16-bit binary angles,
   Q1.15. Test: `bin/test_boot_trig`; see `docs/boot-math-services.md`.
+- **Batched master clock**: `System::runCycles`/`stepFrame` apply quiet cycles (only PPU ticks + pixel counter) in
+  bulk and run event cycles through `step()`; state-identical, checked by `bin/test_batched`. ~1.4-1.8x so far; see
+  `docs/batched-clock.md` for the profile and what a 3x target still needs (PPU JIT).
+- **Boot ROM PPU handoff**: after a good signature the splash fades to black and the PPU is reset (idle, black);
+  the cartridge loads its own PPU program with `COP #$F7`. Test: `ZPbootROM/tests/handoff/run_test.sh`
+  (`bin/test_boot_handoff`); see `docs/boot-handoff.md`.
 - **Boot ROM signature verification** (in the separate `ZPbootROM` project, opt-in via `--boot`): RSA-2048/SHA-256 verification of zpbuild-signed v1/v2/v3 ROM trailers, halting instead of booting on any failure. v3's chunked-data-manifest defers bulk-data hashing to load time — a chunk reads as poison (`0xDE`/`0xAF`) until verified via a hardware-gated `COP #$FF` call into the Boot ROM, closed against both the DMA-read and direct-jump ROP-style bypasses that would otherwise let a cartridge fake or dodge the check. See `docs/zpb-format.md`.
 - **Basic CLI debugger** (`bin/debugger`, `tools/debugger.cpp`): headless REPL over `System` (no SDL/Qt/Vulkan). CPU/PPU/APU register inspection, single-instruction stepping (advances the whole master clock until one CPU instruction retires, so PPU/APU/DMA/Display stay in sync), CPU-PC breakpoints, `continue` (Ctrl-C to break back to the prompt), and raw memory read/write for all three address spaces. Annotates the opcode at PC with its mnemonic via a table pulled from the generated `src/cpu_instructions.cpp` comments (authoritative, unlike ZPdevtools' own `cpudisasm.c` table, which only covers ~80/256 opcodes) — it decodes only the single opcode at PC, not a multi-instruction listing, since several addressing modes are 8/16-bit depending on the live M/X flags.
 

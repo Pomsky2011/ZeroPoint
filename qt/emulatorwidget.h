@@ -6,6 +6,7 @@
 #include <QImage>
 #include <QString>
 #include "system.h"
+#include "frame_pacer.h"
 #include "keybindings.h"
 
 class EmulatorWidget : public QWidget
@@ -52,6 +53,7 @@ private:
     ZeroPoint::System system;
     QImage frameBuffer;
     int timerId;
+    ZeroPoint::FramePacer pacer;
     bool running;
     bool poweredOn;
     QString bootRomPath;

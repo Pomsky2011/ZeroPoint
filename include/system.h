@@ -52,7 +52,13 @@ public:
 
     void step();                    // Execute one master clock cycle
     void run(uint64_t cycles);      // Run for N cycles
-    void stepFrame();               // Run CYCLES_PER_FRAME cycles, or until the CPU halts
+    void stepFrame();
+
+    // Advance `cycles` master cycles (stopping early if the CPU halts), state-identically to calling step() that
+    // many times - but quiet stretches, where the only thing happening is the PPU ticking and the raster counter
+    // moving, are applied in bulk (see quietCycles()) and only the cycles where something else can happen run
+    // through step(). test_batched checks the two paths against each other.
+    void runCycles(uint64_t cycles);               // Run CYCLES_PER_FRAME cycles, or until the CPU halts
     bool loadROM(const std::string& filename);
 
     // Replace the default Boot ROM stub (installed at construction) with an
@@ -273,6 +279,12 @@ private:
     // Helper methods. tickComponents() returns the display's post-tick blank
     // state via out-params so checkInterrupts() reuses it instead of resampling.
     void tickComponents(bool& outVBlank, bool& outHBlank);
+
+    // How many of the next master cycles are "quiet": only ppu.tick() and display.tick()'s pixel increment
+    // happen (no CPU/APU instruction or budget accrual, DMA tick, timer, audio sample, H-blank edge or end of
+    // line). 0 when the very next cycle needs the full step().
+    uint64_t quietCycles() const;
+    void advanceQuiet(uint64_t cycles);
     void checkInterrupts(bool currentVBlank, bool currentHBlank);
     void updateTimers();
 

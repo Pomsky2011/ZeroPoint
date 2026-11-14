@@ -114,6 +114,8 @@ void PPU::reset() {
         ch = BlitChannel();
     }
     busyBlitChannelCount = 0;
+    blitClock = 0;
+    blitNextDone = UINT64_MAX;
 
     // Initialize palette system (default grayscale palettes)
     for (int i = 0; i < 16; i++) {
@@ -262,6 +264,43 @@ void PPU::tick() {
     // its cycle cost. executeInstruction() sets instrCycles for the op it ran.
     executeInstruction();
     stallCycles = instrCycles - 1;
+}
+
+void PPU::tickMany(uint32_t n) {
+    // The body of tick(), n times, with the per-cycle function calls and checks hoisted out of the loop and
+    // the idle cycles of a multi-cycle stall collapsed. Per cycle, in this order, exactly like tick():
+    // advance the blit channels, latch blank edges, then burn a stall cycle / take an interrupt / issue.
+    while (n > 0) {
+        if (state != PPUState::Running) [[unlikely]] {
+            return;   // tick() returns at once while not running; nothing changes
+        }
+        n--;
+        if (busyBlitChannelCount != 0) advanceBlitChannels(1);
+        latchInterruptEdges();
+
+        if (stallCycles > 0) {
+            stallCycles--;
+            // Further stall cycles only advance the blit clock and latch (a no-op: the blank lines are constant
+            // here). Collapse as many as can go by without a blit completing in them: a completion draws pixels
+            // and must happen in its own cycle.
+            uint32_t m = stallCycles < n ? stallCycles : n;
+            if (busyBlitChannelCount != 0) {
+                const uint64_t room = blitNextDone - blitClock;          // cycles until the next completion
+                const uint64_t safe = room > 1 ? room - 1 : 0;
+                if (safe < m) m = static_cast<uint32_t>(safe);
+                blitClock += m;
+            }
+            stallCycles -= m;
+            n -= m;
+            continue;
+        }
+
+        if ((cpuIrqPending | vblankPending | hblankPending) && serviceInterrupts()) {
+            continue;
+        }
+        executeInstruction();
+        stallCycles = instrCycles - 1;
+    }
 }
 
 uint32_t PPU::runBatch(uint32_t cycles) {
@@ -659,7 +698,7 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
             // mode, blend settings) into a free blit channel and dispatch
             // it to run concurrently - see BlitChannel's comment in ppu.h.
             // The actual pixel writes happen in executeBlit() when the
-            // channel's own cyclesRemaining reaches 0, not here.
+            // channel's own completeAt is reached, not here.
             int freeChannel = -1;
             for (size_t i = 0; i < NUM_BLIT_CHANNELS; i++) {
                 if (!blitChannels[i].busy) {
@@ -676,7 +715,8 @@ void PPU::executePresetF(uint8_t subopcode, uint8_t operand) {
                 BlitChannel& ch = blitChannels[freeChannel];
                 ch.busy = true;
                 busyBlitChannelCount++;
-                ch.cyclesRemaining = blitCost;
+                ch.completeAt = blitClock + blitCost;
+                if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
                 ch.x = memory[0x0200] | (memory[0x0201] << 8);
                 ch.y = memory[0x0202] | (memory[0x0203] << 8);
                 ch.tileBank = currentTileBank;
@@ -1001,6 +1041,8 @@ void PPU::applyVOCReset() {
         ch = BlitChannel();
     }
     busyBlitChannelCount = 0;
+    blitClock = 0;
+    blitNextDone = UINT64_MAX;
 
     // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
 }
@@ -1099,22 +1141,24 @@ uint32_t PPU::blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alph
 
 void PPU::advanceBlitChannels(uint32_t elapsed) {
     // Common case: nothing in flight. Called every single PPU cycle, so this
-    // skips the 8-entry scan below for the vast majority of calls.
+    // skips everything for the vast majority of calls.
     if (busyBlitChannelCount == 0) return;
 
+    blitClock += elapsed;
+    if (blitClock < blitNextDone) return;     // nothing finishes yet
+
+    uint64_t next = UINT64_MAX;
     for (auto& ch : blitChannels) {
         if (!ch.busy) continue;
-        if (elapsed >= ch.cyclesRemaining) {
-            ch.cyclesRemaining = 0;
-        } else {
-            ch.cyclesRemaining -= elapsed;
-        }
-        if (ch.cyclesRemaining == 0) {
+        if (ch.completeAt <= blitClock) {
             executeBlit(ch);
             ch.busy = false;
             busyBlitChannelCount--;
+        } else if (ch.completeAt < next) {
+            next = ch.completeAt;
         }
     }
+    blitNextDone = next;
 }
 
 void PPU::executeBlit(const BlitChannel& channel) {
@@ -1257,3 +1301,47 @@ uint32_t PPU::applyTranslucency(uint32_t color, uint8_t tileIndex) {
 }
 
 } // namespace ZeroPoint
+
+namespace ZeroPoint {
+
+namespace {
+inline uint64_t fnv(uint64_t h, const void* data, size_t n) {
+    const uint8_t* p = static_cast<const uint8_t*>(data);
+    for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 1099511628211ull;
+    return h;
+}
+template <typename T> inline uint64_t fnvv(uint64_t h, const T& v) { return fnv(h, &v, sizeof v); }
+}  // namespace
+
+uint64_t PPU::stateHash() const {
+    uint64_t h = 1469598103934665603ull;
+    h = fnv(h, memory.data(), memory.size());
+    h = fnv(h, registers.data(), sizeof(uint16_t) * registers.size());
+    h = fnv(h, targetRegisters.data(), sizeof(uint16_t) * targetRegisters.size());
+    h = fnv(h, targetBytes.data(), targetBytes.size());
+    h = fnvv(h, executionPointer);
+    h = fnvv(h, flags.zero); h = fnvv(h, flags.greater);
+    h = fnvv(h, static_cast<int>(state));
+    h = fnvv(h, vblank); h = fnvv(h, hblank); h = fnvv(h, prevVblank); h = fnvv(h, prevHblank);
+    h = fnvv(h, vblankPending); h = fnvv(h, hblankPending);
+    h = fnvv(h, cpuIrqPending); h = fnvv(h, cpuIrqVector);
+    h = fnvv(h, regBankX); h = fnvv(h, regBankY);
+    h = fnv(h, callTable.data(), sizeof(uint16_t) * callTable.size());
+    h = fnvv(h, cycleCounter); h = fnvv(h, stallCycles); h = fnvv(h, instrCycles);
+    h = fnv(h, tileStorage.data(), sizeof tileStorage);
+    h = fnvv(h, currentTileId); h = fnvv(h, currentTileBank); h = fnvv(h, currentTileMode);
+    for (const auto& c : blitChannels) {
+        h = fnvv(h, c.busy); h = fnvv(h, c.busy ? c.completeAt - blitClock : 0ull); h = fnvv(h, c.x); h = fnvv(h, c.y);
+        h = fnvv(h, c.tileBank); h = fnvv(h, c.tileId); h = fnvv(h, c.tileMode); h = fnvv(h, c.blendMode);
+        h = fnv(h, c.translucency.data(), c.translucency.size());
+    }
+    h = fnvv(h, busyBlitChannelCount);
+    h = fnv(h, palette16.data(), sizeof(uint16_t) * palette16.size());
+    h = fnv(h, palette256.data(), sizeof(uint32_t) * palette256.size());
+    h = fnv(h, tileTranslucency.data(), tileTranslucency.size());
+    h = fnvv(h, tileBlendMode);
+    h = fnvv(h, vocRegisters);
+    return h;
+}
+
+}  // namespace ZeroPoint

@@ -1,6 +1,7 @@
 #include "emulatorwidget.h"
 #include <QPainter>
 #include <QTimerEvent>
+#include <chrono>
 #include <QKeyEvent>
 
 using namespace ZeroPoint;
@@ -98,6 +99,7 @@ void EmulatorWidget::start()
         running = true;
         setFocus();
         // Start timer for ~60 FPS
+        pacer.reset();
         timerId = startTimer(16); // ~60 Hz
     }
 }
@@ -144,7 +146,19 @@ void EmulatorWidget::timerEvent(QTimerEvent *event)
 {
     if (event->timerId() == timerId && running) {
         updatePlayerInput();
-        system.stepFrame();
+        // A System frame is ~1.3 ms of console time, not 1/60 s: step as many as the console clock is behind
+        // the wall clock (frame_pacer.h), then draw once.
+        const auto tickStart = std::chrono::steady_clock::now();
+        const int due = pacer.framesDue(std::chrono::duration<double>(tickStart.time_since_epoch()).count());
+        int done = 0;
+        while (done < due) {
+            system.stepFrame();
+            done++;
+            if (std::chrono::duration<double>(std::chrono::steady_clock::now() - tickStart).count() >=
+                ZeroPoint::FramePacer::STEP_BUDGET_SECONDS) break;   // a slow frame must not starve the UI
+        }
+        pacer.stepped(done);
+        system.clearAudioBuffer();   // this frontend has no audio device; don't let the mixer's samples pile up
         updateFrameBuffer();
         update();
     }

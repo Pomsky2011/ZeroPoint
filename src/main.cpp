@@ -3,6 +3,7 @@
 #include "display.h"
 #include "window.h"
 #include <chrono>
+#include "frame_pacer.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -117,14 +118,29 @@ int main(int argc, char** argv) {
     if (romPath.empty()) {
         system.powerOn();
         std::cout << "Running Boot ROM demo (no cartridge)...\n";
+        FramePacer pacer;
         while (!window.shouldClose()) {
+            auto frameStart = std::chrono::steady_clock::now();
             window.pollEvents();
-            system.stepFrame();
+            const int due = pacer.framesDue(std::chrono::duration<double>(frameStart.time_since_epoch()).count());
+            int done = 0;
+            while (done < due) {
+                system.stepFrame();
+                done++;
+                if (std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count() >=
+                    FramePacer::STEP_BUDGET_SECONDS) break;   // a slow frame must not starve the window
+            }
+            pacer.stepped(done);
             window.render(system.getDisplay());
 
             const auto& audio = system.getAudioBuffer();
             window.queueAudio(audio.data(), static_cast<int>(audio.size() / 2));
             system.clearAudioBuffer();
+
+            auto elapsed = std::chrono::steady_clock::now() - frameStart;
+            if (elapsed < std::chrono::microseconds(16667)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(16667) - elapsed);
+            }
         }
         return 0;
     }
@@ -137,9 +153,11 @@ int main(int argc, char** argv) {
 
     std::cout << "Running '" << system.getROMTitle() << "'...\n";
 
-    // Run one display frame worth of master cycles, then render. Sleep to a
-    // ~60 Hz target so we don't spin the host CPU at 100%.
+    // Every ~60 Hz tick: step as many System frames as it takes for the console clock to catch up with the
+    // wall clock (a System frame is ~1.3 ms, see frame_pacer.h), then render once. Sleep out the rest of the
+    // tick so we don't spin the host CPU at 100%.
     const auto frameDuration = std::chrono::microseconds(16667);
+    FramePacer pacer;
     while (!window.shouldClose() && !system.getCPU().isHalted()) {
         auto frameStart = std::chrono::steady_clock::now();
 
@@ -149,7 +167,15 @@ int main(int argc, char** argv) {
         window.getPlayerInput(direction, control, buttons);
         system.getCPU().setPlayerInput(direction, control, buttons);
 
-        system.stepFrame();
+        const int due = pacer.framesDue(std::chrono::duration<double>(frameStart.time_since_epoch()).count());
+        int done = 0;
+        while (done < due && !system.getCPU().isHalted()) {
+            system.stepFrame();
+            done++;
+            if (std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count() >=
+                FramePacer::STEP_BUDGET_SECONDS) break;   // a slow frame must not starve the window
+        }
+        pacer.stepped(done);
 
         window.render(system.getDisplay());
 

@@ -88,6 +88,11 @@ public:
     // Clock the PPU by one cycle
     void tick();
 
+    // Exactly n calls to tick(), assuming the blank lines (setBlankStatus) don't change meanwhile: whole stretches
+    // of a multi-cycle stall with no blit completing in them are collapsed into one step, and every other
+    // cycle just calls tick(), so the result is state-identical to ticking n times.
+    void tickMany(uint32_t n);
+
     // Run up to `cycles` PPU cycles in one call and return how many were
     // actually consumed. Semantically identical to calling tick() `cycles`
     // times, but collapses multi-cycle stalls into a single step instead of
@@ -137,6 +142,11 @@ public:
     uint16_t getExecutionPointer() const {
         return executionPointer;
     }
+
+    // FNV-1a hash of every piece of emulated state (memory, registers, flags, pending interrupts, stall,
+    // blit channels, tiles, palettes, VOC). For regression tests: two runs that must be state-identical
+    // (e.g. System's per-cycle path vs its batched one) must hash equal at every checkpoint.
+    uint64_t stateHash() const;
 
     // Direct memory access (for debugging and CPU window)
     uint8_t readMemory(uint16_t address) const {
@@ -272,7 +282,7 @@ private:
     // TILEDRAW case and advanceBlitChannels().
     struct BlitChannel {
         bool busy = false;
-        uint32_t cyclesRemaining = 0;
+        uint64_t completeAt = 0;     // blitClock value at which this blit finishes (see advanceBlitChannels)
         uint16_t x = 0, y = 0;
         uint8_t tileBank = 0, tileId = 0, tileMode = 0;
         uint8_t blendMode = 0;
@@ -296,6 +306,12 @@ private:
     // zero busy channels, so this lets it skip the 8-entry scan entirely
     // instead of paying 8 dead loads/branches every tick.
     int busyBlitChannelCount = 0;
+    // Blit timing is by absolute time, not per-channel countdowns: blitClock advances by the cycles elapsed
+    // while any channel is busy, each channel finishes at its own completeAt, and blitNextDone caches the
+    // earliest (UINT64_MAX when none is busy). advanceBlitChannels() therefore costs one compare per cycle
+    // instead of an 8-entry scan; the order blits complete in (channel index order within a cycle) is unchanged.
+    uint64_t blitClock = 0;
+    uint64_t blitNextDone = UINT64_MAX;
 
     // Palette system
     std::array<uint16_t, 16> palette16;           // 16-color palette (16-bit BBGR format)

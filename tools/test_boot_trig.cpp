@@ -143,14 +143,15 @@ int main(int argc, char** argv) {
         check(n > 0 && bad == 0, "8-bit callers (M=X=1) get the same result with P restored");
     }
 
-    // $F7-$FE are reserved and return with registers untouched.
+    // $F8-$FE are reserved and return with registers untouched ($F7 is handoff.def's PPU load, tested by
+    // test_boot_handoff).
     {
         bool ok = true;
-        for (uint8_t sig = 0xF7; sig <= 0xFE; sig++) {
+        for (uint8_t sig = 0xF8; sig <= 0xFE; sig++) {
             Result res = call(sys, sig, 0x1111, 0x2222, 0x3333, false);
             ok = ok && res.returned && res.a == 0x1111 && res.x == 0x2222 && sys.getCPU().getY() == 0x3333 && res.preserved;
         }
-        check(ok, "reserved $F7-$FE return immediately, registers untouched");
+        check(ok, "reserved $F8-$FE return immediately, registers untouched");
     }
 
     // The default 35-byte stub has no slot table: COP #$F0 must take the cartridge's vector.

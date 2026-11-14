@@ -2,7 +2,7 @@
 // and print the MMP register writes per engine tick, in the same text format as
 // `zpsnd.py trace` (the golden trace), so the two can simply be diffed.
 //
-//   test_zpa_engine <bios.bin|--hle> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing]
+//   test_zpa_engine <bios.bin|--hle> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing] [--wav out.wav]
 //
 // It plays the part of the Boot ROM: DMAs the STL/SST/score images into the APU,
 // writes the header (magic last), zeroes the mailbox, and lets the BIOS run.
@@ -12,6 +12,7 @@
 // when the engine ENDs and the BIOS is back at its entry point.
 //
 // --hle runs the emulator's built-in high-level BIOS instead of a BIOS image.
+// --wav out.wav also renders the MMP mixer's output (48 kHz, 16-bit stereo) for the whole run.
 // --timing prints the engine's real tick period (APU cycles) to stderr; --timing-all every tick's.
 #include "apu.h"
 #include <algorithm>
@@ -70,11 +71,28 @@ std::vector<uint8_t> slurp(const char* path) {
     return std::vector<uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
 
+// 16-bit stereo PCM WAV, little-endian, written by hand so the tool stays dependency-free.
+bool writeWav(const char* path, const std::vector<int16_t>& lr, uint32_t rate) {
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return false;
+    auto u32 = [&](uint32_t v) { for (int i = 0; i < 4; i++) f.put((char)(v >> (8 * i))); };
+    auto u16 = [&](uint16_t v) { f.put((char)v); f.put((char)(v >> 8)); };
+    const uint32_t bytes = (uint32_t)(lr.size() * 2);
+    f.write("RIFF", 4); u32(36 + bytes); f.write("WAVEfmt ", 8);
+    u32(16); u16(1); u16(2); u32(rate); u32(rate * 4); u16(4); u16(16);
+    f.write("data", 4); u32(bytes);
+    f.write(reinterpret_cast<const char*>(lr.data()), bytes);
+    return (bool)f;
+}
+
+constexpr double APU_HZ = 4250710.0;
+constexpr uint32_t AUDIO_RATE = 48000;
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc < 4) {
-        std::fprintf(stderr, "usage: %s <bios.bin|--hle> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <bios.bin|--hle> <pack.zpa> <ticks> [TICK=VALUE ...] [--timing] [--wav out.wav]\n", argv[0]);
         return 2;
     }
     const bool hle = !std::strcmp(argv[1], "--hle");
@@ -83,8 +101,10 @@ int main(int argc, char** argv) {
     const int maxTicks = std::atoi(argv[3]);
     std::map<int, int> mailbox;
     bool timing = false, timingAll = false;
+    const char* wavPath = nullptr;
     for (int i = 4; i < argc; i++) {
-        if (!std::strcmp(argv[i], "--timing")) timing = true;
+        if (!std::strcmp(argv[i], "--wav") && i + 1 < argc) wavPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--timing")) timing = true;
         else if (!std::strcmp(argv[i], "--timing-all")) timing = timingAll = true;
         else if (const char* eq = std::strchr(argv[i], '='))
             mailbox[std::atoi(argv[i])] = std::strtol(eq + 1, nullptr, 0);
@@ -137,9 +157,18 @@ int main(int argc, char** argv) {
     uint64_t lastCycles = 0;
     std::vector<uint64_t> periods;
     const uint64_t guard = (uint64_t)(maxTicks + 400) * 40000ull;   // a hung BIOS must not hang the test
+    std::vector<int16_t> pcm;                       // interleaved L/R
+    double nextSampleAt = 0;
     while (apu.getCycleCount() < guard) {
         ring[ringPos++ % 48] = apu.getPC();
         apu.step();
+        if (wavPath)                                // one mixer sample per 1/48000 s of APU time
+            while ((double)apu.getCycleCount() >= nextSampleAt) {
+                apu.updateMMP();
+                pcm.push_back(apu.getMixedSampleLeft());
+                pcm.push_back(apu.getMixedSampleRight());
+                nextSampleAt += APU_HZ / AUDIO_RATE;
+            }
         if (apu.isHalted()) break;
         const uint16_t pc = apu.getPC();
         const bool running = hle ? apu.hleEngineActive() : (pc >= ENGINE_BASE && pc < 0x8F00);
@@ -166,6 +195,12 @@ int main(int argc, char** argv) {
         }
     }
     for (const auto& l : tr.lines) std::puts(l.c_str());
+    if (wavPath) {
+        int peak = 0;
+        for (int16_t v : pcm) peak = std::max(peak, std::abs((int)v));
+        if (!writeWav(wavPath, pcm, AUDIO_RATE)) { std::fprintf(stderr, "cannot write %s\n", wavPath); return 1; }
+        std::fprintf(stderr, "wrote %s: %.2f s, peak %d of 32767\n", wavPath, pcm.size() / 2.0 / AUDIO_RATE, peak);
+    }
     if (apu.isHalted()) {
         std::fprintf(stderr, "last PCs:");
         for (unsigned i = 0; i < 48; i++) std::fprintf(stderr, " %04X", ring[(ringPos + i) % 48]);
