@@ -2,7 +2,10 @@
 // System::step() one master cycle at a time. Runs the same boot ROM + cartridge both ways and hashes the
 // whole machine (CPU registers, WRAM, PPU, Display, APU, every audio sample produced) at checkpoints.
 //
-//   test_batched <bootrom.bin|none> <rom.zpb> <console-seconds> [checkpoint-frames] [--dump]
+//   test_batched <bootrom.bin|none> <rom.zpb> <console-seconds> [checkpoint-frames] [--dump] [--vthread]
+//
+// --vthread runs the batched side with System::setVideoThread(true), so the worker-thread catch-up is checked
+// against the same per-cycle reference.
 //
 // --dump prints just the per-cycle hashes (to diff against an older build's: a refactor of the PPU's timing
 // must not change them).
@@ -19,6 +22,8 @@
 using namespace ZeroPoint;
 
 namespace {
+
+bool g_vthread = false;
 
 uint64_t mix(uint64_t h, const void* data, size_t n) {
     const uint8_t* p = static_cast<const uint8_t*>(data);
@@ -56,6 +61,7 @@ Result run(const char* boot, const char* rom, double seconds, int checkpointFram
     if (std::strcmp(boot, "none") && !sys.loadBootROM(boot)) { std::fprintf(stderr, "cannot load boot ROM\n"); std::exit(1); }
     if (!sys.loadROM(rom)) { std::fprintf(stderr, "cannot load ROM\n"); std::exit(1); }
     sys.powerOn();
+    if (batched && g_vthread) sys.setVideoThread(true);
     const uint64_t frames = (uint64_t)(seconds * 68011355.0 / System::CYCLES_PER_FRAME);
     Result r;
     const std::clock_t c0 = std::clock();   // process CPU time: unaffected by other load on the host
@@ -81,6 +87,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "usage: %s <bootrom.bin|none> <rom.zpb> <console-seconds> [checkpoint-frames]\n", argv[0]);
         return 2;
     }
+    for (int i = 4; i < argc; i++) g_vthread |= !std::strcmp(argv[i], "--vthread");
     const double seconds = std::atof(argv[3]);
     const int cp = argc > 4 ? std::atoi(argv[4]) : 200;
     Result a = run(argv[1], argv[2], seconds, cp, false);

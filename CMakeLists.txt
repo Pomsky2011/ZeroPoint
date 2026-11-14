@@ -241,6 +241,16 @@ else()
     target_link_libraries(bench_qt_tick zeropoint_core Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
 endif()
 
+# Frame-skip latching must be invisible
+add_executable(test_latch_skip tools/test_latch_skip.cpp)
+target_link_libraries(test_latch_skip zeropoint_core)
+set_target_properties(test_latch_skip PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# Differential PPU fuzzer (tick vs tickMany, or one PPU version against another)
+add_executable(fuzz_ppu tools/fuzz_ppu.cpp)
+target_link_libraries(fuzz_ppu zeropoint_core)
+set_target_properties(fuzz_ppu PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 # Test ROM creation tools
 add_executable(make_test_rom tools/make_test_rom.cpp)
 

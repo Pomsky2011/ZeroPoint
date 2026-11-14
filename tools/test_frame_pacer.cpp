@@ -59,6 +59,25 @@ int main() {
         p.stepped(p.framesDue(5.0));
         check(p.framesDue(5.0) == 0 && p.framesDue(4.0) == 0, "no time passing (or time going back) steps no frames");
     }
+    // Latch policy (Display::setLatchEnabled): a tick that stops early on its step budget must still have latched
+    // a raster, or a host slower than real time would never show anything (a black screen).
+    {
+        // 16 rasters due; each costs 1.5 ms, so the 12 ms budget stops the tick after 8.
+        const double cost = 0.0015;
+        int done = 0, latched = 0, lastLatchedAt = -1;
+        const int due = 16;
+        while (done < due) {
+            if (FramePacer::shouldLatch(done, due, done * cost)) { latched++; lastLatchedAt = done; }
+            done++;
+            if (done * cost >= FramePacer::STEP_BUDGET_SECONDS) break;
+        }
+        check(latched >= 1, "a budget-limited tick latches at least one raster");
+        check(lastLatchedAt >= done - 2, "...and the last latched raster is at (or one before) where the tick stopped");
+        check(latched <= 3, "...but only a few, not every raster");
+        // Healthy host: the whole batch fits the budget, the last raster is latched.
+        bool lastOne = FramePacer::shouldLatch(12, 13, 0.0005);
+        check(lastOne && !FramePacer::shouldLatch(5, 13, 0.0005), "a batch that fits latches the first and last raster only");
+    }
     std::printf("%s\n", failures ? "FAILED" : "all passed");
     return failures ? 1 : 0;
 }
