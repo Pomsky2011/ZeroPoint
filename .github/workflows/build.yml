@@ -230,7 +230,10 @@ jobs:
 
     - name: Install x86_64 dependencies (Rosetta Homebrew)
       run: |
-        softwareupdate --install-rosetta --agree-to-license
+        # The hosted image may already have Rosetta, and softwareupdate then exits non-zero ("Package Authoring Error ...
+        # RosettaUpdateAuto is missing installKBytes"). What matters is whether x86_64 code runs.
+        softwareupdate --install-rosetta --agree-to-license || echo "softwareupdate failed; checking Rosetta directly"
+        arch -x86_64 /usr/bin/true
         arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
         arch -x86_64 /usr/local/bin/brew install sdl2 qt vulkan-headers vulkan-loader molten-vk
 
