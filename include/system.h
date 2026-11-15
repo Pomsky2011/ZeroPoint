@@ -86,6 +86,28 @@ public:
         }
     }
     bool loadROM(const std::string& filename);
+    // Same from the file's bytes in memory: the cartridge is cached and reaches the bus at powerOn()/reset(), like loadROM().
+    bool loadROMImage(const std::vector<uint8_t>& image);
+
+    // The cartridge slot while the machine is on. All three take effect between master cycles (call them outside
+    // runCycles()/step()), exactly as a movie event does.
+    //   insertCartridge  maps the image into the slot right now. If one is already there this is a Stop 'n' Swop: the
+    //                    old one is gone and the new one is mapped in the same instant. No reset, no boot ROM, no
+    //                    signature check - the running software has to cope; chunk gating starts all-unverified.
+    //   ejectCartridge   a yank: the slot is empty (CPU::EMPTY_SLOT_EVEN/ODD on the bus) and the CART_ENTRY register
+    //                    reads 0. The CPU keeps running whatever it was running.
+    //   softReset        the reset button: reset() - CPU/chips reset, work RAM kept, boot ROM runs again.
+    //   hardReset        a power cycle: every RAM/VRAM/chip register and the cartridge bus go back to the power-on
+    //                    state (the cartridge stays in the slot), then boot as powerOn() does. A run that starts with
+    //                    a hardReset() is state-identical to a fresh System (tools/test_cart_slot checks this).
+    // `image` is the .zpb file's bytes.
+    bool insertCartridge(const std::vector<uint8_t>& image);
+    void ejectCartridge();
+    bool hasCartridge() const { return romLoaded; }
+    void softReset() { reset(); }
+    void hardReset();
+    // Bump when a change to the emulation changes what any program computes (a movie pins this; docs/movies.md).
+    static constexpr uint32_t CORE_REVISION = 1;
 
     // Load a real Boot ROM image (bank $E0) - e.g. ZPbootROM's bootrom.bin, or a demo that never hands
     // off to a cartridge at all. Call reset() afterward to actually jump into it. Without one, System
@@ -93,6 +115,7 @@ public:
     // and jumps straight to its entry point, and COP #$F0-$FF are answered natively. Loading a real
     // Boot ROM switches all of that off - the real code does the work.
     bool loadBootROM(const std::string& filename);
+    bool loadBootROMImage(const std::vector<uint8_t>& image);   // same from memory (a movie pins the exact bytes)
 
     // HLE boot only: whether reset() checks the cartridge's signature before running it. On by
     // default, and strict: an unsigned or badly signed ROM halts the CPU (as the real Boot ROM does).
@@ -111,6 +134,11 @@ public:
     // loaded. Survives reset(). Call before or after reset(); the payload
     // takes effect either way since it's reapplied on every reset().
     bool loadAPUBios(const std::string& filename);
+    bool loadAPUBiosImage(const std::vector<uint8_t>& image);
+    // Back to the native boot ROM / APU BIOS after a real one was loaded (a movie's setup does this). Takes effect at
+    // the next reset().
+    void useHLEBootROM() { cpu.unloadBootROM(); }
+    void useHLEApuBios() { apu.clearBIOS(); apu.enableHLEBios(true); }
 
     // Boot ROM / hot-swap: (re)load a subchip's program. The sequence is
     // notify -> let it acknowledge -> halt -> upload -> restart, so a subchip
@@ -133,8 +161,14 @@ public:
     // clock/budget/audio-pacing counters and the pending audio samples. Two runs that must be identical (same
     // inputs, any host, any thread count, any uninitialised-memory pattern) must hash equal at every checkpoint.
     uint64_t stateHash();
+    // What a movie checkpoint hashes: stateHash() minus everything the host controls rather than the machine - the
+    // latched output frame (frame skip) and the pending audio buffer (frontends drain it when they like; the samples
+    // are covered by a running digest of every sample produced instead). Invariant under setLatchEnabled() and
+    // clearAudioBuffer(), which fuzz_determinism perturbs on purpose.
+    uint64_t machineHash();
+    std::vector<std::pair<const char*, uint64_t>> machineHashParts();
     // The same hash, one entry per part (cpu, ppu, display, apu, dma, timers, clock, audio), so a mismatch says who.
-    std::vector<std::pair<const char*, uint64_t>> stateHashParts();
+    std::vector<std::pair<const char*, uint64_t>> stateHashParts() { return hashParts(true); }
 
     CPU& getCPU() { return cpu; }
     PPU& getPPU() { return ppu; }
@@ -249,6 +283,11 @@ private:
     // HLE Boot ROM (see isBootHLE()). hleService() is CPU::setServiceHook()'s callback: COP #$F0-$FF
     // answered natively, returning the cycles a real Boot ROM would have spent (0 = not ours).
     bool verifySignatures = true;
+    bool cacheROM(const ROM& rom);        // record the parsed cartridge as pending (not yet on the bus)
+    void mapCartridgeNow();               // put the pending cartridge on the bus
+    uint64_t cartridgeDigest = 0;         // FNV-1a over the inserted image: part of stateHash
+    uint64_t audioDigest = 1469598103934665603ull;   // FNV-1a over every audio sample produced since reset()
+    std::vector<std::pair<const char*, uint64_t>> hashParts(bool presentation);
     uint32_t hleService(uint8_t sig);
     uint32_t hlePPULoad();
     uint32_t hleVerifyChunk();

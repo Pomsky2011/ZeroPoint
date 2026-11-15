@@ -19,6 +19,7 @@ CPU::CPU()
       memory(nullptr), memorySize(0),
       ppuPtr(nullptr), apuPtr(nullptr), displayPtr(nullptr), dmaPtr(nullptr), systemPtr(nullptr),
       p1Direction(0), p1Control(PlayerInput::CTRL_CONNECTION), p1Buttons(0),
+      p2Direction(0), p2Control(0), p2Buttons(0),   // port 2 is unplugged until a frontend/movie plugs it in
       state(CPUState::Running),
       instructionCount(0),
       irqPending(false), nmiPending(false), abortPending(false)
@@ -1701,7 +1702,11 @@ CPU::MemoryRegion* CPU::findRegion(uint32_t address) {
 uint8_t CPU::readMapped(uint32_t address) {
     MemoryRegion* region = findRegion(address);
     if (!region) {
-        // Unmapped memory returns open bus (0xFF)
+        // An empty cartridge slot (never loaded, or yanked) reads a fixed pattern that is neither $FF (HLT) nor the
+        // unverified-chunk poison, so an unplugged cart is distinguishable from every other kind of open bus.
+        // Everything else unmapped returns open bus (0xFF).
+        const uint8_t bank = (address >> 16) & 0xFF;
+        if (!cartridgeInserted && (bank <= 0x7F || bank == 0xE2)) return (address & 1) ? EMPTY_SLOT_ODD : EMPTY_SLOT_EVEN;
         return 0xFF;
     }
 
@@ -1824,6 +1829,20 @@ void CPU::loadROM(const uint8_t* data, size_t size, uint8_t startBank) {
     rebuildBankTable();   // refresh bank index (push_back may have realloc'd)
 }
 
+void CPU::unloadBootROM() {
+    for (auto it = memoryMap.begin(); it != memoryMap.end(); ) {
+        if (it->startBank <= 0xE0 && it->endBank >= 0xE0) {
+            delete[] it->data;
+            it = memoryMap.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    bootROMLoaded = false;
+    bootROMSize = 0;
+    rebuildBankTable();
+}
+
 void CPU::loadBootROM(const uint8_t* data, size_t size) {
     // Replace semantics: calling this twice (e.g. to swap in an alternate
     // boot ROM payload after System's constructor already installed the
@@ -1925,6 +1944,39 @@ void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
                 if (PB != 0xE0 || !bootServiceActive) return;
                 if (off < chunkVerified.size()) chunkVerified[off] = value;
             });
+    }
+}
+
+void CPU::mapCartridge(const uint8_t* rom, size_t romSize, const uint8_t* meta, size_t metaSize,
+                       uint8_t trailerVersion, uint32_t codeSize, uint32_t chunkCount) {
+    ejectCartridge();   // replace semantics: never two cartridge regions for rebuildBankTable() to mis-resolve
+    loadROM(rom, romSize, 0x00);
+    loadSignedROMMetadata(metaSize ? meta : nullptr, metaSize);
+    // Runtime chunk-verification gating (see configureDataGating) - only trailer version 3 has a manifest.
+    if (trailerVersion == 3) configureDataGating(codeSize, chunkCount);
+    else clearDataGating();
+    cartridgeInserted = true;
+}
+
+void CPU::ejectCartridge() {
+    for (auto it = memoryMap.begin(); it != memoryMap.end();) {
+        const bool cartRom = it->type == MemoryRegion::ROM && it->endBank <= 0x7F;
+        const bool metadata = it->startBank == 0xE2 && it->endBank == 0xE2;   // signed header/trailer + chunk bitmap
+        if (cartRom || metadata) {
+            delete[] it->data;
+            it = memoryMap.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    clearDataGating();
+    rebuildBankTable();
+    cartridgeInserted = false;
+}
+
+void CPU::clearRAM() {
+    for (const MemoryRegion& r : memoryMap) {
+        if (r.type == MemoryRegion::RAM && r.data) std::memset(r.data, 0, r.dataSize);
     }
 }
 
@@ -2321,7 +2373,7 @@ void CPU::setupIORegisters() {
     // 4. PLAYER PORTS & DEBUG INTERFACE ($D80030-$D8003F, 16 bytes)
     // ========================================================================
     // Port 1: $D80030-$D80037 (Player 1 controller)
-    // Port 2: $D80038-$D8003F (Player 2 / Debug serial interface)
+    // Port 2: $D80038-$D8003A (Player 2 controller, same layout as port 1); $D8003C-$D8003E debug serial
     // (The P2 queues are CPU members cleared by reset(), not statics: see ppuRegSelect above.)
 
     registerIORegion(IO_BANK, 0x0030, 16,
@@ -2336,8 +2388,16 @@ void CPU::setupIORegisters() {
                 case 0x02: // P1_BTN (4 face buttons + DATA nibble)
                     return p1Buttons;
 
-                // Port 2 (Debug Interface)
-                case 0x08: { // P2_STATUS
+                // Port 2 (second controller, same layout as port 1)
+                case 0x08: // P2_DIR
+                    return p2Direction;
+                case 0x09: // P2_CTRL
+                    return p2Control;
+                case 0x0A: // P2_BTN
+                    return p2Buttons;
+
+                // Debug serial interface (was at $D80038-$D8003A before port 2 became a controller)
+                case 0x0C: { // SER_STATUS
                     uint8_t status = 0x00;
                     // Bit 0: RX_READY (data available to read)
                     if (p2RxHead != p2RxTail) {
@@ -2351,7 +2411,7 @@ void CPU::setupIORegisters() {
                     return status;
                 }
 
-                case 0x09: { // P2_DATA (read)
+                case 0x0D: { // SER_DATA (read)
                     if (p2RxHead != p2RxTail) {
                         uint8_t data = p2RxBuffer[p2RxTail];
                         p2RxTail = (p2RxTail + 1) & 0xFF;
@@ -2367,7 +2427,7 @@ void CPU::setupIORegisters() {
         // Write handler
         [this](uint16_t offset, uint8_t value) {
             switch (offset) {
-                case 0x09: { // P2_DATA (write)
+                case 0x0D: { // SER_DATA (write)
                     uint8_t next_head = (p2TxHead + 1) & 0xFF;
                     if (next_head != p2TxTail) {
                         p2TxBuffer[p2TxHead] = value;
@@ -2376,7 +2436,7 @@ void CPU::setupIORegisters() {
                     break;
                 }
 
-                case 0x0A: // P2_CTRL
+                case 0x0E: // SER_CTRL
                     if (value & 0x01) {
                         // Clear buffers
                         p2TxHead = p2TxTail = 0;
@@ -2769,6 +2829,7 @@ uint64_t CPU::stateHash() const {
     mixv(cycleCount); mixv(instructionCount);
     mixv(irqPending); mixv(nmiPending); mixv(abortPending);
     mixv(p1Direction); mixv(p1Control); mixv(p1Buttons);
+    mixv(p2Direction); mixv(p2Control); mixv(p2Buttons); mixv(cartridgeInserted);
     mixv(ppuRegSelect); mixv(dmaConfigIndex); mix(dmaConfigBuffer, sizeof dmaConfigBuffer); mixv(devModeFlag);
     mix(p2TxBuffer, sizeof p2TxBuffer); mix(p2RxBuffer, sizeof p2RxBuffer);
     mixv(p2TxHead); mixv(p2TxTail); mixv(p2RxHead); mixv(p2RxTail);

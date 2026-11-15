@@ -129,6 +129,14 @@ void Window::pollEvents() {
         } else if (event.type == SDL_KEYDOWN) {
             if (event.key.keysym.sym == SDLK_ESCAPE) {
                 quit = true;
+            } else if (!event.key.repeat) {
+                switch (event.key.keysym.sym) {
+                    case SDLK_F1: hotkeys |= HOTKEY_SOFT_RESET; break;
+                    case SDLK_F2: hotkeys |= HOTKEY_HARD_RESET; break;
+                    case SDLK_F3: hotkeys |= HOTKEY_YANK; break;
+                    case SDLK_F4: hotkeys |= HOTKEY_SWAP; break;
+                    default: break;
+                }
             }
         }
     }
@@ -177,6 +185,37 @@ void Window::getPlayerInput(uint8_t& direction, uint8_t& control, uint8_t& butto
     if (keys[SDL_SCANCODE_X]) buttons |= PlayerInput::BTN_2;
     if (keys[SDL_SCANCODE_C]) buttons |= PlayerInput::BTN_3;
     if (keys[SDL_SCANCODE_V]) buttons |= PlayerInput::BTN_4;
+}
+
+void Window::getPlayer2Input(uint8_t& direction, uint8_t& control, uint8_t& buttons, bool plugged) const {
+    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+    direction = 0;
+    control = plugged ? PlayerInput::CTRL_CONNECTION : 0;
+    buttons = 0;
+    if (!plugged) return;
+
+    const bool up = keys[SDL_SCANCODE_I], down = keys[SDL_SCANCODE_K], left = keys[SDL_SCANCODE_J], right = keys[SDL_SCANCODE_L];
+    if (up && down && left && right) control |= PlayerInput::CTRL_CENTER;
+    else if (up && left) direction = PlayerInput::DIR_UPLEFT;
+    else if (up && right) direction = PlayerInput::DIR_UPRIGHT;
+    else if (down && left) direction = PlayerInput::DIR_DOWNLEFT;
+    else if (down && right) direction = PlayerInput::DIR_DOWNRIGHT;
+    else if (up) direction = PlayerInput::DIR_UP;
+    else if (down) direction = PlayerInput::DIR_DOWN;
+    else if (left) direction = PlayerInput::DIR_LEFT;
+    else if (right) direction = PlayerInput::DIR_RIGHT;
+
+    if (keys[SDL_SCANCODE_U]) control |= PlayerInput::CTRL_BIGLEFT;
+    if (keys[SDL_SCANCODE_O]) control |= PlayerInput::CTRL_BIGRIGHT;
+    if (keys[SDL_SCANCODE_N]) control |= PlayerInput::CTRL_LITTLELEFT;
+    if (keys[SDL_SCANCODE_M]) control |= PlayerInput::CTRL_LITTLERIGHT;
+    if (keys[SDL_SCANCODE_BACKSPACE]) control |= PlayerInput::CTRL_MENU;
+    if (keys[SDL_SCANCODE_P]) control |= PlayerInput::CTRL_PAUSE;
+
+    if (keys[SDL_SCANCODE_7]) buttons |= PlayerInput::BTN_1;
+    if (keys[SDL_SCANCODE_8]) buttons |= PlayerInput::BTN_2;
+    if (keys[SDL_SCANCODE_9]) buttons |= PlayerInput::BTN_3;
+    if (keys[SDL_SCANCODE_0]) buttons |= PlayerInput::BTN_4;
 }
 
 uint32_t Window::convertColor(Color16 color) const {

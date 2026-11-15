@@ -2,12 +2,16 @@
 #include "system.h"
 #include "display.h"
 #include "window.h"
+#include "movie.h"
 #include <chrono>
 #include "frame_pacer.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
@@ -63,6 +67,9 @@ int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
     std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify]\n";
+    std::cout << "       [--two-players] [--swap-rom rom.zpb]... [--record out.zpm [--author NAME]] [--play in.zpm [--roms PATH]...] [--frames N]\n";
+    std::cout << "Keys: arrows/z x c v/a s d f/shift/enter = player 1 (i j k l/7 8 9 0/u o n m = player 2 with --two-players)\n";
+    std::cout << "      F1 soft reset, F2 hard reset (power cycle), F3 yank the cartridge, F4 Stop 'n' Swop (next --swap-rom)\n";
     std::cout << "Press ESC to exit\n\n";
 
     std::string romPath;
@@ -70,12 +77,30 @@ int main(int argc, char** argv) {
     std::string apuBiosPath;
     bool devMode = false;
     bool noVerify = false;
+    bool twoPlayers = false;
+    std::string recordPath, playPath, author;
+    long maxTicks = -1;   // --frames N: stop by itself after N 60 Hz ticks (headless runs, CI)
+    std::vector<std::string> romDirs, swapRoms;
     int scale = 2;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--dev") == 0) {
             devMode = true;
         } else if (std::strcmp(argv[i], "--no-verify") == 0) {
             noVerify = true;   // run unsigned/badly signed ROMs (HLE boot only; a real --boot ROM decides for itself)
+        } else if (std::strcmp(argv[i], "--two-players") == 0) {
+            twoPlayers = true;
+        } else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
+            maxTicks = std::atol(argv[++i]);
+        } else if (std::strcmp(argv[i], "--record") == 0 && i + 1 < argc) {
+            recordPath = argv[++i];
+        } else if (std::strcmp(argv[i], "--play") == 0 && i + 1 < argc) {
+            playPath = argv[++i];
+        } else if (std::strcmp(argv[i], "--author") == 0 && i + 1 < argc) {
+            author = argv[++i];
+        } else if (std::strcmp(argv[i], "--roms") == 0 && i + 1 < argc) {
+            romDirs.push_back(argv[++i]);
+        } else if (std::strcmp(argv[i], "--swap-rom") == 0 && i + 1 < argc) {
+            swapRoms.push_back(argv[++i]);
         } else if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
             scale = std::atoi(argv[++i]);
             if (scale <= 0) {
@@ -98,7 +123,7 @@ int main(int argc, char** argv) {
     }
 
     // No ROM and no alternate Boot ROM/APU BIOS: fall back to the static test pattern.
-    if (romPath.empty() && bootPath.empty() && apuBiosPath.empty()) {
+    if (romPath.empty() && bootPath.empty() && apuBiosPath.empty() && playPath.empty()) {
         return runTestPattern(window);
     }
 
@@ -109,18 +134,61 @@ int main(int argc, char** argv) {
         system.setDevMode(true);
     }
     system.setVerifySignatures(!noVerify && System::verifySignaturesDefault());
-    if (!bootPath.empty() && !system.loadBootROM(bootPath)) {
-        std::cerr << "Failed to load Boot ROM: " << bootPath << "\n";
+    // Movies set the machine up themselves (the pinned boot ROM, APU BIOS and cartridge), so a recording replays from
+    // exactly the state it started in; dev mode isn't part of that state, so it can't be combined with them.
+    const bool movieMode = !playPath.empty() || !recordPath.empty();
+    if (movieMode && devMode) {
+        std::cerr << "--dev can't be combined with --record/--play (it is not part of a movie's setup)\n";
         return 1;
     }
-    if (!apuBiosPath.empty() && !system.loadAPUBios(apuBiosPath)) {
-        std::cerr << "Failed to load APU BIOS: " << apuBiosPath << "\n";
+    if (!playPath.empty() && !recordPath.empty()) {
+        std::cerr << "--record and --play are exclusive\n";
         return 1;
+    }
+    RomLibrary library;
+    Movie playMovie;
+    MovieSession movieSession;
+    std::string movieError;
+    if (!playPath.empty()) {
+        if (!Movie::load(playPath, playMovie, movieError)) {
+            std::cerr << movieError << "\n";
+            return 1;
+        }
+        const std::string dir = std::filesystem::path(playPath).parent_path().string();
+        library.add(dir.empty() ? "." : dir);
+        for (const std::string& r : romDirs) library.add(r);
+        for (const std::string& r : swapRoms) library.add(r);
+        if (!movieSession.beginPlayback(system, playMovie, library, movieError)) {
+            std::cerr << movieError << "\n";
+            return 1;
+        }
+        std::cout << "Playing " << playPath << " (" << playMovie.lengthCycles << " master cycles)...\n";
+    } else if (!recordPath.empty()) {
+        MovieSession::RecordSetup setup;
+        setup.bootRomPath = bootPath;
+        setup.apuBiosPath = apuBiosPath;
+        setup.cartridgePath = romPath;
+        setup.verifySignatures = !noVerify && System::verifySignaturesDefault();
+        setup.author = author;
+        if (!movieSession.beginRecording(system, setup, movieError)) {
+            std::cerr << movieError << "\n";
+            return 1;
+        }
+        std::cout << "Recording to " << recordPath << " (ESC to stop and save)...\n";
+    } else {
+        if (!bootPath.empty() && !system.loadBootROM(bootPath)) {
+            std::cerr << "Failed to load Boot ROM: " << bootPath << "\n";
+            return 1;
+        }
+        if (!apuBiosPath.empty() && !system.loadAPUBios(apuBiosPath)) {
+            std::cerr << "Failed to load APU BIOS: " << apuBiosPath << "\n";
+            return 1;
+        }
     }
 
     // A Boot ROM payload with no cartridge (e.g. a hardware demo) runs on
     // its own - only load/require a ROM if one was actually given.
-    if (romPath.empty()) {
+    if (romPath.empty() && !movieMode) {
         system.powerOn();
         std::cout << "Running Boot ROM demo (no cartridge)...\n";
         FramePacer pacer;
@@ -152,39 +220,90 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    if (!system.loadROM(romPath)) {
-        std::cerr << "Failed to load ROM: " << romPath << "\n";
-        return 1;
+    if (!movieMode) {
+        if (!system.loadROM(romPath)) {
+            std::cerr << "Failed to load ROM: " << romPath << "\n";
+            return 1;
+        }
+        system.powerOn();
     }
-    system.powerOn();
 
     std::cout << "Running '" << system.getROMTitle() << "'...\n";
 
+    auto readImage = [](const std::string& path, std::vector<uint8_t>& out) {
+        std::ifstream f(path, std::ios::binary);
+        if (!f) return false;
+        out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+        return !out.empty();
+    };
+    size_t nextSwap = 0;
+    const bool moviePlaying = movieSession.mode() == MovieSession::Mode::Playing;
+    const bool movieRecording = movieSession.mode() == MovieSession::Mode::Recording;
+
     // Every ~60 Hz tick: step as many System frames as it takes for the console clock to catch up with the
     // wall clock (a System frame is ~1.3 ms, see frame_pacer.h), then render once. Sleep out the rest of the
-    // tick so we don't spin the host CPU at 100%.
+    // tick so we don't spin the host CPU at 100%. (A movie runs for as long as its time lasts, not until the CPU
+    // halts: a reset can bring a halted machine back.)
     const auto frameDuration = std::chrono::microseconds(16667);
     FramePacer pacer;
-    while (!window.shouldClose() && !system.getCPU().isHalted()) {
+    bool playbackEnded = false;
+    long ticks = 0;
+    while (!window.shouldClose() && (movieMode || !system.getCPU().isHalted()) && !playbackEnded &&
+           (maxTicks < 0 || ticks++ < maxTicks)) {
         auto frameStart = std::chrono::steady_clock::now();
 
         window.pollEvents();
 
-        uint8_t direction, control, buttons;
+        uint8_t direction, control, buttons, direction2, control2, buttons2;
         window.getPlayerInput(direction, control, buttons);
-        system.getCPU().setPlayerInput(direction, control, buttons);
+        window.getPlayer2Input(direction2, control2, buttons2, twoPlayers);
+        const unsigned hotkeys = window.takeHotkeys();
+
+        if (moviePlaying) {
+            // The movie is in control: keys do nothing but ESC.
+        } else if (movieRecording) {
+            // Logged at the exact movie cycle, then applied: the recording and its replay run the same code.
+            movieSession.input(0, direction, control, buttons);
+            movieSession.input(1, direction2, control2, buttons2);
+            if (hotkeys & Window::HOTKEY_SOFT_RESET) movieSession.softReset();
+            if (hotkeys & Window::HOTKEY_HARD_RESET) movieSession.hardReset();
+            if (hotkeys & Window::HOTKEY_YANK) movieSession.yank();
+            if ((hotkeys & Window::HOTKEY_SWAP) && !swapRoms.empty()) {
+                std::vector<uint8_t> image;
+                const std::string& path = swapRoms[nextSwap++ % swapRoms.size()];
+                if (!readImage(path, image) || !movieSession.insert(image, std::filesystem::path(path).filename().string()))
+                    std::cerr << "Can't swap in " << path << "\n";
+            }
+        } else {
+            system.getCPU().setPlayerInput(direction, control, buttons);
+            system.getCPU().setPlayer2Input(direction2, control2, buttons2);
+            if (hotkeys & Window::HOTKEY_SOFT_RESET) system.softReset();
+            if (hotkeys & Window::HOTKEY_HARD_RESET) system.hardReset();
+            if (hotkeys & Window::HOTKEY_YANK) system.ejectCartridge();
+            if ((hotkeys & Window::HOTKEY_SWAP) && !swapRoms.empty()) {
+                std::vector<uint8_t> image;
+                const std::string& path = swapRoms[nextSwap++ % swapRoms.size()];
+                if (!readImage(path, image) || !system.insertCartridge(image)) std::cerr << "Can't swap in " << path << "\n";
+            }
+        }
 
         const int due = pacer.framesDue(std::chrono::duration<double>(frameStart.time_since_epoch()).count());
         int done = 0;
-        while (done < due && !system.getCPU().isHalted()) {
+        while (done < due && (movieMode || !system.getCPU().isHalted())) {
             system.getDisplay().setLatchEnabled(FramePacer::shouldLatch(
                 done, due, std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count()));
-            system.stepFrame();
+            if (movieMode) {
+                if (movieSession.run(System::CYCLES_PER_FRAME) == 0 && moviePlaying) break;   // playback is over (or stopped)
+            } else {
+                system.stepFrame();
+            }
             done++;
             if (std::chrono::duration<double>(std::chrono::steady_clock::now() - frameStart).count() >=
                 FramePacer::STEP_BUDGET_SECONDS) break;   // a slow frame must not starve the window
         }
         pacer.stepped(done);
+
+        if (moviePlaying && (movieSession.finished() || movieSession.desynced() || !movieSession.failure().empty())) playbackEnded = true;
 
         window.render(system.getDisplay());
 
@@ -198,10 +317,33 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (system.getCPU().isHalted()) {
+    int exitCode = 0;
+    if (moviePlaying) {
+        if (!movieSession.failure().empty()) {
+            std::cerr << "Playback failed: " << movieSession.failure() << "\n";
+            exitCode = 1;
+        } else if (movieSession.desynced()) {
+            std::cerr << movieSession.desyncReport() << "\n";
+            exitCode = 1;
+        } else if (movieSession.finished()) {
+            std::cout << "Movie finished: " << movieSession.checkpointsVerified() << " checkpoints verified.\n";
+        }
+    } else if (movieRecording) {
+        const Movie recorded = movieSession.finishRecording();
+        std::string saveError;
+        if (recorded.save(recordPath, saveError)) {
+            std::cout << "Saved " << recordPath << ": " << recorded.events.size() << " events over " << recorded.lengthCycles
+                      << " master cycles.\n";
+        } else {
+            std::cerr << saveError << "\n";
+            exitCode = 1;
+        }
+    }
+
+    if (!movieMode && system.getCPU().isHalted()) {
         std::cout << "CPU halted after " << system.getMasterCycleCount()
                   << " master cycles.\n";
     }
     std::cout << "Shutting down...\n";
-    return 0;
+    return exitCode;
 }

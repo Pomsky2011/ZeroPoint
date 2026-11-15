@@ -1,7 +1,11 @@
 # ZeroPoint Serial Debug Protocol
 
+> **Register move.** Port 2 ($D80038-$D8003A) is now a second *controller* (same layout as port 1; see
+> `docs/movies.md`). The serial debug interface described here moved to **$D8003C-$D8003E** (`SER_STATUS`,
+> `SER_DATA`, `SER_CTRL`; they were `P2_STATUS`/`P2_DATA`/`P2_CTRL` at $D80038-$D8003A).
+
 > **ASPIRATIONAL — mostly not implemented.** Only three fragments of this
-> design exist today: the `$D80030`/`$D80038-$D8003A` register addresses,
+> design exist today: the `$D80030`/`$D8003C-$D8003E` register addresses,
 > the RX_READY/TX_EMPTY bit assignments, and a `DEV_MODE` flag at `$D80048`
 > that the `--dev` CLI flag can set. Everything else described below does
 > not exist:
@@ -21,15 +25,16 @@
 
 ## Overview
 
-The ZeroPoint debug interface uses **Player Port 2** as a serial communication channel between the emulator and an external debug monitor. The boot ROM detects dev mode and enters a debug loop, allowing real-time inspection and control.
+The ZeroPoint debug interface uses a **serial port** ($D8003C-$D8003E, once part of player port 2) as a communication channel between the emulator and an external debug monitor. The boot ROM detects dev mode and enters a debug loop, allowing real-time inspection and control.
 
 ## Architecture
 
 ### Memory Map
 - **Boot ROM**: Bank $FF (64 KB, read-only)
 - **Player Ports**: $D80030-$D8003F (16 bytes I/O)
-  - **Port 1** ($D80030-$D80037): Player 1 controller
-  - **Port 2** ($D80038-$D8003F): Player 2 / Debug serial interface
+  - **Port 1** ($D80030-$D80032): Player 1 controller
+  - **Port 2** ($D80038-$D8003A): Player 2 controller
+  - **Debug serial** ($D8003C-$D8003E): this document
 
 ### Boot ROM Behavior
 1. CPU resets to RESET vector at $00FFFC-FFFD
@@ -41,12 +46,12 @@ The ZeroPoint debug interface uses **Player Port 2** as a serial communication c
 
 | Address   | Name       | Access | Description                          |
 |-----------|------------|--------|--------------------------------------|
-| $D80038   | P2_STATUS  | R      | Status flags (bit 0: data ready)     |
-| $D80039   | P2_DATA    | R/W    | Data byte (read command, write response) |
-| $D8003A   | P2_CTRL    | W      | Control (bit 0: clear buffer)        |
+| $D8003C   | SER_STATUS  | R      | Status flags (bit 0: data ready)     |
+| $D8003D   | SER_DATA    | R/W    | Data byte (read command, write response) |
+| $D8003E   | SER_CTRL    | W      | Control (bit 0: clear buffer)        |
 | $D8003B-F | Reserved   | -      | Future expansion                     |
 
-### P2_STATUS Flags
+### SER_STATUS Flags
 - **Bit 0 (RX_READY)**: 1 = command byte available to read
 - **Bit 1 (TX_EMPTY)**: 1 = transmit buffer empty, can write
 - **Bits 2-7**: Reserved
@@ -215,11 +220,11 @@ boot_rom_start:
 
     ; Dev mode - enter debug loop
 debug_loop:
-    LDA $D80038           ; Read P2_STATUS
+    LDA $D8003C           ; Read SER_STATUS
     AND #$01              ; Check RX_READY
     BEQ debug_loop        ; Wait for command
 
-    LDA $D80039           ; Read command byte
+    LDA $D8003D           ; Read command byte
     JSR process_command   ; Handle command
     BRA debug_loop        ; Loop
 
@@ -292,7 +297,7 @@ class System {
 ### Debug Server (Socket Interface)
 The emulator runs a TCP server on port 6502 when dev mode is enabled:
 - Accepts debug monitor connections
-- Translates socket I/O to/from P2_DATA register
+- Translates socket I/O to/from SER_DATA register
 - Handles protocol framing
 
 ## Usage

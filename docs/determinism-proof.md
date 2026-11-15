@@ -14,8 +14,9 @@ the core in a verifiable subset (Frama-C/CBMC-class tooling, none installed here
 
 Let the **input** be: the cartridge image, the boot ROM image and APU BIOS image (or "use the HLE ones"), the flags
 (`verifySignatures`, dev mode), and a **host event schedule** `E = [(c_i, a_i)]` where `c_i` is a master-cycle count
-and `a_i` is a controller state change, a bus write, a program load or a reset, applied by the host between
-`runCycles` calls at exactly cycle `c_i`. (A TAS is an `E` made only of controller changes.)
+and `a_i` is a controller state change (either port), a bus write, a program load, a soft or hard reset, a cartridge yank or
+a Stop 'n' Swop, applied by the host between `runCycles` calls at exactly cycle `c_i`. (A TAS is an `E` made only of
+controller changes and those four console actions; `docs/movies.md` is the file format and the replay driver.)
 
 **Theorem.** For every master cycle `n`, the machine state `S(n)` - every byte of RAM/VRAM/APU memory, every register,
 every scheduler counter, and the audio samples and latched video frames produced so far - is a function of
@@ -68,9 +69,9 @@ agrees with GCC on the seeds I compared.
   hashes of the ROM, boot ROM and APU BIOS images (`--boot`/`--apu-bios`/HLE are different initial conditions: HLE
   boot skips the splash and jingle, so cycle counts differ from LLE by design). `determinism_golden.txt` catches an
   accidental behaviour change in CI; refresh it deliberately when emulation is meant to change.
-- **Input timing.** The core is deterministic given `E`; a frontend must turn "pressed in frame f" into `(cycle,
-  state)` the same way every time (the frame is `System::CYCLES_PER_FRAME` master cycles), and must not drop or reorder
-  events. There is no input-movie format or replay driver yet.
+- **Input timing in a frontend.** The core is deterministic given `E`. `MovieSession` records each input at the movie cycle
+  the frontend applied it (once per 60 Hz poll) and replays it at exactly that cycle, so a recording replays on any host; what
+  a *new* TAS tool does to author `E` is its own business, but it can't produce a movie that replays differently than it plays.
 - **Savestates.** There are none, so none can corrupt anything. When added, they must serialise everything
   `stateHash` covers *and* the scheduler/thread bookkeeping, and `stateHash` is the test (save, load, run, compare).
 - **UB the fuzzer hasn't found (P1).** See below.

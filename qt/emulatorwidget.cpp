@@ -1,4 +1,6 @@
 #include "emulatorwidget.h"
+#include <QFile>
+#include <QFileInfo>
 #include <QPainter>
 #include <QTimerEvent>
 #include <algorithm>
@@ -51,6 +53,7 @@ bool EmulatorWidget::applyBootROM()
     // Empty path: leave System's native (HLE) boot alone - loadBootROM() has
     // replace semantics, so there's nothing to do.
     if (bootRomPath.isEmpty()) {
+        system.useHLEBootROM();   // a movie may have left a real one mapped
         return true;
     }
     return system.loadBootROM(bootRomPath.toStdString());
@@ -62,6 +65,7 @@ bool EmulatorWidget::applyApuBios()
     // built-in default to fall back to, so this just leaves APU memory
     // zero-filled (an idle NOP loop at $8000) if nothing was ever loaded.
     if (apuBiosPath.isEmpty()) {
+        system.useHLEApuBios();
         return true;
     }
     return system.loadAPUBios(apuBiosPath.toStdString());
@@ -70,6 +74,8 @@ bool EmulatorWidget::applyApuBios()
 bool EmulatorWidget::loadROM(const QString &path)
 {
     stop();
+    movieKind = 0;   // loading a cartridge abandons any movie (finishMovie() is the way to keep a recording)
+    currentRomPath = path;
     if (!system.loadROM(path.toStdString())) {
         return false;
     }
@@ -89,6 +95,8 @@ bool EmulatorWidget::loadROM(const QString &path)
 bool EmulatorWidget::bootBIOS()
 {
     stop();
+    movieKind = 0;
+    currentRomPath.clear();
     if (!applyBootROM()) {
         return false;
     }
@@ -145,7 +153,7 @@ void EmulatorWidget::reset()
         return;
     }
     if (poweredOn) {
-        system.reset();
+        system.softReset();
     } else {
         fillTestPattern();
     }
@@ -214,19 +222,58 @@ void EmulatorWidget::emuLoop()
     int fpsSystemFrames = 0;   // System frames stepped in the current FPS window
 
     while (!stopRequested.load(std::memory_order_relaxed)) {
-        if (resetRequested.exchange(false)) {
-            system.reset();
-            audio.flush();
+        unsigned actions = pendingActions.exchange(0);
+        if (resetRequested.exchange(false)) actions |= ACT_SOFT_RESET;
+        const int kind = movieKind.load(std::memory_order_relaxed);
+        if (kind != 2) {   // (during playback the movie is in control: keys and buttons do nothing)
+            const uint32_t input = packedInput.load(std::memory_order_relaxed);
+            const uint32_t input2 = packedInput2.load(std::memory_order_relaxed);
+            const bool two = twoPlayers.load(std::memory_order_relaxed);
+            const uint8_t d1 = input & 0xFF, c1 = (input >> 8) & 0xFF, b1 = (input >> 16) & 0xFF;
+            const uint8_t d2 = two ? (input2 & 0xFF) : 0, b2 = two ? ((input2 >> 16) & 0xFF) : 0;
+            const uint8_t c2 = two ? static_cast<uint8_t>(((input2 >> 8) & 0xFF) | PlayerInput::CTRL_CONNECTION) : 0;
+            std::vector<uint8_t> swapped;
+            std::string swappedTitle;
+            if (actions & ACT_SWAP) {
+                std::lock_guard<std::mutex> lock(swapMutex);
+                swapped.swap(swapImage);
+                swappedTitle = swapTitle;
+            }
+            if (kind == 1) {   // recording: logged at the exact movie cycle, then applied
+                session.input(0, d1, c1, b1);
+                session.input(1, d2, c2, b2);
+                if (actions & ACT_SOFT_RESET) session.softReset();
+                if (actions & ACT_HARD_RESET) session.hardReset();
+                if (actions & ACT_YANK) session.yank();
+                if (!swapped.empty()) session.insert(swapped, swappedTitle);
+            } else {
+                system.getCPU().setPlayerInput(d1, c1, b1);
+                system.getCPU().setPlayer2Input(d2, c2, b2);
+                if (actions & ACT_SOFT_RESET) system.softReset();
+                if (actions & ACT_HARD_RESET) system.hardReset();
+                if (actions & ACT_YANK) system.ejectCartridge();
+                if (!swapped.empty()) system.insertCartridge(swapped);
+            }
+            if (actions & (ACT_SOFT_RESET | ACT_HARD_RESET)) audio.flush();
         }
-        const uint32_t input = packedInput.load(std::memory_order_relaxed);
-        system.getCPU().setPlayerInput(input & 0xFF, (input >> 8) & 0xFF, (input >> 16) & 0xFF);
 
         const auto now = Clock::now();
         int due = pacer.framesDue(std::chrono::duration<double>(now.time_since_epoch()).count());
         if (due > MAX_BATCH) due = MAX_BATCH;
         for (int i = 0; i < due; i++) {
             system.getDisplay().setLatchEnabled(i + 1 == due);   // only the last raster is published below
-            system.stepFrame();
+            if (kind != 0) {
+                if (session.run(ZeroPoint::System::CYCLES_PER_FRAME) == 0 && kind == 2) break;   // playback is over
+            } else {
+                system.stepFrame();
+            }
+        }
+        if (kind == 2 && !playbackReported &&
+            (session.finished() || session.desynced() || !session.failure().empty())) {
+            playbackReported = true;
+            if (!session.failure().empty()) emit movieEnded(QString::fromStdString(session.failure()), false);
+            else if (session.desynced()) emit movieEnded(QString::fromStdString(session.desyncReport()), false);
+            else emit movieEnded(tr("Movie finished: %1 checkpoints verified").arg(session.checkpointsVerified()), true);
         }
         pacer.stepped(due);
         fpsSystemFrames += due;
@@ -290,6 +337,11 @@ void EmulatorWidget::keyPressEvent(QKeyEvent *event)
     const int key = event->key();
     bool handled = true;
 
+    if (setPlayer2Key(key, true)) {
+        updatePlayer2Input();
+        event->accept();
+        return;
+    }
     if (key == keys.up) keyUp = true;
     else if (key == keys.down) keyDown = true;
     else if (key == keys.left) keyLeft = true;
@@ -319,6 +371,11 @@ void EmulatorWidget::keyReleaseEvent(QKeyEvent *event)
     const int key = event->key();
     bool handled = true;
 
+    if (setPlayer2Key(key, false)) {
+        updatePlayer2Input();
+        event->accept();
+        return;
+    }
     if (key == keys.up) keyUp = false;
     else if (key == keys.down) keyDown = false;
     else if (key == keys.left) keyLeft = false;
@@ -388,6 +445,173 @@ void EmulatorWidget::updatePlayerInput()
     packedInput.store(static_cast<uint32_t>(direction) | (static_cast<uint32_t>(control) << 8) |
                           (static_cast<uint32_t>(buttons) << 16),
                       std::memory_order_relaxed);
+}
+
+bool EmulatorWidget::setPlayer2Key(int key, bool down)
+{
+    switch (key) {
+        case Qt::Key_I: p2Up = down; return true;
+        case Qt::Key_K: p2Down = down; return true;
+        case Qt::Key_J: p2Left = down; return true;
+        case Qt::Key_L: p2Right = down; return true;
+        case Qt::Key_7: p2Btn1 = down; return true;
+        case Qt::Key_8: p2Btn2 = down; return true;
+        case Qt::Key_9: p2Btn3 = down; return true;
+        case Qt::Key_0: p2Btn4 = down; return true;
+        case Qt::Key_U: p2BigLeft = down; return true;
+        case Qt::Key_O: p2BigRight = down; return true;
+        case Qt::Key_N: p2LittleLeft = down; return true;
+        case Qt::Key_M: p2LittleRight = down; return true;
+        case Qt::Key_Backspace: p2Menu = down; return true;
+        case Qt::Key_P: p2Pause = down; return true;
+        default: return false;
+    }
+}
+
+void EmulatorWidget::updatePlayer2Input()
+{
+    uint8_t direction = 0;
+    uint8_t control = 0;   // CTRL_CONNECTION is added by the emulation thread when two players are on
+    if (p2Up && p2Down && p2Left && p2Right) control |= PlayerInput::CTRL_CENTER;
+    else if (p2Up && p2Left) direction = PlayerInput::DIR_UPLEFT;
+    else if (p2Up && p2Right) direction = PlayerInput::DIR_UPRIGHT;
+    else if (p2Down && p2Left) direction = PlayerInput::DIR_DOWNLEFT;
+    else if (p2Down && p2Right) direction = PlayerInput::DIR_DOWNRIGHT;
+    else if (p2Up) direction = PlayerInput::DIR_UP;
+    else if (p2Down) direction = PlayerInput::DIR_DOWN;
+    else if (p2Left) direction = PlayerInput::DIR_LEFT;
+    else if (p2Right) direction = PlayerInput::DIR_RIGHT;
+    if (p2BigLeft) control |= PlayerInput::CTRL_BIGLEFT;
+    if (p2BigRight) control |= PlayerInput::CTRL_BIGRIGHT;
+    if (p2LittleLeft) control |= PlayerInput::CTRL_LITTLELEFT;
+    if (p2LittleRight) control |= PlayerInput::CTRL_LITTLERIGHT;
+    if (p2Menu) control |= PlayerInput::CTRL_MENU;
+    if (p2Pause) control |= PlayerInput::CTRL_PAUSE;
+    uint8_t buttons = 0;
+    if (p2Btn1) buttons |= PlayerInput::BTN_1;
+    if (p2Btn2) buttons |= PlayerInput::BTN_2;
+    if (p2Btn3) buttons |= PlayerInput::BTN_3;
+    if (p2Btn4) buttons |= PlayerInput::BTN_4;
+    packedInput2.store(static_cast<uint32_t>(direction) | (static_cast<uint32_t>(control) << 8) |
+                           (static_cast<uint32_t>(buttons) << 16),
+                       std::memory_order_relaxed);
+}
+
+void EmulatorWidget::hardReset()
+{
+    if (running) {
+        pendingActions |= ACT_HARD_RESET;
+        return;
+    }
+    if (poweredOn) {
+        system.hardReset();
+        audio.flush();
+        updateFrameBuffer();
+        update();
+    }
+}
+
+void EmulatorWidget::yankCartridge()
+{
+    if (running) {
+        pendingActions |= ACT_YANK;
+        return;
+    }
+    if (poweredOn) system.ejectCartridge();
+}
+
+bool EmulatorWidget::swapCartridge(const QString &romPath, QString *error)
+{
+    QFile file(romPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) *error = tr("Can't read %1").arg(romPath);
+        return false;
+    }
+    const QByteArray bytes = file.readAll();
+    std::vector<uint8_t> image(bytes.begin(), bytes.end());
+    ZeroPoint::ROM probe;
+    if (!probe.loadMemory(image.data(), image.size())) {
+        if (error) *error = QString::fromStdString(probe.getError());
+        return false;
+    }
+    if (running) {
+        {
+            std::lock_guard<std::mutex> lock(swapMutex);
+            swapImage = std::move(image);
+            swapTitle = QFileInfo(romPath).fileName().toStdString();
+        }
+        pendingActions |= ACT_SWAP;
+        return true;
+    }
+    if (poweredOn) system.insertCartridge(image);
+    return true;
+}
+
+bool EmulatorWidget::startRecording(const QString &moviePath, const QString &author, QString *error)
+{
+    stop();
+    ZeroPoint::MovieSession::RecordSetup setup;
+    setup.bootRomPath = bootRomPath.toStdString();
+    setup.apuBiosPath = apuBiosPath.toStdString();
+    setup.cartridgePath = currentRomPath.toStdString();
+    setup.verifySignatures = ZeroPoint::System::verifySignaturesDefault();
+    setup.author = author.toStdString();
+    std::string err;
+    if (!session.beginRecording(system, setup, err)) {
+        if (error) *error = QString::fromStdString(err);
+        return false;
+    }
+    recordPath = moviePath.toStdString();
+    movieKind = 1;
+    poweredOn = true;
+    audio.flush();
+    updateFrameBuffer();
+    update();
+    return true;
+}
+
+bool EmulatorWidget::startPlayback(const QString &moviePath, const QStringList &romPaths, QString *error)
+{
+    stop();
+    std::string err;
+    if (!ZeroPoint::Movie::load(moviePath.toStdString(), playingMovie, err)) {
+        if (error) *error = QString::fromStdString(err);
+        return false;
+    }
+    library = ZeroPoint::RomLibrary();
+    library.add(QFileInfo(moviePath).absolutePath().toStdString());
+    for (const QString &p : romPaths) library.add(p.toStdString());
+    if (!session.beginPlayback(system, playingMovie, library, err)) {
+        if (error) *error = QString::fromStdString(err);
+        return false;
+    }
+    movieKind = 2;
+    playbackReported = false;
+    poweredOn = true;
+    audio.flush();
+    updateFrameBuffer();
+    update();
+    return true;
+}
+
+QString EmulatorWidget::finishMovie()
+{
+    stop();   // joins the emulation thread: `session` is ours again
+    const int kind = movieKind.exchange(0);
+    if (kind == 1) {
+        const ZeroPoint::Movie recorded = session.finishRecording();
+        std::string err;
+        if (!recorded.save(recordPath, err)) return QString::fromStdString(err);
+        return tr("Saved %1: %2 events over %3 s").arg(QString::fromStdString(recordPath)).arg(recorded.events.size())
+            .arg(static_cast<double>(recorded.lengthCycles) / 68011355.0, 0, 'f', 2);
+    }
+    if (kind == 2) {
+        if (!session.failure().empty()) return QString::fromStdString(session.failure());
+        if (session.desynced()) return QString::fromStdString(session.desyncReport());
+        return session.finished() ? tr("Movie finished: %1 checkpoints verified").arg(session.checkpointsVerified())
+                                  : tr("Playback stopped");
+    }
+    return QString();
 }
 
 void EmulatorWidget::fillTestPattern()

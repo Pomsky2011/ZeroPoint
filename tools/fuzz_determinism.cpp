@@ -19,7 +19,10 @@
 //   sliced      runCycles() cut into random-sized slices (not aligned to events or frames), memory pre-filled 0x5A
 //   vthread     random slices with the video worker thread on
 //
-// and every System::stateHashParts() after each event and at the end is compared against the reference. Under a
+// and every checkpoint after each event and at the end is compared against the reference. The sliced and vthread runs
+// also flip frame-skip latching and drain the audio buffer at random points, as frontends do: those are presentation,
+// so only System::machineHashParts() (what a movie checkpoint uses) must match for them; the others match on
+// stateHashParts() too. Under a
 // clang -fsanitize=address,undefined build it also hunts for the UB / out-of-bounds a hostile guest could reach.
 #include "system.h"
 #include <cstdio>
@@ -28,6 +31,13 @@
 #include <new>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#include <process.h>
+#define ZP_GETPID _getpid
+#else
+#include <unistd.h>
+#define ZP_GETPID getpid
+#endif
 
 using namespace ZeroPoint;
 
@@ -45,7 +55,7 @@ struct Rng {
     uint8_t byte() { return (uint8_t)(next() >> 24); }
 };
 
-enum class Kind { Poke, Input, LoadPPU, LoadAPU, Dma, Kick };
+enum class Kind { Poke, Input, Input2, LoadPPU, LoadAPU, Dma, Kick, Yank, Insert, SoftReset, HardReset };
 
 struct Event {
     uint64_t cycle;
@@ -59,9 +69,28 @@ struct Event {
 struct Scenario {
     std::vector<uint8_t> rom;    // cartridge payload
     uint32_t entry = 0;
+    std::vector<std::vector<uint8_t>> spare;   // .zpb images a Stop 'n' Swop can insert
     std::vector<Event> events;   // sorted by cycle
     uint64_t endCycle = 0;
 };
+
+// An unsigned .zpb image (header + payload).
+std::vector<uint8_t> makeImage(const std::vector<uint8_t>& payload, uint32_t entry) {
+#pragma pack(push, 1)
+    struct { char magic[4]; uint8_t version, reserved; uint16_t headerSize; uint32_t romSize, entry; char title[32]; char dev[16]; } h;
+#pragma pack(pop)
+    std::memset(&h, 0, sizeof h);
+    std::memcpy(h.magic, "ZPB", 4);
+    h.version = 1;
+    h.headerSize = 64;
+    h.romSize = (uint32_t)payload.size();
+    h.entry = entry;
+    std::strcpy(h.title, "fuzz");
+    std::vector<uint8_t> out(sizeof h + payload.size());
+    std::memcpy(out.data(), &h, sizeof h);
+    std::memcpy(out.data() + sizeof h, payload.data(), payload.size());
+    return out;
+}
 
 std::vector<uint8_t> randomBytes(Rng& r, size_t n) {
     std::vector<uint8_t> v(n);
@@ -79,6 +108,12 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
     for (auto& b : sc.rom)
         if (b == 0xFF) b = r.byte() & 0xFE;
     sc.entry = 0;
+    for (int i = 0; i < 2; i++) {
+        std::vector<uint8_t> payload = randomBytes(r, 4096 + r.below(61441));
+        for (auto& b : payload)
+            if (b == 0xFF) b = r.byte() & 0xFE;
+        sc.spare.push_back(makeImage(payload, r.below(0x1000)));
+    }
     const uint64_t frames = 2 + r.below((uint32_t)maxFrames);
     sc.endCycle = frames * System::CYCLES_PER_FRAME;
 
@@ -86,7 +121,7 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
     for (int i = 0; i < n; i++) {
         Event e;
         e.cycle = r.next() % sc.endCycle;
-        switch (r.below(16)) {
+        switch (r.below(24)) {
             case 0: case 1: case 2:   // the I/O block
                 e.kind = Kind::Poke; e.addr = 0xD80000 + r.below(0x60); e.value = r.byte(); break;
             case 3: case 4:           // PPU window
@@ -111,6 +146,12 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
                 e.kind = Kind::LoadPPU; e.blob = randomBytes(r, 16 + r.below(2048)); break;
             case 12:
                 e.kind = Kind::LoadAPU; e.blob = randomBytes(r, 16 + r.below(2048)); break;
+            case 16:
+                e.kind = Kind::Input2; e.in[0] = r.byte(); e.in[1] = r.byte(); e.in[2] = r.byte(); break;
+            case 17: e.kind = Kind::Yank; break;
+            case 18: case 19: e.kind = Kind::Insert; e.addr = r.below((uint32_t)sc.spare.size()); break;
+            case 20: e.kind = Kind::SoftReset; break;
+            case 21: e.kind = Kind::HardReset; break;
             case 14:                  // restart the CPU at a random address: random code jumps into open bus ($FF = HLT)
                 e.kind = Kind::Kick; e.addr = r.below(0x10000); break;
             default: {                // a DMA config, source/target aimed at the places that exist
@@ -131,7 +172,7 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
     return sc;
 }
 
-void apply(System& sys, const Event& e) {
+void apply(System& sys, const Event& e, const std::vector<std::vector<uint8_t>>& spare) {
     switch (e.kind) {
         case Kind::Poke: sys.getCPU().writeByte(e.addr, e.value); break;
         case Kind::Kick:
@@ -139,6 +180,11 @@ void apply(System& sys, const Event& e) {
             sys.getCPU().setPC((uint16_t)e.addr);
             break;
         case Kind::Input: sys.getCPU().setPlayerInput(e.in[0], e.in[1], e.in[2]); break;
+        case Kind::Input2: sys.getCPU().setPlayer2Input(e.in[0], e.in[1], e.in[2]); break;
+        case Kind::Yank: sys.ejectCartridge(); break;
+        case Kind::Insert: sys.insertCartridge(spare[e.addr]); break;
+        case Kind::SoftReset: sys.softReset(); break;
+        case Kind::HardReset: sys.hardReset(); break;
         case Kind::LoadPPU: sys.loadPPUProgram(e.blob.data(), e.blob.size(), 0, 0); break;
         case Kind::LoadAPU: sys.loadAPUProgram(e.blob.data(), e.blob.size(), 0); break;
         case Kind::Dma:
@@ -153,6 +199,10 @@ enum class Mode { Reference, PerCycle, Sliced, VThread };
 // Advance to master cycle `target` (or until the CPU halts, which freezes the whole machine) in the mode's way.
 void advanceTo(System& sys, uint64_t target, Mode mode, Rng& cut) {
     while (sys.getMasterCycleCount() < target && !sys.getCPU().isHalted()) {
+        if (mode == Mode::Sliced || mode == Mode::VThread) {   // what a frontend does between slices
+            if (cut.below(3) == 0) sys.getDisplay().setLatchEnabled(cut.below(2) != 0);
+            if (cut.below(5) == 0) sys.clearAudioBuffer();
+        }
         const uint64_t left = target - sys.getMasterCycleCount();
         if (mode == Mode::PerCycle) {
             sys.step();
@@ -165,6 +215,9 @@ void advanceTo(System& sys, uint64_t target, Mode mode, Rng& cut) {
 }
 
 using Parts = std::vector<std::pair<const char*, uint64_t>>;
+struct Checkpoint {
+    Parts full, machine;
+};
 
 // What the reference run actually exercised, so a fuzzer that mostly halts on its first random byte can't pass quietly.
 struct Coverage {
@@ -175,7 +228,7 @@ Coverage g_cov;          // last reference run
 Coverage g_total;        // summed over seeds
 uint64_t g_haltedEarly = 0, g_seeds = 0, g_ppuRan = 0;
 
-std::vector<Parts> run(const Scenario& sc, const std::string& romPath, Mode mode, int fill, uint64_t seed) {
+std::vector<Checkpoint> run(const Scenario& sc, const std::string& romPath, Mode mode, int fill, uint64_t seed) {
     void* storage = ::operator new(sizeof(System), std::align_val_t(alignof(System)));
     if (fill >= 0) std::memset(storage, fill, sizeof(System));
     System* sys = new (storage) System();
@@ -185,14 +238,14 @@ std::vector<Parts> run(const Scenario& sc, const std::string& romPath, Mode mode
     if (mode == Mode::VThread) sys->setVideoThread(true);
     Rng cut(seed ^ 0xC0FFEE);
 
-    std::vector<Parts> out;
+    std::vector<Checkpoint> out;
     for (const Event& e : sc.events) {
         advanceTo(*sys, e.cycle, mode, cut);
-        apply(*sys, e);
-        out.push_back(sys->stateHashParts());
+        apply(*sys, e, sc.spare);
+        out.push_back({sys->stateHashParts(), sys->machineHashParts()});
     }
     advanceTo(*sys, sc.endCycle, mode, cut);
-    out.push_back(sys->stateHashParts());
+    out.push_back({sys->stateHashParts(), sys->machineHashParts()});
     if (mode == Mode::Reference) {
         g_cov.cpuInstr = sys->getCPU().getInstructionCount();
         g_cov.apuInstr = sys->getAPU().getInstructionCount();
@@ -207,36 +260,38 @@ std::vector<Parts> run(const Scenario& sc, const std::string& romPath, Mode mode
 }
 
 bool writeRom(const Scenario& sc, const std::string& path) {
-#pragma pack(push, 1)
-    struct { char magic[4]; uint8_t version, reserved; uint16_t headerSize; uint32_t romSize, entry; char title[32]; char dev[16]; } h;
-#pragma pack(pop)
-    std::memset(&h, 0, sizeof h);
-    std::memcpy(h.magic, "ZPB", 4);
-    h.version = 1;
-    h.headerSize = 64;
-    h.romSize = (uint32_t)sc.rom.size();
-    h.entry = sc.entry;
-    std::strcpy(h.title, "fuzz");
+    const std::vector<uint8_t> image = makeImage(sc.rom, sc.entry);
     FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;
-    std::fwrite(&h, sizeof h, 1, f);
-    std::fwrite(sc.rom.data(), 1, sc.rom.size(), f);
+    std::fwrite(image.data(), 1, image.size(), f);
     std::fclose(f);
     return true;
 }
 
+// The cartridge file a scenario is loaded from. Named after the process so concurrent shards (or a stray second run)
+// sharing a work directory can't overwrite each other's ROM mid-run.
+std::string g_romFile;
+void removeRomFile() { if (!g_romFile.empty()) std::remove(g_romFile.c_str()); }
+std::string romFile(const std::string& work) {
+    if (g_romFile.empty()) {
+        g_romFile = work + "/fuzz_" + std::to_string((long)ZP_GETPID()) + ".zpb";
+        std::atexit(removeRomFile);
+    }
+    return g_romFile;
+}
+
 // One digest over every checkpoint of a run.
-uint64_t digest(const std::vector<Parts>& run) {
+uint64_t digest(const std::vector<Checkpoint>& run) {
     uint64_t h = 1469598103934665603ull;
-    for (const Parts& p : run)
-        for (const auto& kv : p)
+    for (const Checkpoint& c : run)
+        for (const auto& kv : c.full)
             for (int i = 0; i < 8; i++) h = (h ^ ((kv.second >> (8 * i)) & 0xFF)) * 1099511628211ull;
     return h;
 }
 
 uint64_t goldenDigest(uint64_t seed, int maxFrames, const std::string& work) {
     Scenario sc = makeScenario(seed, maxFrames);
-    const std::string rom = work + "/fuzz.zpb";
+    const std::string rom = romFile(work);
     if (!writeRom(sc, rom)) { std::fprintf(stderr, "cannot write %s\n", rom.c_str()); std::exit(2); }
     return digest(run(sc, rom, Mode::Reference, -1, seed));
 }
@@ -244,10 +299,10 @@ uint64_t goldenDigest(uint64_t seed, int maxFrames, const std::string& work) {
 // Returns true if every variant matched the reference.
 bool fuzzOne(uint64_t seed, int maxFrames, const std::string& work, bool verbose) {
     Scenario sc = makeScenario(seed, maxFrames);
-    const std::string rom = work + "/fuzz.zpb";
+    const std::string rom = romFile(work);
     if (!writeRom(sc, rom)) { std::fprintf(stderr, "cannot write %s\n", rom.c_str()); std::exit(2); }
 
-    std::vector<Parts> ref = run(sc, rom, Mode::Reference, -1, seed);
+    std::vector<Checkpoint> ref = run(sc, rom, Mode::Reference, -1, seed);
     g_seeds++;
     g_total.cpuInstr += g_cov.cpuInstr;
     g_total.apuInstr += g_cov.apuInstr;
@@ -264,14 +319,18 @@ bool fuzzOne(uint64_t seed, int maxFrames, const std::string& work, bool verbose
                           {"vthread/sliced", Mode::VThread, -1}};
     bool ok = true;
     for (const V& v : variants) {
-        std::vector<Parts> got = run(sc, rom, v.mode, v.fill, seed);
+        std::vector<Checkpoint> got = run(sc, rom, v.mode, v.fill, seed);
+        const bool perturbed = v.mode == Mode::Sliced || v.mode == Mode::VThread;
         size_t i = 0;
-        while (i < ref.size() && i < got.size() && ref[i] == got[i]) i++;
+        while (i < ref.size() && i < got.size() && ref[i].machine == got[i].machine && (perturbed || ref[i].full == got[i].full)) i++;
         if (i != ref.size() || got.size() != ref.size()) {
             std::string who;
-            if (i < ref.size() && i < got.size())
-                for (size_t k = 0; k < ref[i].size(); k++)
-                    if (ref[i][k].second != got[i][k].second) who += std::string(who.empty() ? "" : ", ") + ref[i][k].first;
+            if (i < ref.size() && i < got.size()) {
+                const Parts& a = ref[i].machine.empty() || ref[i].machine == got[i].machine ? ref[i].full : ref[i].machine;
+                const Parts& b = ref[i].machine.empty() || ref[i].machine == got[i].machine ? got[i].full : got[i].machine;
+                for (size_t k = 0; k < a.size(); k++)
+                    if (a[k].second != b[k].second) who += std::string(who.empty() ? "" : ", ") + a[k].first;
+            }
             std::printf("seed %llu: %s DIFFERS at event %zu/%zu (%s) cycle %llu: %s\n", (unsigned long long)seed, v.name, i,
                         sc.events.size(), i < sc.events.size() ? "event" : "end",
                         (unsigned long long)(i < sc.events.size() ? sc.events[i].cycle : sc.endCycle), who.c_str());

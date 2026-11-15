@@ -389,14 +389,17 @@ Color16 Display::color32To16(Color32 color) {
 
 namespace ZeroPoint {
 
-uint64_t Display::stateHash() const {
+uint64_t Display::stateHash() const { return hashImpl(true); }
+uint64_t Display::machineHash() const { return hashImpl(false); }
+
+uint64_t Display::hashImpl(bool withOutputFrame) const {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&h](const void* data, size_t n) {
         const uint8_t* p = static_cast<const uint8_t*>(data);
         for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 1099511628211ull;
     };
     mix(framebuffer.data(), framebuffer.size());
-    mix(outputFrame.data(), sizeof(Color32) * outputFrame.size());
+    if (withOutputFrame) mix(outputFrame.data(), sizeof(Color32) * outputFrame.size());
     int mode = static_cast<int>(renderMode);
     mix(&mode, sizeof mode);
     mix(&currentScanline, sizeof currentScanline);

@@ -23,10 +23,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORE = [
     "src/cpu.cpp", "src/ppu.cpp", "src/apu.cpp", "src/dma.cpp", "src/display.cpp", "src/system.cpp",
     "src/apu_hle.cpp", "src/rom.cpp", "src/cpu_instructions.cpp", "src/ppu_jit.cpp", "src/boot_hle/boot_hle.cpp",
+    "src/movie.cpp",   # not the machine, but what decides when events reach it: replay must not depend on the host either
 ]
 CORE_HEADERS = [
     "include/cpu.h", "include/ppu.h", "include/apu.h", "include/dma.h", "include/display.h", "include/system.h",
-    "include/rom.h", "include/interrupt_controller.h", "include/boot_hle.h", "include/ppu_jit.h",
+    "include/rom.h", "include/interrupt_controller.h", "include/boot_hle.h", "include/ppu_jit.h", "include/movie.h",
 ]
 
 # (file, regex) -> why it cannot reach emulated state.

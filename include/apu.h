@@ -34,6 +34,7 @@ public:
     // reset() for as long as the process runs. With no BIOS loaded, APU
     // execution starts on zero-filled memory (an endless run of NOP).
     void loadBIOS(const uint8_t* data, size_t size);
+    void clearBIOS();   // forget a loaded image (pair with enableHLEBios(true) for the native BIOS)
     bool hasBIOS() const { return !customBios.empty(); }
 
     // High-level-emulated BIOS (src/apu_hle.cpp): a native C++ stand-in for the

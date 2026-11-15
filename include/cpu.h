@@ -157,6 +157,29 @@ public:
         p1Control = control;
         p1Buttons = buttons;
     }
+    // Player 2 ($D80038-$D8003A): same bit layout. Unplugged (all zero, no CTRL_CONNECTION) until set.
+    void setPlayer2Input(uint8_t direction, uint8_t control, uint8_t buttons) {
+        p2Direction = direction;
+        p2Control = control;
+        p2Buttons = buttons;
+    }
+    void setPlayerInput(int port, uint8_t direction, uint8_t control, uint8_t buttons) {
+        if (port == 0) setPlayerInput(direction, control, buttons);
+        else setPlayer2Input(direction, control, buttons);
+    }
+
+    // The cartridge slot. mapCartridge() replaces whatever is in it (a Stop 'n' Swop); ejectCartridge() leaves it empty
+    // (a yank): banks $00-$7F and $E2 then read EMPTY_SLOT_EVEN/ODD, chunk gating and the verified bits are gone, and
+    // nothing runs, resets or re-verifies - what the CPU is executing keeps going. Both take effect at the instant
+    // they're called (System calls them between master cycles).
+    static constexpr uint8_t EMPTY_SLOT_EVEN = 0xCA;   // "CA FE": not $FF (HLT), not the $DE/$AF chunk poison
+    static constexpr uint8_t EMPTY_SLOT_ODD = 0xFE;
+    void mapCartridge(const uint8_t* rom, size_t romSize, const uint8_t* meta, size_t metaSize, uint8_t trailerVersion,
+                      uint32_t codeSize, uint32_t chunkCount);
+    void ejectCartridge();
+    bool isCartridgeInserted() const { return cartridgeInserted; }
+    // Zero every RAM bank (a power cycle).
+    void clearRAM();
     void loadROM(const uint8_t* data, size_t size, uint8_t startBank);
     void allocateRAM(uint8_t startBank, uint8_t numBanks);
     void mapPPUWindow(uint8_t bank);
@@ -166,6 +189,8 @@ public:
     // CPU there instead of bank $00; the stub reads the cartridge entry point
     // (see setCartridgeEntryPoint) from $D80049-$D8004B and jumps to it.
     void loadBootROM(const uint8_t* data, size_t size);
+    // Unmap the Boot ROM again: System's native (HLE) boot takes over at the next reset().
+    void unloadBootROM();
     bool hasBootROM() const { return bootROMLoaded; }
     void setCartridgeEntryPoint(uint32_t addr) { cartridgeEntryPoint = addr; }
     uint32_t getCartridgeEntryPoint() const { return cartridgeEntryPoint; }
@@ -627,7 +652,9 @@ private:
     uint8_t dmaConfigBuffer[9] = {};   // the 9-byte DMA config being streamed in at $D80020-$D80028
     uint8_t dmaConfigIndex = 0;        // how many of those bytes have arrived
     bool devModeFlag = false;          // DEV_MODE ($D80048)
-    uint8_t p2TxBuffer[256] = {};      // P2 serial port queues ($D80038-$D8003F); TX has no consumer yet
+    uint8_t p2Direction = 0, p2Control = 0, p2Buttons = 0;   // port 2 controller; set by setPlayer2Input()
+    bool cartridgeInserted = false;
+    uint8_t p2TxBuffer[256] = {};      // debug serial queues ($D8003C-$D8003E); TX has no consumer yet
     uint8_t p2RxBuffer[256] = {};
     uint8_t p2TxHead = 0, p2TxTail = 0, p2RxHead = 0, p2RxTail = 0;
 

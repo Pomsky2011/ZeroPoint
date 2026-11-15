@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <istream>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,8 @@ public:
 
     // Load a .zpb ROM file
     bool load(const std::string& filename);
+    // Same, from the file's bytes already in memory (a movie's cartridge swap, a ROM library).
+    bool loadMemory(const uint8_t* bytes, size_t size);
 
     // Check if ROM is loaded
     bool isLoaded() const { return loaded; }
@@ -99,6 +102,7 @@ private:
     uint32_t codeSize = 0;
     uint32_t chunkCount = 0;
 
+    bool loadStream(std::istream& file);
     void setError(const std::string& error);
 };
 

@@ -99,6 +99,10 @@ void APU::loadROM(const uint8_t* data, size_t size, uint16_t address) {
     }
 }
 
+void APU::clearBIOS() {
+    customBios.clear();   // reset() zero-fills BIOS_BASE when there is none to reapply
+}
+
 void APU::loadBIOS(const uint8_t* data, size_t size) {
     hleBios = false;   // a real BIOS image runs as LLE
     hleMode = HleMode::None;

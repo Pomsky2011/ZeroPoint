@@ -91,7 +91,7 @@ void pollute(System& sys) {
     cpu.writeByte(0xD80020, 0);
     for (int i = 0; i < 4; i++) cpu.writeByte(0xD80021, 0x11 * (i + 1));
     cpu.writeByte(0xD80008, 45);
-    for (int i = 0; i < 300; i++) cpu.writeByte(0xD80039, (uint8_t)i);
+    for (int i = 0; i < 300; i++) cpu.writeByte(0xD8003D, (uint8_t)i);   // SER_DATA
 }
 
 // What a pristine machine reads from those latches.
@@ -99,7 +99,7 @@ bool latchesClean(System& sys) {
     CPU& cpu = sys.getCPU();
     return cpu.readByte(0xD80020) == 0 &&        // DMA config bytes received
            cpu.readByte(0xD80008) == 0 &&        // PPUREG_ADDR
-           cpu.readByte(0xD80038) == 0x02;       // P2_STATUS: TX empty, nothing to read
+           cpu.readByte(0xD8003C) == 0x02;       // SER_STATUS: TX empty, nothing to read
 }
 
 int probeLatches() {

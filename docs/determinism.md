@@ -37,6 +37,21 @@ names the culprit. Plus a latch probe: the $D8 write-sequence latches must be cl
 - No other `float`/`double` is left in the core (`grep` the sources); `isqrt64` uses a double sqrt but corrects it to
   the exact integer result.
 
+## Movies, the cartridge slot, and what a checkpoint hashes
+
+`docs/movies.md`. The slot and reset operations (`insertCartridge`, `ejectCartridge`, `softReset`, `hardReset`) and port-2 input are
+fuzzed events like any other: `fuzz_determinism` generates them and every variant must agree. Two lessons from adding them:
+
+- **Hash only what the machine owns.** `System::stateHash()` includes the latched output frame and the pending audio buffer, which
+  frontends change (frame skip, draining audio) without touching the machine. A movie checkpoint uses `machineHash()` instead (the
+  display without its latched frame; audio as a running digest of every sample produced), and the fuzzer's sliced/vthread
+  variants flip frame skip and drain audio at random to prove it is invariant. Without that split a frame-skipping frontend could
+  produce false desyncs, or a real one could hide behind an audio-buffer difference.
+- **A fuzz harness is code too.** A run of three shards sharing one work directory showed "divergences" in every seed: the shards
+  were overwriting each other's cartridge file. The ROM file is now named per process. (An earlier run of the TSan build that looked
+  the same was probably the same kind of mistake in my setup; I could not prove it, and every clean re-run since uses distinct or
+  deliberately shared directories.)
+
 ## What it does not cover
 
 - Input. The core is deterministic *given* the controller state; a live frontend feeds it from the keyboard at

@@ -4,6 +4,8 @@
 #include "emulatorwidget.h"
 #include "display.h"
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QMenu>
 #include <QLabel>
 #include <QMessageBox>
 #include <QSettings>
@@ -72,6 +74,8 @@ MainWindow::MainWindow(QWidget *parent)
     // Create emulator widget (initially hidden)
     emulatorWidget = new EmulatorWidget(this);
     emulatorWidget->hide();
+    buildMovieMenu();
+    connect(emulatorWidget, &EmulatorWidget::movieEnded, this, &MainWindow::onMovieEnded);
 
     // Bottom-right of the status bar. Empty while stopped.
     fpsLabel = new QLabel(this);
@@ -123,6 +127,7 @@ void MainWindow::onLoadROM()
 
         // Load ROM into the emulator widget's System - this actually drives
         // CPU/PPU/APU execution, not just ROM metadata.
+        lastRomPath = filename;
         if (!emulatorWidget->loadROM(filename)) {
             QMessageBox::critical(this, tr("Load Error"), tr("Failed to load ROM into emulator"));
             return;
@@ -140,6 +145,138 @@ void MainWindow::onLoadROM()
             QString::fromStdString(rom.getError())
         );
     }
+}
+
+void MainWindow::buildMovieMenu()
+{
+    // Built here rather than in the .ui form: movies, the reset buttons and the cartridge slot are all "things a player
+    // does to the console", and they share one menu. F1-F4 match the SDL frontend.
+    QMenu *menu = ui->menubar->addMenu(tr("&Console"));
+    actionSoftReset = menu->addAction(tr("&Soft Reset"));
+    actionHardReset = menu->addAction(tr("&Hard Reset (Power Cycle)"));
+    actionYank = menu->addAction(tr("&Yank Cartridge"));
+    actionSwap = menu->addAction(tr("Stop 'n' S&wop Cartridge..."));
+    menu->addSeparator();
+    actionTwoPlayers = menu->addAction(tr("&Two Players (player 2: i j k l, 7 8 9 0, u o n m)"));
+    actionTwoPlayers->setCheckable(true);
+    menu->addSeparator();
+    actionRecordMovie = menu->addAction(tr("&Record Movie..."));
+    actionPlayMovie = menu->addAction(tr("&Play Movie..."));
+    actionStopMovie = menu->addAction(tr("S&top Movie"));
+
+    actionSoftReset->setShortcut(QKeySequence(Qt::Key_F1));
+    actionHardReset->setShortcut(QKeySequence(Qt::Key_F2));
+    actionYank->setShortcut(QKeySequence(Qt::Key_F3));
+    actionSwap->setShortcut(QKeySequence(Qt::Key_F4));
+    for (QAction *a : {actionSoftReset, actionHardReset, actionYank, actionSwap, actionTwoPlayers, actionRecordMovie,
+                       actionPlayMovie, actionStopMovie})
+        addAction(a);   // live even with the menu bar hidden (see the constructor)
+
+    connect(actionSoftReset, &QAction::triggered, this, &MainWindow::onReset);
+    connect(actionHardReset, &QAction::triggered, this, &MainWindow::onHardReset);
+    connect(actionYank, &QAction::triggered, this, &MainWindow::onYankCartridge);
+    connect(actionSwap, &QAction::triggered, this, &MainWindow::onSwapCartridge);
+    connect(actionTwoPlayers, &QAction::toggled, this, [this](bool on) { emulatorWidget->setTwoPlayers(on); });
+    connect(actionRecordMovie, &QAction::triggered, this, &MainWindow::onRecordMovie);
+    connect(actionPlayMovie, &QAction::triggered, this, &MainWindow::onPlayMovie);
+    connect(actionStopMovie, &QAction::triggered, this, &MainWindow::onStopMovie);
+    updateMovieActions();
+}
+
+void MainWindow::updateMovieActions()
+{
+    const bool active = emulatorWidget && emulatorWidget->isActive();
+    const bool movie = emulatorWidget && (emulatorWidget->isRecording() || emulatorWidget->isPlayingMovie());
+    actionSoftReset->setEnabled(active && !emulatorWidget->isPlayingMovie());
+    actionHardReset->setEnabled(active && !emulatorWidget->isPlayingMovie());
+    actionYank->setEnabled(active && !emulatorWidget->isPlayingMovie());
+    actionSwap->setEnabled(active && !emulatorWidget->isPlayingMovie());
+    actionTwoPlayers->setEnabled(!emulatorWidget || !emulatorWidget->isPlayingMovie());
+    actionRecordMovie->setEnabled(active && !movie);
+    actionPlayMovie->setEnabled(!movie);
+    actionStopMovie->setEnabled(movie);
+}
+
+void MainWindow::onHardReset()
+{
+    if (emulatorWidget && emulatorWidget->isActive()) {
+        emulatorWidget->hardReset();
+        ui->statusbar->showMessage(tr("Hard reset (power cycle)"), 3000);
+    }
+}
+
+void MainWindow::onYankCartridge()
+{
+    if (emulatorWidget && emulatorWidget->isActive()) {
+        emulatorWidget->yankCartridge();
+        ui->statusbar->showMessage(tr("Cartridge yanked"), 3000);
+    }
+}
+
+void MainWindow::onSwapCartridge()
+{
+    if (!emulatorWidget || !emulatorWidget->isActive()) return;
+    const QString filename = QFileDialog::getOpenFileName(this, tr("Stop 'n' Swop: insert cartridge"), lastRomPath,
+                                                          tr("ZeroPoint Binary (*.zpb);;All Files (*)"));
+    if (filename.isEmpty()) return;
+    QString error;
+    if (!emulatorWidget->swapCartridge(filename, &error)) {
+        QMessageBox::critical(this, tr("Swap Error"), error);
+        return;
+    }
+    lastRomPath = filename;
+    ui->statusbar->showMessage(tr("Swapped in %1").arg(QFileInfo(filename).fileName()), 3000);
+}
+
+void MainWindow::onRecordMovie()
+{
+    const QString filename = QFileDialog::getSaveFileName(this, tr("Record Movie"), QString(), tr("ZeroPoint Movie (*.zpm)"));
+    if (filename.isEmpty()) return;
+    QString error;
+    if (!emulatorWidget->startRecording(filename, QString(), &error)) {
+        QMessageBox::critical(this, tr("Record Error"), error);
+        return;
+    }
+    switchToEmulatorView();
+    updateEmulationControls(true);
+    onStart();
+    updateMovieActions();
+    ui->statusbar->showMessage(tr("Recording from power-on to %1 (Console > Stop Movie to save)").arg(QFileInfo(filename).fileName()));
+}
+
+void MainWindow::onPlayMovie()
+{
+    const QString filename = QFileDialog::getOpenFileName(this, tr("Play Movie"), QString(), tr("ZeroPoint Movie (*.zpm)"));
+    if (filename.isEmpty()) return;
+    QStringList roms;
+    if (!lastRomPath.isEmpty()) roms << QFileInfo(lastRomPath).absolutePath();
+    QString error;
+    if (!emulatorWidget->startPlayback(filename, roms, &error)) {
+        QMessageBox::critical(this, tr("Play Error"), error);
+        return;
+    }
+    switchToEmulatorView();
+    updateEmulationControls(true);
+    onStart();
+    updateMovieActions();
+    ui->statusbar->showMessage(tr("Playing %1").arg(QFileInfo(filename).fileName()));
+}
+
+void MainWindow::onStopMovie()
+{
+    const QString summary = emulatorWidget->finishMovie();
+    updateEmulationControls(true);
+    updateMovieActions();
+    if (!summary.isEmpty()) ui->statusbar->showMessage(summary, 8000);
+}
+
+void MainWindow::onMovieEnded(const QString &summary, bool ok)
+{
+    emulatorWidget->finishMovie();
+    updateEmulationControls(true);
+    updateMovieActions();
+    ui->statusbar->showMessage(summary, 8000);
+    if (!ok) QMessageBox::warning(this, tr("Movie"), summary);
 }
 
 void MainWindow::onExit()
@@ -309,6 +446,7 @@ void MainWindow::updateEmulationControls(bool active)
     ui->actionStart->setEnabled(active);
     ui->actionStop->setEnabled(false);
     ui->actionReset->setEnabled(active);
+    if (actionRecordMovie) updateMovieActions();
 }
 
 void MainWindow::loadConfiguration()

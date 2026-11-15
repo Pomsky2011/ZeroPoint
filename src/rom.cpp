@@ -1,6 +1,7 @@
 #include "rom.h"
 #include <fstream>
 #include <cstring>
+#include <sstream>
 
 namespace ZeroPoint {
 
@@ -14,6 +15,22 @@ ROM::~ROM() {
 }
 
 bool ROM::load(const std::string& filename) {
+    // Open file
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        loaded = false;
+        errorMessage = "Failed to open file: " + filename;
+        return false;
+    }
+    return loadStream(file);
+}
+
+bool ROM::loadMemory(const uint8_t* bytes, size_t size) {
+    std::istringstream stream(std::string(reinterpret_cast<const char*>(bytes), size), std::ios::binary);
+    return loadStream(stream);
+}
+
+bool ROM::loadStream(std::istream& file) {
     loaded = false;
     data.clear();
     title.clear();
@@ -26,13 +43,6 @@ bool ROM::load(const std::string& filename) {
     trailerVersion = 0;
     codeSize = 0;
     chunkCount = 0;
-
-    // Open file
-    std::ifstream file(filename, std::ios::binary);
-    if (!file) {
-        setError("Failed to open file: " + filename);
-        return false;
-    }
 
     // Read header
     ZPBHeader header{};

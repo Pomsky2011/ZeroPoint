@@ -34,6 +34,13 @@ private slots:
     void onToggleFullscreen(bool checked);
     void onToggleMenuBar(bool checked);
     void onEscapePressed();
+    void onRecordMovie();
+    void onPlayMovie();
+    void onStopMovie();
+    void onHardReset();
+    void onYankCartridge();
+    void onSwapCartridge();
+    void onMovieEnded(const QString &summary, bool ok);
 
 private:
     Ui::MainWindow *ui;
@@ -50,6 +57,14 @@ private:
     QString biosPath;
     QString apuBiosPath;
     KeyBindings keyBindings;
+
+    // Movie menu, built in code (see MainWindow::buildMovieMenu).
+    QAction *actionRecordMovie = nullptr, *actionPlayMovie = nullptr, *actionStopMovie = nullptr;
+    QAction *actionSoftReset = nullptr, *actionHardReset = nullptr, *actionYank = nullptr, *actionSwap = nullptr;
+    QAction *actionTwoPlayers = nullptr;
+    QString lastRomPath;   // where Play Movie looks for the ROMs a movie pins, besides the movie's own folder
+    void buildMovieMenu();
+    void updateMovieActions();
 
     void switchToEmulatorView();
     void applyWindowScale(int scale);

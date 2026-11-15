@@ -67,6 +67,13 @@ public:
     // but the last one (the only one it shows). Does not change anything else: the rolling buffer, the PPU and
     // the CPU see no difference. Default on.
     void setLatchEnabled(bool on) { latchEnabled = on; }
+    // Back to the power-on state (a power cycle): black buffers, raster at (0,0), default render mode. The latch
+    // switch is the frontend's setting, not display state, so it is kept.
+    void reset() {
+        const bool keep = latchEnabled;
+        *this = Display();
+        latchEnabled = keep;
+    }
 
     // Get current scanline (0-260)
     int getCurrentScanline() const { return currentScanline; }
@@ -159,6 +166,9 @@ public:
     // FNV-1a hash of all emulated state (rolling buffer, latched frame, raster position, window).
     // For regression tests that compare two paths that must be state-identical.
     uint64_t stateHash() const;
+    // The same without the latched output frame, which is presentation: it depends on whether the frontend skipped
+    // frames (setLatchEnabled), not on the machine. What a movie checkpoint uses.
+    uint64_t machineHash() const;
 
     // Helper: Convert 16-bit color to 32-bit
     static Color32 color16To32(Color16 color);
@@ -167,6 +177,8 @@ public:
     static Color16 color32To16(Color32 color);
 
 private:
+    uint64_t hashImpl(bool withOutputFrame) const;
+
     // Rolling framebuffer: 8 banks × 1 KiB = 8 KiB, mapped at $E000-$FFFF in
     // PPU memory. Holds a sliding window of scanlines (16 in RGBA16, 8 in
     // RGBA32); scanline y lives in slot (y % window). Writes outside the

@@ -107,6 +107,7 @@ void System::reset() {
     audioSampleAccum = 0;
     nextAudioCycle = audioCyclesUntilSample(0);   // from master cycle 0
     audioBuffer.clear();
+    audioDigest = 1469598103934665603ull;
 
     intc.reset();
 
@@ -130,20 +131,7 @@ void System::reset() {
     // finished (register/execution state only - RAM is untouched). Cheap to
     // check every reset(); only actually maps once per loadROM() call.
     if (romLoaded && !cartridgeMapped) {
-        cpu.loadROM(pendingRomData.data(), pendingRomData.size(), 0x00);
-        cpu.loadSignedROMMetadata(pendingSignedMetadata.empty() ? nullptr : pendingSignedMetadata.data(),
-                                   pendingSignedMetadata.size());
-        // Runtime chunk-verification gating (see CPU::configureDataGating) -
-        // only trailer version 3 has a manifest to gate against. Done once
-        // here, in lockstep with the metadata mapping above, not on every
-        // reset: CPU::reset() re-locks all chunks itself on each subsequent
-        // reset without needing this re-run.
-        if (pendingTrailerVersion == 3) {
-            cpu.configureDataGating(pendingCodeSize, pendingChunkCount);
-        } else {
-            cpu.clearDataGating();
-        }
-        cartridgeMapped = true;
+        mapCartridgeNow();
     }
 
     // With a real Boot ROM mapped, cpu.reset() above already landed PC/PB at the
@@ -177,7 +165,19 @@ bool System::loadROM(const std::string& filename) {
         std::cerr << "Error loading ROM: " << rom.getError() << "\n";
         return false;
     }
+    return cacheROM(rom);
+}
 
+bool System::loadROMImage(const std::vector<uint8_t>& image) {
+    ROM rom;
+    if (!rom.loadMemory(image.data(), image.size())) {
+        std::cerr << "Error loading ROM: " << rom.getError() << "\n";
+        return false;
+    }
+    return cacheROM(rom);
+}
+
+bool System::cacheROM(const ROM& rom) {
     romTitle = rom.getTitle();
     romDeveloper = rom.getDeveloper();
     entryPoint = rom.getEntryPoint();
@@ -205,6 +205,16 @@ bool System::loadROM(const std::string& filename) {
         pendingChunkCount = rom.getChunkCount();
     }
 
+    // Identity of what is in the slot, for stateHash (header + payload + trailer, i.e. the file).
+    {
+        uint64_t h = 1469598103934665603ull;
+        auto mix = [&h](const uint8_t* p, size_t n) { for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 1099511628211ull; };
+        mix(rom.getRawHeader(), ROM::RAW_HEADER_SIZE);
+        mix(rom.getData(), rom.getSize());
+        mix(rom.getTrailer().data(), rom.getTrailer().size());
+        cartridgeDigest = h;
+    }
+
     romLoaded = true;
 
     // Record the entry point for the Boot ROM to read (or for reset() to
@@ -221,6 +231,49 @@ bool System::loadROM(const std::string& filename) {
     return true;
 }
 
+void System::mapCartridgeNow() {
+    cpu.mapCartridge(pendingRomData.data(), pendingRomData.size(), pendingSignedMetadata.data(),
+                     pendingSignedMetadata.size(), pendingTrailerVersion, pendingCodeSize, pendingChunkCount);
+    cartridgeMapped = true;
+}
+
+bool System::insertCartridge(const std::vector<uint8_t>& image) {
+    ROM rom;
+    if (!rom.loadMemory(image.data(), image.size())) {
+        std::cerr << "Error inserting cartridge: " << rom.getError() << "\n";
+        return false;
+    }
+    cacheROM(rom);   // also what is on the bus from now on: no reset, no boot, no verify
+    mapCartridgeNow();
+    return true;
+}
+
+void System::ejectCartridge() {
+    cpu.ejectCartridge();
+    pendingRomData.clear();
+    pendingSignedMetadata.clear();
+    pendingTrailerVersion = 0;
+    pendingCodeSize = 0;
+    pendingChunkCount = 0;
+    cartridgeMapped = false;
+    romLoaded = false;
+    entryPoint = 0;
+    cartridgeDigest = 0;
+    romTitle.clear();
+    romDeveloper.clear();
+    cpu.setCartridgeEntryPoint(0);
+}
+
+void System::hardReset() {
+    // A power cycle: RAM, video, and the cartridge bus (the cartridge itself stays in the slot, but off the bus until
+    // reset() reconnects it, exactly like powerOn()).
+    cpu.clearRAM();
+    display.reset();
+    cpu.ejectCartridge();
+    cartridgeMapped = false;
+    reset();
+}
+
 bool System::loadBootROM(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     if (!file) {
@@ -233,9 +286,14 @@ bool System::loadBootROM(const std::string& filename) {
         std::cerr << "Error loading Boot ROM: " << filename << " is empty\n";
         return false;
     }
-
-    cpu.loadBootROM(data.data(), data.size());
+    if (!loadBootROMImage(data)) return false;
     std::cout << "Loaded Boot ROM: " << filename << " (" << data.size() << " bytes)\n";
+    return true;
+}
+
+bool System::loadBootROMImage(const std::vector<uint8_t>& data) {
+    if (data.empty()) return false;
+    cpu.loadBootROM(data.data(), data.size());
     return true;
 }
 
@@ -251,9 +309,14 @@ bool System::loadAPUBios(const std::string& filename) {
         std::cerr << "Error loading APU BIOS: " << filename << " is empty\n";
         return false;
     }
-
-    apu.loadBIOS(data.data(), data.size());
+    if (!loadAPUBiosImage(data)) return false;
     std::cout << "Loaded APU BIOS: " << filename << " (" << data.size() << " bytes)\n";
+    return true;
+}
+
+bool System::loadAPUBiosImage(const std::vector<uint8_t>& data) {
+    if (data.empty()) return false;
+    apu.loadBIOS(data.data(), data.size());
     return true;
 }
 
@@ -669,8 +732,13 @@ ZP_ALWAYS_INLINE void System::cpuApuAudioCycle(int cyclePhase) {
         audioSampleAccum -= TIMER_SECOND_PERIOD;
         nextAudioCycle = masterCycleCount + 1 + audioCyclesUntilSample(audioSampleAccum);   // from the next cycle on
         apu.updateMMP();
-        audioBuffer.push_back(apu.getMixedSampleLeft());
-        audioBuffer.push_back(apu.getMixedSampleRight());
+        const int16_t left = apu.getMixedSampleLeft(), right = apu.getMixedSampleRight();
+        audioBuffer.push_back(left);
+        audioBuffer.push_back(right);
+        for (int16_t v : {left, right}) {
+            audioDigest = (audioDigest ^ (uint8_t)(v & 0xFF)) * 1099511628211ull;
+            audioDigest = (audioDigest ^ (uint8_t)((v >> 8) & 0xFF)) * 1099511628211ull;
+        }
     }
 }
 
@@ -1040,7 +1108,7 @@ uint32_t System::hleVerifyChunk() {
     return COST_VERIFY_CHUNK;
 }
 
-std::vector<std::pair<const char*, uint64_t>> System::stateHashParts() {
+std::vector<std::pair<const char*, uint64_t>> System::hashParts(bool presentation) {
     auto part = [](auto fill) {
         uint64_t h = 1469598103934665603ull;
         auto mixv = [&h](auto v) {
@@ -1053,7 +1121,7 @@ std::vector<std::pair<const char*, uint64_t>> System::stateHashParts() {
     std::vector<std::pair<const char*, uint64_t>> out;
     out.push_back({"cpu", cpu.stateHash()});
     out.push_back({"ppu", ppu.stateHash()});
-    out.push_back({"display", display.stateHash()});
+    out.push_back({"display", presentation ? display.stateHash() : display.machineHash()});
     out.push_back({"apu", apu.stateHash()});
     out.push_back({"dma", dma.stateHash()});
     out.push_back({"timers+irq", part([&](auto mixv) {
@@ -1068,11 +1136,29 @@ std::vector<std::pair<const char*, uint64_t>> System::stateHashParts() {
         mixv(masterCycleCount); mixv(nextTimerEventCycle); mixv(timersLastUpdateCycle);
         mixv(cpuCycleBudget); mixv(apuCycleBudget); mixv(audioSampleAccum); mixv(nextAudioCycle); mixv(devMode);
     })});
+    out.push_back({"cartridge", part([&](auto mixv) {
+        mixv(romLoaded); mixv(cartridgeMapped); mixv(entryPoint); mixv(cartridgeDigest);
+        mixv(pendingTrailerVersion); mixv(pendingCodeSize); mixv(pendingChunkCount);
+        mixv(pendingRomData.size()); mixv(pendingSignedMetadata.size());
+    })});
     out.push_back({"audio", part([&](auto mixv) {
-        mixv(audioBuffer.size());
-        for (int16_t v : audioBuffer) mixv(v);
+        mixv(audioDigest);
+        if (presentation) {   // what is waiting to be drained is the host's business, not the machine's
+            mixv(audioBuffer.size());
+            for (int16_t v : audioBuffer) mixv(v);
+        }
     })});
     return out;
+}
+
+std::vector<std::pair<const char*, uint64_t>> System::machineHashParts() { return hashParts(false); }
+
+uint64_t System::machineHash() {
+    uint64_t h = 1469598103934665603ull;
+    for (const auto& p : machineHashParts()) {
+        for (int i = 0; i < 8; i++) h = (h ^ ((p.second >> (8 * i)) & 0xFF)) * 1099511628211ull;
+    }
+    return h;
 }
 
 uint64_t System::stateHash() {

@@ -34,6 +34,17 @@ public:
     // See cpu.h PlayerInput:: for the register bit layout.
     void getPlayerInput(uint8_t& direction, uint8_t& control, uint8_t& buttons) const;
 
+    // Player 2, same layout. Default bindings: i/j/k/l = direction (adjacent pairs give diagonals, all four = center),
+    // 7/8/9/0 = buttons 1-4, u/o = big-left/big-right, n/m = little-left/little-right, backspace = menu, p = pause.
+    // Unplugged (all zero, no CTRL_CONNECTION) unless `plugged` - the frontend's --two-players.
+    void getPlayer2Input(uint8_t& direction, uint8_t& control, uint8_t& buttons, bool plugged) const;
+
+    // Host actions on the cartridge slot and the reset buttons, set by key presses: F1 soft reset, F2 hard reset
+    // (power cycle), F3 yank the cartridge, F4 Stop 'n' Swop. takeHotkeys() returns the bits pressed since the last
+    // call and clears them.
+    enum Hotkey : unsigned { HOTKEY_SOFT_RESET = 1, HOTKEY_HARD_RESET = 2, HOTKEY_YANK = 4, HOTKEY_SWAP = 8 };
+    unsigned takeHotkeys() { unsigned h = hotkeys; hotkeys = 0; return h; }
+
     // Push interleaved stereo 16-bit PCM (as produced by System::getAudioBuffer())
     // to the audio device. No-op if the device failed to open. Safe to call
     // with an empty/zero-length buffer.
@@ -43,6 +54,7 @@ private:
     // Convert ZeroPoint color format to SDL RGBA
     uint32_t convertColor(Color16 color) const;
 
+    unsigned hotkeys = 0;
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Texture* texture;

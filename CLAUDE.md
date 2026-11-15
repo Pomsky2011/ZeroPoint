@@ -67,6 +67,13 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   `bin/test_determinism <bootrom|none> <rom> <secs>`, `bin/fuzz_determinism <dir> [seed] [n]` (random guests/event schedules,
   also under clang ASan/UBSan and TSan builds; `--golden-check tools/determinism_golden.txt` is the cross-host digest check),
   and `tools/determinism_audit.py`; see `docs/determinism.md` and `docs/determinism-proof.md`.
+- **Cartridge slot + movies**: `System::insertCartridge` (Stop 'n' Swop: replaces it in one instant, no reset/verify),
+  `ejectCartridge` (yank: banks `$00-$7F`/`$E2` read `CA FE CA FE...`, not `$FF`), `softReset`, `hardReset` (power cycle,
+  state-identical to a fresh System). `.zpm` movies (`include/movie.h`, `bin/zp_movie`, `zeropoint_sdl --record/--play`,
+  Qt Console menu) record both controllers + those four actions at exact master cycles, pin ROM/boot ROM/APU BIOS by
+  SHA-256, and embed `System::machineHash()` checkpoints (host-independent: not the audio buffer or latched frame).
+  Bump `System::CORE_REVISION` when emulation changes. `docs/movies.md`; tests `test_cart_slot`, `test_movie`,
+  `test_movie_cli.sh`, `test_qt_movie` (offscreen).
 - **C compilers** (`zpcc`, `def88186cc`; 16-bit `int`, 32-bit `long` via `ZPdevtools/lib/zp_long.asm`): regression suite
   `ZPdevtools/tests/cc/run.sh` runs C in the emulator through `bin/zp_run_c` (`ZP_TRACE=1` traces a hang); runtime test
   `bin/test_zp_long`. Arrays/pointer-deref/struct members only reach bank $00 and `def88186cc` has no globals.
@@ -166,9 +173,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$D80000-$D8000F**: PPU Control
 - **$D80010-$D8001F**: APU Control
 - **$D80020-$D8002F**: DMA Control
-- **$D80030-$D8003F**: Player Ports (P1 controller direction/buttons; P2 is a
-  buffered serial port with RX/TX status bits and no consumer yet — see
-  `docs/debug-protocol.md`, which is a design doc, not a shipped feature)
+- **$D80030-$D8003F**: Player Ports: P1 controller `$D80030-$D80032` (dir/ctrl/buttons, plugged in by default),
+  P2 controller `$D80038-$D8003A` (same layout, unplugged until a frontend/movie plugs it in), debug serial
+  `$D8003C-$D8003E` (RX/TX queues, no consumer yet — `docs/debug-protocol.md` is a design doc)
 - **$D80040-$D80047**: Display Status
 - **$D80048-$D8004F**: System Control — offset 0: DEV_MODE flag byte; offsets
   1-3: cartridge entry point (low/mid/bank byte, read-only), written by
