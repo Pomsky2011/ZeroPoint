@@ -133,6 +133,7 @@ set(CORE_SOURCES
     src/cpu_instructions.cpp
     src/system.cpp
     src/default_boot_rom.cpp
+    src/boot_hle/boot_hle.cpp
 )
 
 set(CORE_HEADERS
@@ -327,6 +328,10 @@ target_link_libraries(test_boot_jingle zeropoint_core)
 add_executable(test_boot_trig tools/test_boot_trig.cpp)
 target_link_libraries(test_boot_trig zeropoint_core)
 
+# The native (HLE) Boot ROM against the real one: signature verification, COP #$FF, COP #$F7 (tools/test_hle_cop.sh)
+add_executable(test_hle_cop tools/test_hle_cop.cpp)
+target_link_libraries(test_hle_cop zeropoint_core)
+
 # Boot ROM -> cartridge PPU handoff (splash fade-out, COP #$F7 PPU load); needs ZPbootROM's build + test carts
 add_executable(test_boot_handoff tools/test_boot_handoff.cpp)
 target_link_libraries(test_boot_handoff zeropoint_core)
@@ -472,6 +477,10 @@ set_target_properties(test_boot_jingle PROPERTIES
 )
 
 set_target_properties(test_boot_trig PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_hle_cop PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

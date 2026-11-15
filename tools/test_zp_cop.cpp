@@ -126,7 +126,7 @@ uint8_t sigFor(const std::string& n) {
 
 int main(int argc, char** argv) {
     if (argc < 5) {
-        std::fprintf(stderr, "usage: %s <bootrom.bin> <trig_model.py> <cpuasm> <zp_cop.asm>\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <bootrom.bin | --hle> <trig_model.py> <cpuasm> <zp_cop.asm>\n", argv[0]);
         return 2;
     }
     const std::string cpuasm = std::filesystem::absolute(argv[3]).string();   // we cd into the work dir below
@@ -164,7 +164,8 @@ int main(int argc, char** argv) {
     }
 
     System sys;
-    if (!sys.loadBootROM(argv[1])) { std::fprintf(stderr, "cannot load boot ROM\n"); return 1; }
+    // "--hle" in place of the image runs the same wrappers against System's native Boot ROM services.
+    if (std::string(argv[1]) != "--hle" && !sys.loadBootROM(argv[1])) { std::fprintf(stderr, "cannot load boot ROM\n"); return 1; }
     for (size_t i = 0; i < lib.size(); i++) sys.getCPU().writeByte(0x800200 + i, lib[i]);
 
     // Every reference vector through zp_cop, bit for bit. The model's a/x/y are the service's A/X/Y.

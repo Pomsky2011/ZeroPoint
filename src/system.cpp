@@ -1,5 +1,4 @@
 #include "system.h"
-#include "default_boot_rom.h"
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
@@ -63,9 +62,9 @@ System::System()
     // Setup I/O registers at bank $D8
     cpu.setupIORegisters();
 
-    // Map the Boot ROM (bank $E0). Hardware reset lands here; the stub reads
-    // the cartridge entry point System::loadROM() records and hands off.
-    cpu.loadBootROM(kDefaultBootROM, kDefaultBootROMSize);
+    // No Boot ROM image by default: the boot ROM is HLE'd natively (isBootHLE(), src/system.cpp's
+    // hle* functions, docs/boot-hle.md) until loadBootROM() maps a real one into bank $E0.
+    cpu.setServiceHook([this](uint8_t sig) { return hleService(sig); });
 
     // Connect DMA to memory system
     dma.setMemoryCallbacks(dmaReadCallback, dmaWriteCallback);
@@ -78,7 +77,7 @@ System::System()
     std::cout << "  PPU Window: Bank $B0\n";
     std::cout << "  APU Window: Bank $A0\n";
     std::cout << "  I/O Regs:   Bank $D8\n";
-    std::cout << "  Boot ROM:   Bank $E0\n";
+    std::cout << "  Boot ROM:   HLE (Bank $E0 when loadBootROM() maps a real one)\n";
     std::cout << "  DMA:        16 channels, 34 MHz\n";
 }
 
@@ -148,14 +147,11 @@ void System::reset() {
         cartridgeMapped = true;
     }
 
-    // With a Boot ROM mapped, cpu.reset() above already landed PC/PB at the
-    // Boot ROM ($E0:0000), which reads the cartridge entry point recorded
-    // below and jumps there itself. Without one, jump straight to it.
+    // With a real Boot ROM mapped, cpu.reset() above already landed PC/PB at the
+    // Boot ROM ($E0:0000), which verifies the cartridge and jumps to the entry
+    // point recorded below itself. Without one, the HLE does that natively.
     if (romLoaded) {
-        if (!cpu.hasBootROM()) {
-            cpu.setPC(entryPoint & 0xFFFF);
-            cpu.setPB((entryPoint >> 16) & 0xFF);
-        }
+        if (!cpu.hasBootROM()) hleBootCartridge();
         std::cout << "System reset - Entry point: $" << std::hex
                   << (int)((entryPoint >> 16) & 0xFF) << ":" << (entryPoint & 0xFFFF)
                   << std::dec << "\n";
@@ -438,6 +434,11 @@ void System::setVideoThread(bool on) {
 bool System::videoThreadDefault() {
     const char* env = std::getenv("ZEROPOINT_VIDEO_THREAD");
     return !(env && env[0] == '0');
+}
+
+bool System::verifySignaturesDefault() {
+    const char* env = std::getenv("ZEROPOINT_NO_VERIFY");
+    return !(env && env[0] == '1');
 }
 
 void System::startVideoThread() {
@@ -930,6 +931,121 @@ void System::dmaCompleteCallback(uint8_t /*channel*/) {
     if (currentSystem) {
         currentSystem->signalIRQ(IRQSource::DMA);
     }
+}
+
+
+// ---- HLE Boot ROM -----------------------------------------------------------------------------
+// What the real ZPbootROM does, natively. docs/boot-hle.md has the contract and what is skipped.
+
+namespace {
+// CPU cycles the real Boot ROM spends per service, including COP and RTI (tools/test_hle_cop.cpp
+// measures them against the real image; these are its worst cases). The HLE charges them so code
+// that busy-waits or is cycle-tuned behaves the same with and without --boot.
+constexpr uint32_t COST_SIN = 171;
+constexpr uint32_t COST_COS = 175;
+constexpr uint32_t COST_SINCOS = 335;
+constexpr uint32_t COST_ATAN2 = 1086;
+constexpr uint32_t COST_ATAN = 1042;
+constexpr uint32_t COST_SQRT = 3902;
+constexpr uint32_t COST_HYPOT = 4011;
+constexpr uint32_t COST_RESERVED = 17;
+constexpr uint32_t COST_PPU_LOAD_BASE = 216;   // fit of the real ROM: 648, 1800, 2375, 6981, 27705, 110613 cycles for 1, 4, 5, 16, 64, 256 pages
+constexpr uint32_t COST_PPU_LOAD_PER_PAGE = 432;
+// COP #$FF: the real thing hashes 16 KiB (~half a second), the whole point of HLE booting being
+// that it doesn't, so a flat token cost.
+constexpr uint32_t COST_VERIFY_CHUNK = 64;
+}  // namespace
+
+BootHLE::SignedROMView System::signedView() const {
+    BootHLE::SignedROMView v;
+    if (pendingSignedMetadata.size() > ROM::RAW_HEADER_SIZE) {
+        v.header = pendingSignedMetadata.data();
+        v.trailer = pendingSignedMetadata.data() + ROM::RAW_HEADER_SIZE;
+        v.trailerSize = pendingSignedMetadata.size() - ROM::RAW_HEADER_SIZE;
+    }
+    v.payload = pendingRomData.data();
+    v.payloadSize = pendingRomData.size();
+    return v;
+}
+
+void System::hleBootCartridge() {
+    if (verifySignatures) {
+        BootHLE::VerifyResult r = BootHLE::verifyROM(signedView());
+        if (r != BootHLE::VerifyResult::Ok) {
+            // The real Boot ROM hlts here too (after telling the APU, whose jingle HLE doesn't play).
+            std::cerr << "[boot] refusing to run \"" << romTitle << "\": " << BootHLE::describe(r)
+                      << " (--no-verify skips the check)\n";
+            cpu.halt();
+            return;
+        }
+    }
+
+    // The same side effects the real Boot ROM (and the old 35-byte stub) leave, so a cartridge can't
+    // tell them apart: a JMP-long trampoline in WRAM $80:0000-0003 and A/N/Z holding the entry
+    // point's bank byte. The PPU is idle and black, as after the real splash's hand-off.
+    uint8_t bank = (entryPoint >> 16) & 0xFF;
+    cpu.writeByte(0x800000, 0x10);
+    cpu.writeByte(0x800001, entryPoint & 0xFF);
+    cpu.writeByte(0x800002, (entryPoint >> 8) & 0xFF);
+    cpu.writeByte(0x800003, bank);
+    CPUFlags p = cpu.getFlags();
+    p.N = (bank & 0x80) != 0;
+    p.Z = bank == 0;
+    cpu.setFlags(p);
+    cpu.setA(bank);
+    ppu.reset();
+
+    cpu.setPC(entryPoint & 0xFFFF);
+    cpu.setPB(bank);
+}
+
+uint32_t System::hleService(uint8_t sig) {
+    if (cpu.hasBootROM() || sig < 0xF0) return 0;   // a real Boot ROM (or the cartridge) owns it
+    switch (sig) {
+        case 0xF0: cpu.setA(BootHLE::sinQ15(cpu.getA())); return COST_SIN;
+        case 0xF1: cpu.setA(BootHLE::cosQ15(cpu.getA())); return COST_COS;
+        case 0xF2: {
+            uint16_t angle = cpu.getA();
+            cpu.setA(BootHLE::sinQ15(angle));
+            cpu.setX(BootHLE::cosQ15(angle));
+            return COST_SINCOS;
+        }
+        case 0xF3: cpu.setA(BootHLE::atan2Angle(cpu.getY(), cpu.getX())); return COST_ATAN2;
+        case 0xF4: cpu.setA(BootHLE::atanQ88(cpu.getA())); return COST_ATAN;
+        case 0xF5: cpu.setA(BootHLE::sqrt32(cpu.getA(), cpu.getX())); return COST_SQRT;
+        case 0xF6: cpu.setA(BootHLE::hypot16(cpu.getX(), cpu.getY())); return COST_HYPOT;
+        case 0xF7: return hlePPULoad();
+        case 0xFF: return hleVerifyChunk();
+        default: return COST_RESERVED;   // $F8-$FE: reserved, registers untouched
+    }
+}
+
+// COP #$F7 (handoff.def svc_ppu_load): A = source bank, X = source offset, Y = 256-byte pages
+// (0 = 256). Resets the PPU, copies to PPU address 0, starts it, returns A = 0. The bytes go through
+// the same CPU bus accesses a cartridge's own writes would, so they are gated (an unverified v3 data
+// chunk copies as poison, which the real ROM's privileged DMA would not) and a byte landing on a live
+// PPU register takes effect mid-copy, as docs/boot-handoff.md warns.
+uint32_t System::hlePPULoad() {
+    uint32_t pages = cpu.getY() ? cpu.getY() : 256;
+    uint32_t src = ((cpu.getA() & 0xFF) << 16) | cpu.getX();
+    cpu.writeByte(0xD80000, 0x02);   // PPUCTRL: reset
+    for (uint32_t i = 0; i < pages * 256; i++) {
+        cpu.writeByte(0xB00000 | (i & 0xFFFF), cpu.readByte((src + i) & 0xFFFFFF));
+    }
+    cpu.writeByte(0xD80000, 0x01);   // PPUCTRL: start
+    cpu.setA(0);
+    return COST_PPU_LOAD_BASE + COST_PPU_LOAD_PER_PAGE * pages;
+}
+
+// COP #$FF (rsa.def verify_chunk): X = chunk index. Hash it, and only if it matches the signed
+// manifest mark it verified; a mismatch just leaves the chunk reading as poison.
+uint32_t System::hleVerifyChunk() {
+    uint32_t chunk = cpu.getX();
+    if (pendingTrailerVersion == 3 && chunk < pendingChunkCount && !cpu.isChunkVerified(chunk) &&
+        BootHLE::chunkMatchesManifest(signedView(), pendingCodeSize, chunk)) {
+        cpu.markChunkVerified(chunk);
+    }
+    return COST_VERIFY_CHUNK;
 }
 
 } // namespace ZeroPoint

@@ -299,6 +299,7 @@ int main(int argc, char** argv) {
     }
 
     System sys;
+    sys.setVerifySignatures(false);   // a debugger runs whatever it's given (a real boot ROM ignores this)
     if (!sys.loadROM(argv[1])) {
         std::fprintf(stderr, "Failed to load ROM: %s\n", argv[1]);
         return 1;

@@ -1,11 +1,13 @@
 // test_boot_trig: run every vector from ZPbootROM/def88186/trig_model.py through a real
 // COP #$F0-#$F6 on the real ZPbootROM, and compare bit for bit.
 //
-//   test_boot_trig <bootrom.bin> <trig_model.py>
+//   test_boot_trig <bootrom.bin | --hle> <trig_model.py>
+//
+// With --hle no Boot ROM is loaded, so the same vectors run through System's native HLE services
+// (docs/boot-hle.md); the worst-case cycle counts it prints are what the HLE charges.
 //
 // Also checks the calling contract (DB/D/SP/P preserved, the caller's M/X width doesn't
-// matter, the reserved slots just return) and that the 35-byte default stub, which has no
-// slot table, leaves COP #$F0 to the cartridge's own $00:FFE4 vector.
+// matter, the reserved slots just return).
 #include "system.h"
 #include <algorithm>
 #include <cstdio>
@@ -81,7 +83,7 @@ Result call(System& sys, uint8_t sig, uint16_t a, uint16_t x, uint16_t y, bool e
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: %s <bootrom.bin> <trig_model.py>\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <bootrom.bin | --hle> <trig_model.py>\n", argv[0]);
         return 2;
     }
     std::vector<Row> rows;
@@ -97,9 +99,10 @@ int main(int argc, char** argv) {
     }
 
     System sys;
-    if (!sys.loadBootROM(argv[1])) { std::fprintf(stderr, "cannot load boot ROM\n"); return 1; }
+    const bool hle = std::string(argv[1]) == "--hle";
+    if (!hle && !sys.loadBootROM(argv[1])) { std::fprintf(stderr, "cannot load boot ROM\n"); return 1; }
 
-    std::printf("boot ROM trig services: %zu vectors\n", rows.size());
+    std::printf("%s trig services: %zu vectors\n", hle ? "HLE" : "boot ROM", rows.size());
     std::vector<std::string> kinds = {"sin", "cos", "sincos", "atan2", "atan", "sqrt", "hypot"};
     for (const auto& kind : kinds) {
         int n = 0, bad = 0, unret = 0, unpres = 0;
@@ -147,25 +150,20 @@ int main(int argc, char** argv) {
     // test_boot_handoff).
     {
         bool ok = true;
+        uint64_t worst = 0;
         for (uint8_t sig = 0xF8; sig <= 0xFE; sig++) {
             Result res = call(sys, sig, 0x1111, 0x2222, 0x3333, false);
             ok = ok && res.returned && res.a == 0x1111 && res.x == 0x2222 && sys.getCPU().getY() == 0x3333 && res.preserved;
+            worst = std::max(worst, res.cycles);
         }
-        check(ok, "reserved $F8-$FE return immediately, registers untouched");
+        char what[96];
+        std::snprintf(what, sizeof what, "reserved $F8-$FE return immediately, registers untouched (worst %llu cycles)",
+                      (unsigned long long)worst);
+        check(ok, what);
     }
 
-    // The default 35-byte stub has no slot table: COP #$F0 must take the cartridge's vector.
-    {
-        System plain;
-        CPU& cpu = plain.getCPU();
-        cpu.writeByte(STUB, 0xAF);
-        cpu.writeByte(STUB + 1, 0xF0);
-        cpu.setPB(0x80);
-        cpu.setPC(0x0100);
-        cpu.setSP(0xF000);
-        cpu.step();
-        check(cpu.getPB() == 0x00, "with the default stub, COP #$F0 goes to the cartridge's $00:FFE4 vector");
-    }
+    // With no Boot ROM loaded the services are native; with one, the real code answers instead.
+    check(sys.isBootHLE() == hle, hle ? "no real Boot ROM loaded: services are native" : "real Boot ROM loaded: HLE is off");
 
     std::printf("%s\n", failures ? "FAILED" : "all passed");
     return failures ? 1 : 0;

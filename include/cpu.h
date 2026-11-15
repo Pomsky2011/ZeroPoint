@@ -220,6 +220,20 @@ public:
     // default stub) has no slots, so those signatures stay the cartridge's own.
     static constexpr uint16_t BOOT_SVC_TABLE_END = BOOT_SVC_TABLE + 4 * (BOOT_SVC_MATH_LAST - BOOT_SVC_MATH_FIRST + 1);
 
+    // Native boot services (System's HLE, see docs/boot-hle.md): when set, opCOP() offers every
+    // signature byte to the hook *before* pushing any state. The hook returns the cycles it charged
+    // (> 0) if it handled the call - the CPU then continues at the instruction after the COP with
+    // P/PC/PB/DB/D/SP exactly as a real service's COP...RTI round trip leaves them - or 0 to fall
+    // through to the real boot ROM / the cartridge's own $00:FFE4 handler. Never set alongside a
+    // real boot ROM.
+    using ServiceHook = std::function<uint32_t(uint8_t sig)>;
+    void setServiceHook(ServiceHook hook) { serviceHook = std::move(hook); }
+
+    // HLE side of COP #$FF: mark a v3 data chunk verified. Native code can't be forged by the
+    // cartridge, so there's no privilege check here - the caller has already done the hash.
+    void markChunkVerified(uint32_t chunk);
+    bool isChunkVerified(uint32_t chunk) const;
+
     // Setup all I/O registers (requires PPU, APU, Display to be set first)
     void setupIORegisters();
 
@@ -254,6 +268,7 @@ public:
     // State
     CPUState getState() const { return state; }
     bool isHalted() const { return state == CPUState::Halted; }
+    void halt() { state = CPUState::Halted; }   // what HLT does; System's HLE boot uses it to refuse a bad ROM
 
     // Statistics
     uint64_t getCycleCount() const { return cycleCount; }
@@ -601,6 +616,8 @@ private:
     // reachable from guest code, this needs to become part of the properly
     // nested push/pull state instead.
     bool bootServiceActive = false;
+
+    ServiceHook serviceHook;   // see setServiceHook()
 
     // Actual interrupt sequences (push state + vector). Invoked by
     // serviceInterrupts() once the interrupt is eligible to run.

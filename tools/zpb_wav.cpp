@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
         if (!std::strcmp(argv[i], "--boot")) bootPath = argv[i + 1];
 
     System system;
+    system.setVerifySignatures(false);   // renders whatever it's given (a --boot ROM ignores this)
     if (bootPath && !system.loadBootROM(bootPath)) { std::fprintf(stderr, "cannot load boot ROM\n"); return 1; }
     if (!system.loadROM(argv[1])) { std::fprintf(stderr, "cannot load %s\n", argv[1]); return 1; }
     system.powerOn();

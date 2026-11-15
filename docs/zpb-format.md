@@ -34,6 +34,9 @@ When a .zpb ROM is loaded:
 
 ## Signature Verification
 
+Verification happens at boot: by the real ZPbootROM with `--boot`, or natively by `System`'s HLE
+Boot ROM by default (strict: unsigned or bad = halt; see `boot-hle.md`).
+
 The emulator's loader (`src/rom.cpp`) does **not** perform any signature
 verification itself — it only checks the magic bytes, `version` (1 or 2),
 header size, and ROM size, then loads unconditionally either way. Verifying

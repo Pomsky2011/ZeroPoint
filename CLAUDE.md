@@ -58,6 +58,10 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   `tools/build_stream_rom.py` (WAV -> ROM), tests `bin/test_stream`, `tools/test_stream_rom.py`.
 - **COP calls from C/asm**: `ZPdevtools/lib/zp_cop.asm` + `include/zeropoint/zp_cop.h` (`zp_cop3`/`zp_cop32` for any
   `COP #imm`, typed Boot ROM wrappers); test `bin/test_zp_cop`. See `ZPdevtools/docs/SDK.md`.
+- **HLE Boot ROM**: with no `--boot`, `System` boots natively: verifies the signature (strict: unsigned/bad ROMs halt;
+  `setVerifySignatures(false)`, `zeropoint_sdl --no-verify`, `ZEROPOINT_NO_VERIFY=1`), jumps to the entry, and answers
+  `COP #$F0-$FF` (math, `$F7` PPU load, `$FF` chunk verify) itself at the real ROM's cycle cost. `--boot` = real ROM, HLE off.
+  `docs/boot-hle.md`; tests `bin/test_boot_trig --hle`, `tools/test_hle_cop.sh`.
 - **C compilers** (`zpcc`, `def88186cc`; 16-bit `int`, 32-bit `long` via `ZPdevtools/lib/zp_long.asm`): regression suite
   `ZPdevtools/tests/cc/run.sh` runs C in the emulator through `bin/zp_run_c` (`ZP_TRACE=1` traces a hang); runtime test
   `bin/test_zp_long`. Arrays/pointer-deref/struct members only reach bank $00 and `def88186cc` has no globals.

@@ -62,17 +62,20 @@ static int runTestPattern(Window& window) {
 int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
-    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin]\n";
+    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify]\n";
     std::cout << "Press ESC to exit\n\n";
 
     std::string romPath;
     std::string bootPath;
     std::string apuBiosPath;
     bool devMode = false;
+    bool noVerify = false;
     int scale = 2;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--dev") == 0) {
             devMode = true;
+        } else if (std::strcmp(argv[i], "--no-verify") == 0) {
+            noVerify = true;   // run unsigned/badly signed ROMs (HLE boot only; a real --boot ROM decides for itself)
         } else if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
             scale = std::atoi(argv[++i]);
             if (scale <= 0) {
@@ -105,6 +108,7 @@ int main(int argc, char** argv) {
     if (devMode) {
         system.setDevMode(true);
     }
+    system.setVerifySignatures(!noVerify && System::verifySignaturesDefault());
     if (!bootPath.empty() && !system.loadBootROM(bootPath)) {
         std::cerr << "Failed to load Boot ROM: " << bootPath << "\n";
         return 1;

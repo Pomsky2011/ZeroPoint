@@ -7,6 +7,7 @@
 #include "dma.h"
 #include "display.h"
 #include "rom.h"
+#include "boot_hle.h"
 #include "interrupt_controller.h"
 #include <atomic>
 #include <condition_variable>
@@ -84,10 +85,23 @@ public:
     }
     bool loadROM(const std::string& filename);
 
-    // Replace the default Boot ROM stub (installed at construction) with an
-    // alternate payload at bank $E0 - e.g. a demo that never hands off to a
-    // cartridge at all. Call reset() afterward to actually jump into it.
+    // Load a real Boot ROM image (bank $E0) - e.g. ZPbootROM's bootrom.bin, or a demo that never hands
+    // off to a cartridge at all. Call reset() afterward to actually jump into it. Without one, System
+    // HLEs the boot ROM natively (docs/boot-hle.md): reset() verifies the cartridge's signature
+    // and jumps straight to its entry point, and COP #$F0-$FF are answered natively. Loading a real
+    // Boot ROM switches all of that off - the real code does the work.
     bool loadBootROM(const std::string& filename);
+
+    // HLE boot only: whether reset() checks the cartridge's signature before running it. On by
+    // default, and strict: an unsigned or badly signed ROM halts the CPU (as the real Boot ROM does).
+    // Dev tools that run unsigned ROMs turn it off (and the frontends' --no-verify does).
+    void setVerifySignatures(bool on) { verifySignatures = on; }
+    bool getVerifySignatures() const { return verifySignatures; }
+    // What a frontend should pass to setVerifySignatures(): on, unless ZEROPOINT_NO_VERIFY=1 is set (the SDL
+    // frontend's --no-verify does the same). Tests and tools call setVerifySignatures() themselves, not this.
+    static bool verifySignaturesDefault();
+    // True while the native boot services are in effect (no real Boot ROM loaded).
+    bool isBootHLE() const { return !cpu.hasBootROM(); }
 
     // Load a custom APU internal BIOS (see APU::loadBIOS()) - unlike the CPU
     // Boot ROM, there is no default stub installed at construction, so the
@@ -223,6 +237,15 @@ private:
     static bool dmaPrivilegeQuery();
     static void dmaCompleteCallback(uint8_t channel);
     static System* currentSystem;  // Pointer to current system for callbacks
+
+    // HLE Boot ROM (see isBootHLE()). hleService() is CPU::setServiceHook()'s callback: COP #$F0-$FF
+    // answered natively, returning the cycles a real Boot ROM would have spent (0 = not ours).
+    bool verifySignatures = true;
+    uint32_t hleService(uint8_t sig);
+    uint32_t hlePPULoad();
+    uint32_t hleVerifyChunk();
+    void hleBootCartridge();   // reset() with a cartridge mapped: verify, then jump to the entry point
+    BootHLE::SignedROMView signedView() const;
 
     // ROM information
     bool romLoaded;

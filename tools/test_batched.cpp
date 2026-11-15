@@ -58,6 +58,7 @@ struct Result {
 
 Result run(const char* boot, const char* rom, double seconds, int checkpointFrames, bool batched) {
     System sys;
+    sys.setVerifySignatures(false);   // "none" = HLE boot, and the bench ROMs are unsigned
     if (std::strcmp(boot, "none") && !sys.loadBootROM(boot)) { std::fprintf(stderr, "cannot load boot ROM\n"); std::exit(1); }
     if (!sys.loadROM(rom)) { std::fprintf(stderr, "cannot load ROM\n"); std::exit(1); }
     sys.powerOn();

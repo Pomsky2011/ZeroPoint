@@ -1514,6 +1514,12 @@ void CPU::opCOP() {
     uint8_t sig = fetch();  // Signature byte (software-readable by the
               // handler via the pushed PC, same convention as BRK; hardware
               // doesn't act on it) - except one reserved value below.
+    if (serviceHook) {
+        if (uint32_t cycles = serviceHook(sig)) {
+            cycleCount += cycles;
+            return;
+        }
+    }
     push8(PB);
     push16(PC);
     push8(P.toByte());
@@ -1911,6 +1917,17 @@ void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
                 if (off < chunkVerified.size()) chunkVerified[off] = value;
             });
     }
+}
+
+void CPU::markChunkVerified(uint32_t chunk) {
+    if (!dataGatingActive) return;
+    size_t byteIdx = chunk / 8;
+    if (byteIdx < chunkVerified.size()) chunkVerified[byteIdx] |= static_cast<uint8_t>(1u << (chunk % 8));
+}
+
+bool CPU::isChunkVerified(uint32_t chunk) const {
+    size_t byteIdx = chunk / 8;
+    return byteIdx < chunkVerified.size() && (chunkVerified[byteIdx] & (1u << (chunk % 8)));
 }
 
 void CPU::clearDataGating() {

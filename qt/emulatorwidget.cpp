@@ -21,6 +21,7 @@ EmulatorWidget::EmulatorWidget(QWidget *parent)
     , poweredOn(false)
     , smoothFiltering(false)
 {
+    system.setVerifySignatures(ZeroPoint::System::verifySignaturesDefault());   // ZEROPOINT_NO_VERIFY=1 to run unsigned ROMs
     // Free to resize/scale - paintEvent letterboxes to the display's 1:1
     // aspect ratio inside whatever size the window (or fullscreen) gives us,
     // rather than pinning the widget to one fixed pixel size.
@@ -47,8 +48,8 @@ QSize EmulatorWidget::sizeHint() const
 
 bool EmulatorWidget::applyBootROM()
 {
-    // Empty path: leave the default stub System() already installed alone -
-    // loadBootROM() has replace semantics, so there's nothing to do.
+    // Empty path: leave System's native (HLE) boot alone - loadBootROM() has
+    // replace semantics, so there's nothing to do.
     if (bootRomPath.isEmpty()) {
         return true;
     }
@@ -58,7 +59,7 @@ bool EmulatorWidget::applyBootROM()
 bool EmulatorWidget::applyApuBios()
 {
     // Empty path: no APU internal BIOS - unlike the CPU side, there's no
-    // built-in default stub to fall back to, so this just leaves APU memory
+    // built-in default to fall back to, so this just leaves APU memory
     // zero-filled (an idle NOP loop at $8000) if nothing was ever loaded.
     if (apuBiosPath.isEmpty()) {
         return true;

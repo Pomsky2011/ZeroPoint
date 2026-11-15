@@ -8,6 +8,7 @@
 //   3. Cartridge code actually runs (writes its marker byte to Work RAM).
 #include "system.h"
 #include "rom.h"
+#include "default_boot_rom.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -54,6 +55,8 @@ int main() {
     }
 
     System system;
+    // System HLEs the boot ROM by default now; this test is about the 35-byte stub itself.
+    system.getCPU().loadBootROM(ZeroPoint::kDefaultBootROM, ZeroPoint::kDefaultBootROMSize);
     bool ok = system.loadROM(path);
     std::remove(path);
     if (!ok) {

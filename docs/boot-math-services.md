@@ -1,9 +1,10 @@
 # Boot ROM math services (COP #$F0-#$F6)
 
-Trig and square-root calls into the real ZPbootROM (`ZPbootROM/def88186/trig.def`), GBA-SWI
-style: one `COP` signature per function. They need the real Boot ROM (`--boot`,
-`System::loadBootROM()`); the 35-byte default stub has no slot table, so with it
-`COP #$F0`-`#$FE` stay the cartridge's own software interrupt via `$00:FFE4`.
+Trig and square-root calls, GBA-SWI style: one `COP` signature per function. Implemented twice: in the real
+ZPbootROM (`ZPbootROM/def88186/trig.def`, with `--boot`/`System::loadBootROM()`) and natively by `System`'s
+HLE Boot ROM, which is what you get by default (bit-exact, same cycle cost; see `boot-hle.md`). The 35-byte
+stub (only if a test loads it explicitly) has no slot table, so with it `COP #$F0`-`#$FE` stay the
+cartridge's own software interrupt via `$00:FFE4`.
 
 | COP | name   | in                          | out                                              |
 |-----|--------|-----------------------------|--------------------------------------------------|
