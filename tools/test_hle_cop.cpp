@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
 
         struct Run { uint64_t cycles; uint16_t a; PPUState state; std::vector<uint8_t> mem; };
         const uint32_t pageCounts[] = {1, 4, 5, 16, 64, 0};
-        // One System at a time: the DMA callbacks hang off System::currentSystem, the newest instance.
+        // One System at a time, to keep memory down (test_determinism covers several at once).
         auto runAll = [&](bool realRom) {
             std::vector<Run> out;
             System sys;

@@ -7,7 +7,6 @@
 namespace ZeroPoint {
 
 // Static member initialization
-System* System::currentSystem = nullptr;
 
 System::System()
     : cpu(), ppu(), apu(), dma(), display(),
@@ -34,7 +33,6 @@ System::System()
     timers.microCounter = 0;
     timers.vblank60Counter = 0;
     // Set current system for DMA callbacks
-    currentSystem = this;
 
     // Connect components
     cpu.setPPU(&ppu);
@@ -67,6 +65,7 @@ System::System()
     cpu.setServiceHook([this](uint8_t sig) { return hleService(sig); });
 
     // Connect DMA to memory system
+    dma.setCallbackContext(this);
     dma.setMemoryCallbacks(dmaReadCallback, dmaWriteCallback);
     dma.setPrivilegeQuery(dmaPrivilegeQuery);
     dma.setCompleteCallback(dmaCompleteCallback);
@@ -909,28 +908,21 @@ void System::setTimerControl(uint8_t value) {
     rescheduleTimers();
 }
 
-// Static DMA callback wrappers
-uint8_t System::dmaReadCallback(uint32_t address, bool privileged) {
-    if (currentSystem) {
-        return currentSystem->cpu.readByteForDMA(address, privileged);
-    }
-    return 0xFF;
+// DMA callback wrappers: the DMAController hands back the context pointer it was given (this System).
+uint8_t System::dmaReadCallback(void* sys, uint32_t address, bool privileged) {
+    return static_cast<System*>(sys)->cpu.readByteForDMA(address, privileged);
 }
 
-void System::dmaWriteCallback(uint32_t address, uint8_t value) {
-    if (currentSystem) {
-        currentSystem->cpu.writeByteForDMA(address, value);
-    }
+void System::dmaWriteCallback(void* sys, uint32_t address, uint8_t value) {
+    static_cast<System*>(sys)->cpu.writeByteForDMA(address, value);
 }
 
-bool System::dmaPrivilegeQuery() {
-    return currentSystem && currentSystem->cpu.getPB() == 0xE0;
+bool System::dmaPrivilegeQuery(void* sys) {
+    return static_cast<System*>(sys)->cpu.getPB() == 0xE0;
 }
 
-void System::dmaCompleteCallback(uint8_t /*channel*/) {
-    if (currentSystem) {
-        currentSystem->signalIRQ(IRQSource::DMA);
-    }
+void System::dmaCompleteCallback(void* sys, uint8_t /*channel*/) {
+    static_cast<System*>(sys)->signalIRQ(IRQSource::DMA);
 }
 
 
@@ -1046,6 +1038,49 @@ uint32_t System::hleVerifyChunk() {
         cpu.markChunkVerified(chunk);
     }
     return COST_VERIFY_CHUNK;
+}
+
+std::vector<std::pair<const char*, uint64_t>> System::stateHashParts() {
+    auto part = [](auto fill) {
+        uint64_t h = 1469598103934665603ull;
+        auto mixv = [&h](auto v) {
+            const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+            for (size_t i = 0; i < sizeof v; i++) h = (h ^ p[i]) * 1099511628211ull;
+        };
+        fill(mixv);
+        return h;
+    };
+    std::vector<std::pair<const char*, uint64_t>> out;
+    out.push_back({"cpu", cpu.stateHash()});
+    out.push_back({"ppu", ppu.stateHash()});
+    out.push_back({"display", display.stateHash()});
+    out.push_back({"apu", apu.stateHash()});
+    out.push_back({"dma", dma.stateHash()});
+    out.push_back({"timers+irq", part([&](auto mixv) {
+        mixv(timers.control); mixv(timers.status); mixv(timers.intEnable);
+        mixv(timers.vblankCounter); mixv(timers.hblankCounter); mixv(timers.secondCounter);
+        mixv(timers.quarterSecCounter); mixv(timers.eighthSecCounter); mixv(timers.k1024Counter);
+        mixv(timers.microCounter); mixv(timers.vblank60Counter);
+        mixv(intc.pending()); mixv(intc.enable());
+        mixv(vblankIRQEnabled); mixv(hblankIRQEnabled); mixv(lastVBlank); mixv(lastHBlank);
+    })});
+    out.push_back({"clock", part([&](auto mixv) {
+        mixv(masterCycleCount); mixv(nextTimerEventCycle); mixv(timersLastUpdateCycle);
+        mixv(cpuCycleBudget); mixv(apuCycleBudget); mixv(audioSampleAccum); mixv(nextAudioCycle); mixv(devMode);
+    })});
+    out.push_back({"audio", part([&](auto mixv) {
+        mixv(audioBuffer.size());
+        for (int16_t v : audioBuffer) mixv(v);
+    })});
+    return out;
+}
+
+uint64_t System::stateHash() {
+    uint64_t h = 1469598103934665603ull;
+    for (const auto& p : stateHashParts()) {
+        for (int i = 0; i < 8; i++) h = (h ^ ((p.second >> (8 * i)) & 0xFF)) * 1099511628211ull;
+    }
+    return h;
 }
 
 } // namespace ZeroPoint

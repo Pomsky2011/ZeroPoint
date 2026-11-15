@@ -20,6 +20,8 @@ void DMAController::reset() {
         channel.cyclesRemaining = 0;
         channel.bytesTransferred = 0;
         channel.totalBytes = 0;
+        channel.config = DMAConfig();
+        for (uint8_t& b : channel.patternBuffer) b = 0;
     }
 
     // Clear the queue
@@ -55,7 +57,7 @@ bool DMAController::queueDMA(const uint8_t config[9]) {
     // queueDMA() (by writing this 9-byte sequence) from its own bank
     // (0x00-0x7F), so this is false for any transfer it sets up, regardless
     // of what it jumps to afterward - see MemoryReadCallback's comment.
-    dmaConfig.privileged = privilegeQuery ? privilegeQuery() : false;
+    dmaConfig.privileged = privilegeQuery ? privilegeQuery(callbackCtx) : false;
 
     uint8_t channel = dmaConfig.getChannel();
 
@@ -175,7 +177,7 @@ void DMAController::processChannel(uint8_t channel) {
                             uint32_t patternSize = transfer.config.getPatternSize();
                             for (uint32_t i = 0; i < patternSize && i < 4; i++) {
                                 if (memoryRead) {
-                                    transfer.patternBuffer[i] = memoryRead(
+                                    transfer.patternBuffer[i] = memoryRead(callbackCtx,
                                         transfer.config.sourceAddr + i, transfer.config.privileged
                                     );
                                 }
@@ -185,7 +187,7 @@ void DMAController::processChannel(uint8_t channel) {
                             uint32_t patternSize = transfer.config.getPatternSize();
                             for (uint32_t i = 0; i < patternSize && i < 4; i++) {
                                 if (memoryRead) {
-                                    transfer.patternBuffer[i] = memoryRead(
+                                    transfer.patternBuffer[i] = memoryRead(callbackCtx,
                                         transfer.config.sourceAddr + i, transfer.config.privileged
                                     );
                                 }
@@ -215,7 +217,7 @@ void DMAController::processChannel(uint8_t channel) {
                         transfer.cyclesRemaining = 0;
                         busyChannels--;  // channel left the active set
                         if (onComplete) {
-                            onComplete(channel);
+                            onComplete(callbackCtx, channel);
                         }
                     } else {
                         // Set up for next byte
@@ -243,10 +245,10 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
         case DMAMode::DataCopy:
             // Read from source + offset, write to target + offset
             if (memoryRead) {
-                value = memoryRead(sourceAddr + currentByte, transfer.config.privileged);
+                value = memoryRead(callbackCtx, sourceAddr + currentByte, transfer.config.privileged);
             }
             if (memoryWrite) {
-                memoryWrite(targetAddr + currentByte, value);
+                memoryWrite(callbackCtx, targetAddr + currentByte, value);
             }
             break;
 
@@ -254,7 +256,7 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
             // Write pattern[currentByte % patternSize] to target + offset
             value = transfer.patternBuffer[currentByte % patternSize];
             if (memoryWrite) {
-                memoryWrite(targetAddr + currentByte, value);
+                memoryWrite(callbackCtx, targetAddr + currentByte, value);
             }
             break;
 
@@ -263,7 +265,7 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
             // repeatedly to the same (non-incrementing) target address.
             value = transfer.patternBuffer[currentByte % patternSize];
             if (memoryWrite) {
-                memoryWrite(targetAddr, value);
+                memoryWrite(callbackCtx, targetAddr, value);
             }
             break;
 
@@ -273,7 +275,7 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
             // which cycles through the whole S+1-byte pattern.
             value = transfer.patternBuffer[0];
             if (memoryWrite) {
-                memoryWrite(targetAddr, value);
+                memoryWrite(callbackCtx, targetAddr, value);
             }
             break;
     }
@@ -317,6 +319,32 @@ void DMAController::triggerInterrupt() {
 
 void DMAController::clearInterrupt() {
     interruptActive = false;
+}
+
+} // namespace ZeroPoint
+
+namespace ZeroPoint {
+
+uint64_t DMAController::stateHash() const {
+    uint64_t h = 1469598103934665603ull;
+    auto mixv = [&h](auto v) {
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+        for (size_t i = 0; i < sizeof v; i++) h = (h ^ p[i]) * 1099511628211ull;
+    };
+    auto mixCfg = [&](const DMAConfig& c) {
+        mixv(c.mode); mixv(c.sourceAddr); mixv(c.targetAddr); mixv(c.sizeMultiplier); mixv(c.interrupt);
+        mixv(c.privileged);
+    };
+    for (const DMATransfer& t : channels) {
+        mixCfg(t.config);
+        mixv(static_cast<int>(t.state)); mixv(t.cyclesRemaining); mixv(t.bytesTransferred); mixv(t.totalBytes);
+        for (uint8_t b : t.patternBuffer) mixv(b);
+    }
+    std::queue<DMAConfig> q = pendingQueue;
+    mixv(q.size());
+    while (!q.empty()) { mixCfg(q.front()); q.pop(); }
+    mixv(interruptActive); mixv(busyChannels);
+    return h;
 }
 
 } // namespace ZeroPoint

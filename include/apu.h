@@ -110,6 +110,10 @@ public:
     uint64_t getCycleCount() const { return cycleCount; }
     uint64_t getInstructionCount() const { return instructionCount; }
 
+    // FNV-1a over all APU state (memory, AROM, registers, banking, loops, call stack, MMP channels, stream port,
+    // HLE engine). Field by field. For tools/test_determinism.
+    uint64_t stateHash() const;
+
     // Debug
     bool isHalted() const { return halted; }
     void setHalted(bool value) { halted = value; }

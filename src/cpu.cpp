@@ -63,6 +63,15 @@ void CPU::reset() {
     nmiPending = false;
     abortPending = false;
 
+    // The I/O blocks' write-sequence latches are hardware state: a reset in the middle of a 9-byte DMA config
+    // (or with a PPU register selected) must not leave the next boot's first write landing mid-sequence.
+    ppuRegSelect = 0;
+    dmaConfigIndex = 0;
+    std::memset(dmaConfigBuffer, 0, sizeof dmaConfigBuffer);
+    std::memset(p2TxBuffer, 0, sizeof p2TxBuffer);
+    std::memset(p2RxBuffer, 0, sizeof p2RxBuffer);
+    p2TxHead = p2TxTail = p2RxHead = p2RxTail = 0;
+
     // Fresh boot ⇒ nothing verified yet, even if a chunk was verified before
     // this reset (chunkVerified.size() is left as configureDataGating() set
     // it - only the bits, not the gating configuration itself, are cleared).
@@ -2028,9 +2037,9 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // 1. PPU CONTROL BLOCK ($D80000-$D8000F, 16 bytes)
     // ========================================================================
-    // Latch holding which PPU register (R0-R63) PPUREG_DATA reads/writes target.
-    // Set by writing PPUREG_ADDR ($D80008); persists across accesses.
-    static uint8_t ppuRegSelect = 0;
+    // (ppuRegSelect - the latch holding which PPU register (R0-R63) PPUREG_DATA reads/writes target, set by
+    // writing PPUREG_ADDR ($D80008) - is a CPU member, not a function-level static: statics are shared by every
+    // System in the process and survive reset().)
     registerIORegion(IO_BANK, 0x0000, 16,
         // Read handler
         [this](uint16_t offset) -> uint8_t {
@@ -2242,8 +2251,7 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // Write-only: Write 9 bytes to $D80020-$D80028 to configure DMA
     // Read-only: Status and channel information
-    static uint8_t dmaConfigBuffer[9] = {0};
-    static uint8_t dmaConfigIndex = 0;
+    // (dmaConfigBuffer/dmaConfigIndex are CPU members, cleared by reset() - see ppuRegSelect above.)
 
     registerIORegion(IO_BANK, 0x0020, 16,
         // Read handler
@@ -2314,12 +2322,7 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // Port 1: $D80030-$D80037 (Player 1 controller)
     // Port 2: $D80038-$D8003F (Player 2 / Debug serial interface)
-    [[maybe_unused]] static uint8_t p2_tx_buffer[256];  // TX queue; no consumer yet
-    static uint8_t p2_rx_buffer[256];
-    static uint8_t p2_tx_head = 0;
-    static uint8_t p2_tx_tail = 0;
-    static uint8_t p2_rx_head = 0;
-    static uint8_t p2_rx_tail = 0;
+    // (The P2 queues are CPU members cleared by reset(), not statics: see ppuRegSelect above.)
 
     registerIORegion(IO_BANK, 0x0030, 16,
         // Read handler
@@ -2337,21 +2340,21 @@ void CPU::setupIORegisters() {
                 case 0x08: { // P2_STATUS
                     uint8_t status = 0x00;
                     // Bit 0: RX_READY (data available to read)
-                    if (p2_rx_head != p2_rx_tail) {
+                    if (p2RxHead != p2RxTail) {
                         status |= 0x01;
                     }
                     // Bit 1: TX_EMPTY (can write)
-                    uint8_t next_head = (p2_tx_head + 1) & 0xFF;
-                    if (next_head != p2_tx_tail) {
+                    uint8_t next_head = (p2TxHead + 1) & 0xFF;
+                    if (next_head != p2TxTail) {
                         status |= 0x02;
                     }
                     return status;
                 }
 
                 case 0x09: { // P2_DATA (read)
-                    if (p2_rx_head != p2_rx_tail) {
-                        uint8_t data = p2_rx_buffer[p2_rx_tail];
-                        p2_rx_tail = (p2_rx_tail + 1) & 0xFF;
+                    if (p2RxHead != p2RxTail) {
+                        uint8_t data = p2RxBuffer[p2RxTail];
+                        p2RxTail = (p2RxTail + 1) & 0xFF;
                         return data;
                     }
                     return 0x00;
@@ -2365,10 +2368,10 @@ void CPU::setupIORegisters() {
         [this](uint16_t offset, uint8_t value) {
             switch (offset) {
                 case 0x09: { // P2_DATA (write)
-                    uint8_t next_head = (p2_tx_head + 1) & 0xFF;
-                    if (next_head != p2_tx_tail) {
-                        p2_tx_buffer[p2_tx_head] = value;
-                        p2_tx_head = next_head;
+                    uint8_t next_head = (p2TxHead + 1) & 0xFF;
+                    if (next_head != p2TxTail) {
+                        p2TxBuffer[p2TxHead] = value;
+                        p2TxHead = next_head;
                     }
                     break;
                 }
@@ -2376,8 +2379,8 @@ void CPU::setupIORegisters() {
                 case 0x0A: // P2_CTRL
                     if (value & 0x01) {
                         // Clear buffers
-                        p2_tx_head = p2_tx_tail = 0;
-                        p2_rx_head = p2_rx_tail = 0;
+                        p2TxHead = p2TxTail = 0;
+                        p2RxHead = p2RxTail = 0;
                     }
                     break;
 
@@ -2431,7 +2434,8 @@ void CPU::setupIORegisters() {
     // ========================================================================
     // 6. SYSTEM CONTROL ($D80048-$D8004F, 8 bytes)
     // ========================================================================
-    static bool devModeFlag = false;
+    // (devModeFlag is a CPU member too: per System, but - being the emulator's own setting, not a hardware
+    // latch - it survives reset().)
 
     registerIORegion(IO_BANK, 0x0048, 8,
         // Read handler
@@ -2450,7 +2454,7 @@ void CPU::setupIORegisters() {
             }
         },
         // Write handler
-        [](uint16_t offset, uint8_t value) {
+        [this](uint16_t offset, uint8_t value) {
             switch (offset) {
                 case 0x00: // DEV_MODE flag (set by emulator, read by boot ROM)
                     devModeFlag = (value & 0x01) != 0;
@@ -2745,6 +2749,35 @@ void CPU::serviceAbort() {
 
     // Add interrupt overhead cycles
     cycleCount += 7;  // Interrupt acknowledge + stack ops + vector fetch
+}
+
+} // namespace ZeroPoint
+
+namespace ZeroPoint {
+
+uint64_t CPU::stateHash() const {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](const void* data, size_t n) {
+        const uint8_t* p = static_cast<const uint8_t*>(data);
+        for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 1099511628211ull;
+    };
+    auto mixv = [&mix](auto v) { mix(&v, sizeof v); };
+    mixv(A); mixv(X); mixv(Y); mixv(SP); mixv(D); mixv(PC); mixv(PB); mixv(DB);
+    mixv(P.toByte());
+    mixv(loopCounter); mixv(loopStart);
+    mixv(static_cast<int>(state));
+    mixv(cycleCount); mixv(instructionCount);
+    mixv(irqPending); mixv(nmiPending); mixv(abortPending);
+    mixv(p1Direction); mixv(p1Control); mixv(p1Buttons);
+    mixv(ppuRegSelect); mixv(dmaConfigIndex); mix(dmaConfigBuffer, sizeof dmaConfigBuffer); mixv(devModeFlag);
+    mix(p2TxBuffer, sizeof p2TxBuffer); mix(p2RxBuffer, sizeof p2RxBuffer);
+    mixv(p2TxHead); mixv(p2TxTail); mixv(p2RxHead); mixv(p2RxTail);
+    mixv(bootServiceActive); mixv(dataGatingActive); mixv(gatedCodeSize);
+    mix(chunkVerified.data(), chunkVerified.size());
+    for (const MemoryRegion& r : memoryMap) {
+        if (r.type == MemoryRegion::RAM && r.data) mix(r.data, r.dataSize);
+    }
+    return h;
 }
 
 } // namespace ZeroPoint

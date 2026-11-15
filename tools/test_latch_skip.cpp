@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     const int batches = argc > 3 ? std::atoi(argv[3]) : 400;
     const int perBatch = argc > 4 ? std::atoi(argv[4]) : 13;
 
-    // One System at a time: System::currentSystem (the DMA callbacks' target) is a single static.
+    // One System at a time (test_determinism covers several at once).
     struct Shown { uint64_t frame; uint64_t ppu; uint64_t pc; uint64_t cycles; };
     auto run = [&](bool skip) {
         System sys;

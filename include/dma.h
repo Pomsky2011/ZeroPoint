@@ -18,11 +18,11 @@ enum class DMAMode : uint8_t {
 
 // DMA configuration (9 bytes total)
 struct DMAConfig {
-    uint8_t mode;           // Byte 0: SS XX YYYY (size, mode, channel)
-    uint32_t sourceAddr;    // Bytes 1-3: 24-bit source address
-    uint32_t targetAddr;    // Bytes 4-6: 24-bit target address
-    uint8_t sizeMultiplier; // Byte 7: size multiplier
-    uint8_t interrupt;      // Byte 8: interrupt/trigger byte
+    uint8_t mode = 0;           // Byte 0: SS XX YYYY (size, mode, channel)
+    uint32_t sourceAddr = 0;    // Bytes 1-3: 24-bit source address
+    uint32_t targetAddr = 0;    // Bytes 4-6: 24-bit target address
+    uint8_t sizeMultiplier = 0; // Byte 7: size multiplier
+    uint8_t interrupt = 0;      // Byte 8: interrupt/trigger byte
 
     // Not part of the wire format - captured by DMAController::queueDMA()
     // at the moment this transfer is queued/triggered (see its own comment
@@ -62,7 +62,7 @@ struct DMATransfer {
     uint32_t cyclesRemaining;  // Cycles left in current state
     uint32_t bytesTransferred; // How many bytes transferred
     uint32_t totalBytes;       // Total bytes to transfer
-    uint8_t patternBuffer[4];  // Buffer for repeat mode patterns (max S=3, so 4 bytes)
+    uint8_t patternBuffer[4] = {};  // Buffer for repeat mode patterns (max S=3, so 4 bytes)
 
     DMATransfer() : state(DMAState::Idle), cyclesRemaining(0),
                     bytesTransferred(0), totalBytes(0) {}
@@ -105,6 +105,10 @@ public:
     // Reset all DMA transfers
     void reset();
 
+    // FNV-1a over every channel's config/state/counters, the pending queue and the interrupt pause. Field by
+    // field. For tools/test_determinism.
+    uint64_t stateHash() const;
+
     // Callback for memory access (to be set by memory controller)
     // For now we'll just track what would happen
     //
@@ -114,8 +118,12 @@ public:
     // since a DMA transfer's bytes are read one at a time across many
     // ticks, decoupled from whatever the CPU happens to be executing at
     // each tick.
-    using MemoryReadCallback = uint8_t(*)(uint32_t address, bool privileged);
-    using MemoryWriteCallback = void(*)(uint32_t address, uint8_t value);
+    using MemoryReadCallback = uint8_t(*)(void* ctx, uint32_t address, bool privileged);
+    using MemoryWriteCallback = void(*)(void* ctx, uint32_t address, uint8_t value);
+
+    // Every callback is handed `ctx` back (the owning System): there is no process-wide "current system", so
+    // several Systems can coexist and none can be reached through a stale pointer.
+    void setCallbackContext(void* ctx) { callbackCtx = ctx; }
 
     void setMemoryCallbacks(MemoryReadCallback read, MemoryWriteCallback write) {
         memoryRead = read;
@@ -127,7 +135,7 @@ public:
     // privileged (Boot ROM verify_chunk) context right then - see
     // DMAConfig::privileged's comment. Wired by System to
     // `cpu.getPB() == 0xE0`.
-    using PrivilegeQueryCallback = bool(*)();
+    using PrivilegeQueryCallback = bool(*)(void* ctx);
 
     void setPrivilegeQuery(PrivilegeQueryCallback cb) {
         privilegeQuery = cb;
@@ -135,7 +143,7 @@ public:
 
     // Callback fired when a channel's transfer finishes (used to raise the
     // DMA-complete IRQ). Takes the completed channel's index.
-    using CompleteCallback = void(*)(uint8_t channel);
+    using CompleteCallback = void(*)(void* ctx, uint8_t channel);
 
     void setCompleteCallback(CompleteCallback cb) {
         onComplete = cb;
@@ -149,6 +157,7 @@ private:
     std::queue<DMAConfig> pendingQueue;
 
     // Memory access callbacks
+    void* callbackCtx = nullptr;
     MemoryReadCallback memoryRead;
     MemoryWriteCallback memoryWrite;
     PrivilegeQueryCallback privilegeQuery = nullptr;

@@ -1275,11 +1275,53 @@ void APU::processChannel(int channel) {
 
 // Catmull-Rom cubic spline through s0..s3, interpolating between s1 and s2.
 // frac is Q12 fixed-point (0..4095) position between s1 (frac=0) and s2 (frac=4096).
+//
+// Exact integer arithmetic, truncating toward zero: with t = frac/4096 the polynomial is
+//   ((a0 t + a1) t + a2) t + a3,  a0 = N0/2, a1 = N1/2, a2 = N2/2, a3 = s1
+// so the result is (N0 f^3 + N1 f^2 4096 + N2 f 4096^2 + 2 s1 4096^3) / (2 * 4096^3). It used to be float math,
+// whose rounding (FMA contraction on ARM64, x87/SSE, libm) could flip the truncation by 1 LSB between hosts;
+// the machine's audio has to be bit-identical everywhere.
 int16_t APU::cubicInterpolate(int8_t s0, int8_t s1, int8_t s2, int8_t s3, uint32_t frac) {
-    float t = static_cast<float>(frac) / 4096.0f;
-    float a0 = -0.5f * s0 + 1.5f * s1 - 1.5f * s2 + 0.5f * s3;
-    float a1 = static_cast<float>(s0) - 2.5f * s1 + 2.0f * s2 - 0.5f * s3;
-    float a2 = -0.5f * s0 + 0.5f * s2;
-    float a3 = s1;
-    return static_cast<int16_t>(((a0 * t + a1) * t + a2) * t + a3);
+    const int64_t f = frac;
+    const int64_t n0 = -(int64_t)s0 + 3 * s1 - 3 * s2 + s3;
+    const int64_t n1 = 2 * (int64_t)s0 - 5 * s1 + 4 * s2 - s3;
+    const int64_t n2 = -(int64_t)s0 + s2;
+    const int64_t num = n0 * f * f * f + n1 * f * f * 4096 + n2 * f * 4096 * 4096 + 2 * (int64_t)s1 * 4096 * 4096 * 4096;
+    return static_cast<int16_t>(num / (2 * 4096LL * 4096 * 4096));
+}
+
+uint64_t APU::stateHash() const {
+    uint64_t h = 1469598103934665603ull;
+    auto mix = [&h](const void* data, size_t n) {
+        const uint8_t* p = static_cast<const uint8_t*>(data);
+        for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 1099511628211ull;
+    };
+    auto mixv = [&mix](auto v) { mix(&v, sizeof v); };
+    mix(memory.data(), memory.size());
+    mix(arom.data(), arom.size());
+    mix(registers.data(), registers.size());
+    mixv(pc); mixv(sp); mixv(rp); mixv(dp); mixv(db); mixv(flags); mixv(bf); mixv(romBank); mixv(ioBank);
+    for (const LoopState& l : loops) { mixv(l.startAddress); mixv(l.endAddress); mixv(l.count); mixv(l.remaining); mixv(l.active); }
+    for (const FunctionState& f : functions) { mixv(f.address); mixv(f.defined); }
+    mixv(callStack.size());
+    for (uint16_t v : callStack) mixv(v);
+    mixv(cycleCount); mixv(instructionCount); mixv(halted);
+    for (const MMPChannel& c : mmpChannels) {
+        mixv(c.pitch); mixv(c.volume); mixv(c.pan); mixv(c.reserved0); mixv(c.stlAddress); mixv(c.samplePosition);
+        mixv(c.active); mixv(c.sampleDataAddress); mixv(c.loopAddress); mixv(c.oneShot);
+        mixv(c.sampleCache.size()); mix(c.sampleCache.data(), c.sampleCache.size());
+    }
+    mixv(stream.enable); mixv(stream.base); mixv(stream.size); mixv(stream.rd); mixv(stream.wr); mixv(stream.pitch);
+    mixv(stream.volume); mixv(stream.frac); mixv(stream.prevL); mixv(stream.prevR); mixv(stream.havePrev);
+    mixv(stream.underrun); mixv(stream.playing); mixv(stream.outL); mixv(stream.outR);
+    mixv(customBios.size()); mix(customBios.data(), customBios.size());
+    mixv(hleBios); mixv(static_cast<int>(hleMode));
+    for (const HleChannel& c : hle.ch) {
+        mixv(c.stl); mixv(c.pending); mixv(c.live); mixv(c.force); mixv(c.pitch); mixv(c.vol); mixv(c.pan);
+        mixv(c.wPitch); mixv(c.wVol); mixv(c.wPan);
+        for (int i = 0; i < 3; i++) { mixv(c.slideTicks[i]); mixv(c.slideDelta[i]); }
+    }
+    mixv(hle.ptr); mixv(hle.cnt); mixv(hle.waiting); mixv(hle.depth); mixv(hle.tick); mixv(hle.startCycle);
+    for (const auto& f : hle.frames) { mixv(f.ptr); mixv(f.count); mixv(f.started); }
+    return h;
 }

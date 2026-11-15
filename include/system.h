@@ -15,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace ZeroPoint {
@@ -127,6 +128,13 @@ public:
     static constexpr uint8_t  APU_CODESWITCH_SIGNAL = 0xC5;  // sentinel value
 
     // Component access
+    // FNV-1a over the whole machine: CPU (incl. all RAM), PPU, Display, APU, DMA, timers, interrupt controller,
+    // clock/budget/audio-pacing counters and the pending audio samples. Two runs that must be identical (same
+    // inputs, any host, any thread count, any uninitialised-memory pattern) must hash equal at every checkpoint.
+    uint64_t stateHash();
+    // The same hash, one entry per part (cpu, ppu, display, apu, dma, timers, clock, audio), so a mismatch says who.
+    std::vector<std::pair<const char*, uint64_t>> stateHashParts();
+
     CPU& getCPU() { return cpu; }
     PPU& getPPU() { return ppu; }
     APU& getAPU() { return apu; }
@@ -230,13 +238,12 @@ private:
     Display display;
 
     // Static wrappers for DMA callbacks (need to access CPU instance)
-    static uint8_t dmaReadCallback(uint32_t address, bool privileged);
-    static void dmaWriteCallback(uint32_t address, uint8_t value);
+    static uint8_t dmaReadCallback(void* sys, uint32_t address, bool privileged);
+    static void dmaWriteCallback(void* sys, uint32_t address, uint8_t value);
     // Queried by DMAController::queueDMA() at trigger time - see
     // DMAConfig::privileged's comment.
-    static bool dmaPrivilegeQuery();
-    static void dmaCompleteCallback(uint8_t channel);
-    static System* currentSystem;  // Pointer to current system for callbacks
+    static bool dmaPrivilegeQuery(void* sys);
+    static void dmaCompleteCallback(void* sys, uint8_t channel);
 
     // HLE Boot ROM (see isBootHLE()). hleService() is CPU::setServiceHook()'s callback: COP #$F0-$FF
     // answered natively, returning the cycles a real Boot ROM would have spent (0 = not ours).

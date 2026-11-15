@@ -8,14 +8,14 @@ using namespace ZeroPoint;
 // Simple memory simulation (16 MB address space)
 uint8_t memory[16 * 1024 * 1024];
 
-uint8_t memoryRead(uint32_t address, bool /*privileged*/) {
+uint8_t memoryRead(void* /*ctx*/, uint32_t address, bool /*privileged*/) {
     if (address < sizeof(memory)) {
         return memory[address];
     }
     return 0;
 }
 
-void memoryWrite(uint32_t address, uint8_t value) {
+void memoryWrite(void* /*ctx*/, uint32_t address, uint8_t value) {
     if (address < sizeof(memory)) {
         memory[address] = value;
     }

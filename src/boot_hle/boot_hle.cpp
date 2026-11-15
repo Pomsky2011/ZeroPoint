@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "trig_tables.h"
+
 // Vendored from ZPdevtools (zpsha256.h, zpblake2s.h, zprsa.h minus signing, zpkey.h minus the
 // private exponent): header-only C89 with static functions, so they stay private to this file.
 #pragma GCC diagnostic push
@@ -21,19 +23,10 @@ namespace {
 constexpr uint32_t CHUNK_SIZE = 16384;     // same as CPU::CHUNK_SIZE / zpbuild / rsa.def
 constexpr size_t HEADER_SIZE = 64;
 
-// ---- trig tables, same formula as trig_model.py (Python's round() is round-half-even) --------
+// ---- trig tables: trig_tables.h, generated from trig_model.py (no libm at runtime) ----------------
 struct Tables {
-    int32_t sinTab[258];
-    int32_t atanTab[258];
-    Tables() {
-        const double pi = 3.14159265358979323846;
-        for (int i = 0; i <= 256; i++) {
-            sinTab[i] = (int32_t)std::nearbyint(32767.0 * std::sin(i * pi / 512.0));
-            atanTab[i] = (int32_t)std::nearbyint(std::atan(i / 256.0) * 65536.0 / (2 * pi));
-        }
-        sinTab[257] = sinTab[256];
-        atanTab[257] = atanTab[256];
-    }
+    const int32_t* sinTab = SIN_TAB;
+    const int32_t* atanTab = ATAN_TAB;
 };
 const Tables& tables() {
     static const Tables t;

@@ -268,7 +268,12 @@ public:
     // State
     CPUState getState() const { return state; }
     bool isHalted() const { return state == CPUState::Halted; }
-    void halt() { state = CPUState::Halted; }   // what HLT does; System's HLE boot uses it to refuse a bad ROM
+    void halt() { state = CPUState::Halted; }
+
+    // FNV-1a over every bit of CPU state that can change what the machine does next: registers, flags, loop
+    // counters, pending interrupts, controller state, chunk-verified bits and the contents of every RAM bank.
+    // Field by field (never raw structs: padding is unspecified). For tools/test_determinism.
+    uint64_t stateHash() const;   // what HLT does; System's HLE boot uses it to refuse a bad ROM
 
     // Statistics
     uint64_t getCycleCount() const { return cycleCount; }
@@ -616,6 +621,15 @@ private:
     // reachable from guest code, this needs to become part of the properly
     // nested push/pull state instead.
     bool bootServiceActive = false;
+
+    // $D8 I/O block latches (setupIORegisters()). Members, not statics: see CPU::reset().
+    uint8_t ppuRegSelect = 0;          // PPUREG_ADDR: which PPU register PPUREG_DATA targets
+    uint8_t dmaConfigBuffer[9] = {};   // the 9-byte DMA config being streamed in at $D80020-$D80028
+    uint8_t dmaConfigIndex = 0;        // how many of those bytes have arrived
+    bool devModeFlag = false;          // DEV_MODE ($D80048)
+    uint8_t p2TxBuffer[256] = {};      // P2 serial port queues ($D80038-$D8003F); TX has no consumer yet
+    uint8_t p2RxBuffer[256] = {};
+    uint8_t p2TxHead = 0, p2TxTail = 0, p2RxHead = 0, p2RxTail = 0;
 
     ServiceHook serviceHook;   // see setServiceHook()
 

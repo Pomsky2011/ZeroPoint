@@ -62,6 +62,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   `setVerifySignatures(false)`, `zeropoint_sdl --no-verify`, `ZEROPOINT_NO_VERIFY=1`), jumps to the entry, and answers
   `COP #$F0-$FF` (math, `$F7` PPU load, `$FF` chunk verify) itself at the real ROM's cycle cost. `--boot` = real ROM, HLE off.
   `docs/boot-hle.md`; tests `bin/test_boot_trig --hle`, `tools/test_hle_cop.sh`.
+- **Determinism** is a requirement: same ROM + input = same state/audio/video on any host/thread count. No hidden state
+  (no function-level `static`s, no process-wide "current system", no `float` in the core, init every member). Check with
+  `bin/test_determinism <bootrom|none> <rom> <secs>` (also under clang ASan/UBSan and TSan builds); see `docs/determinism.md`.
 - **C compilers** (`zpcc`, `def88186cc`; 16-bit `int`, 32-bit `long` via `ZPdevtools/lib/zp_long.asm`): regression suite
   `ZPdevtools/tests/cc/run.sh` runs C in the emulator through `bin/zp_run_c` (`ZP_TRACE=1` traces a hang); runtime test
   `bin/test_zp_long`. Arrays/pointer-deref/struct members only reach bank $00 and `def88186cc` has no globals.
