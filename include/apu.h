@@ -209,9 +209,9 @@ private:
     static constexpr uint16_t AROM_WINDOW_SIZE = 0x3000; // 12 KiB visible
 
     // Core state
-    std::array<uint8_t, MEMORY_SIZE> memory;
-    std::array<uint8_t, AROM_SIZE> arom;
-    std::array<uint8_t, 256> registers;  // Up to 256 general purpose registers
+    std::array<uint8_t, MEMORY_SIZE> memory{};
+    std::array<uint8_t, AROM_SIZE> arom{};
+    std::array<uint8_t, 256> registers{};  // Up to 256 general purpose registers
 
     // User-loaded internal BIOS payload (see loadBIOS()), reapplied at
     // BIOS_BASE after every reset() since memory.fill(0) would otherwise
@@ -282,14 +282,14 @@ private:
         uint16_t remaining;
         bool active;
     };
-    std::array<LoopState, 16> loops;
+    std::array<LoopState, 16> loops{};
 
     // Function state
     struct FunctionState {
         uint16_t address;
         bool defined;
     };
-    std::array<FunctionState, 2048> functions;
+    std::array<FunctionState, 2048> functions{};
     std::vector<uint16_t> callStack;
 
     // Statistics
@@ -299,18 +299,18 @@ private:
 
     // MMP State (16 channels with pan)
     struct MMPChannel {
-        uint16_t pitch;           // Playback rate (0x1000 = 1.0×)
-        uint8_t volume;           // 0 = silent, 255 = max
-        uint8_t pan;              // 0 = full L, 128 = center, 255 = full R
-        uint8_t reserved0;        // Reserved for future per-channel flags
-        uint16_t stlAddress;      // Pointer to STL entry (0 = off)
-        uint32_t samplePosition;  // Fixed-point position (upper bits = index, lower 12 = fraction)
-        bool active;
+        uint16_t pitch = 0;           // Playback rate (0x1000 = 1.0×)
+        uint8_t volume = 0;           // 0 = silent, 255 = max
+        uint8_t pan = 0;              // 0 = full L, 128 = center, 255 = full R
+        uint8_t reserved0 = 0;        // Reserved for future per-channel flags
+        uint16_t stlAddress = 0;      // Pointer to STL entry (0 = off)
+        uint32_t samplePosition = 0;  // Fixed-point position (upper bits = index, lower 12 = fraction)
+        bool active = false;
 
         // Sample data (loaded from STL/SST)
-        uint16_t sampleDataAddress;
-        uint16_t loopAddress;     // STL loop word: sample index to wrap to (0 = whole sample)
-        bool oneShot;             // Z bit of the final block: play to the end once, then stop
+        uint16_t sampleDataAddress = 0;
+        uint16_t loopAddress = 0;     // STL loop word: sample index to wrap to (0 = whole sample)
+        bool oneShot = false;         // Z bit of the final block: play to the end once, then stop
         std::vector<uint8_t> sampleCache;
     };
 
@@ -328,8 +328,8 @@ private:
         bool underrun, playing;
         int32_t outL, outR;       // this tick's output, already scaled to 16 bits and volume
     };
-    StreamPort stream;
-    uint8_t  reserved2[128];
+    StreamPort stream{};
+    uint8_t  reserved2[128] = {};
 };
 
 #endif // APU_H

@@ -409,7 +409,9 @@ void PPU::opINC(const DecodedOp& d) { registers[d.b]++; }
 void PPU::opDEC(const DecodedOp& d) { registers[d.b]--; }
 void PPU::opADD(const DecodedOp& d) { registers[d.a] += registers[d.b]; }
 void PPU::opSUB(const DecodedOp& d) { registers[d.a] -= registers[d.b]; }
-void PPU::opMUL(const DecodedOp& d) { registers[d.a] *= registers[d.b]; }   // cost CYC_MUL: the decoded base cost
+// cost CYC_MUL: the decoded base cost. Wraps at 16 bits; done in uint32_t because uint16_t * uint16_t promotes to int,
+// where 65535 * 65535 is signed overflow (undefined behaviour a guest PPU program can reach).
+void PPU::opMUL(const DecodedOp& d) { registers[d.a] = static_cast<uint16_t>(static_cast<uint32_t>(registers[d.a]) * registers[d.b]); }
 void PPU::opINTDIV(const DecodedOp& d) {                                    // cost CYC_DIV: the decoded base cost
     if (registers[d.b] != 0) [[likely]] registers[d.a] /= registers[d.b];   // division by zero leaves X alone
 }
@@ -775,7 +777,7 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
 
         // The pixel-draw port is palette-indexed, like tile drawing. VOC bit 3
         // (VOC_PALETTE_MODE) picks which table the index in $0104 selects.
-        uint32_t color;
+        uint32_t color = 0;
         if ((vocRegisters.renderModeControl & VOC_PALETTE_MODE) != 0) {
             color = palette256[memory[0x0104]];
         } else {
@@ -1017,7 +1019,7 @@ uint32_t PPU::blendColors(uint32_t src, uint32_t dst, uint8_t mode, uint8_t alph
     uint8_t dstG = (dst >> 16) & 0xFF;
     uint8_t dstB = (dst >> 8) & 0xFF;
 
-    uint8_t blendR, blendG, blendB, outA;
+    uint8_t blendR = 0, blendG = 0, blendB = 0, outA = 0;
 
     // Apply translucency alpha (0-15 range mapped to 0-255)
     uint16_t alphaFull = (alpha << 4) | alpha;  // 0-15 -> 0-255
@@ -1155,7 +1157,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
         for (int ty = 0; ty < 8; ty++) {
             uint32_t rowColors[8];
             for (int tx = 0; tx < 8; tx++) {
-                uint32_t color;
+                uint32_t color = 0;
                 if (is4bpp) {
                     const uint8_t pixelByte = tile[(ty * 8 + tx) / 2];
                     const uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);

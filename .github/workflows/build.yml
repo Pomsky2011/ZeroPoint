@@ -161,6 +161,10 @@ jobs:
       run: |
         cmake --build build -j$(nproc)
 
+    - name: Determinism golden check
+      run: |
+        ./build/bin/fuzz_determinism "$RUNNER_TEMP" --golden-check tools/determinism_golden.txt
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -197,7 +201,9 @@ jobs:
               qt6-base-dev \
               qt6-base-dev-tools && \
             cmake -B build -DCMAKE_BUILD_TYPE=Release && \
-            cmake --build build -j\$(nproc)
+            cmake --build build -j\$(nproc) && \
+            mkdir -p /tmp/zpfz && \
+            ./build/bin/fuzz_determinism /tmp/zpfz --golden-check tools/determinism_golden.txt
           "
 
     - name: Upload artifacts
@@ -243,6 +249,10 @@ jobs:
       run: |
         cmake --build build -j$(sysctl -n hw.ncpu)
 
+    - name: Determinism golden check
+      run: |
+        ./build/bin/fuzz_determinism "$RUNNER_TEMP" --golden-check tools/determinism_golden.txt
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -269,6 +279,10 @@ jobs:
     - name: Build
       run: |
         cmake --build build -j$(sysctl -n hw.ncpu)
+
+    - name: Determinism golden check
+      run: |
+        ./build/bin/fuzz_determinism "$RUNNER_TEMP" --golden-check tools/determinism_golden.txt
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4

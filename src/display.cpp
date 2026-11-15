@@ -141,7 +141,7 @@ void Display::clearSlot(int slot) {
 void Display::latchScanline(int fbY) {
     if (fbY < 0 || fbY >= FULL_HEIGHT) return;
 
-    int offsetInBank;
+    int offsetInBank = 0;
     int bank = getBufferBank(fbY, offsetInBank);
     Color32* out = &outputFrame[static_cast<size_t>(fbY) * FB_WIDTH];
 
@@ -176,7 +176,7 @@ void Display::latchScanline(int fbY) {
 void Display::setPixel(int x, int y, Color16 color) {
     if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FULL_HEIGHT) {
         // Use rolling bank system
-        int offsetInBank;
+        int offsetInBank = 0;
         int bank = getBufferBank(y, offsetInBank);
 
         if (bank < 0) {
@@ -207,7 +207,7 @@ void Display::setPixel(int x, int y, Color16 color) {
 void Display::setPixel32(int x, int y, Color32 color) {
     if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FULL_HEIGHT) {
         // Use rolling bank system
-        int offsetInBank;
+        int offsetInBank = 0;
         int bank = getBufferBank(y, offsetInBank);
 
         if (bank < 0) {
@@ -237,7 +237,7 @@ void Display::setPixel32(int x, int y, Color32 color) {
 
 void Display::setPixelRow32(int x, int y, const Color32* colors, int count) {
     if (y < 0 || y >= FULL_HEIGHT) return;
-    int offsetInBank;
+    int offsetInBank = 0;
     int bank = getBufferBank(y, offsetInBank);
     if (bank < 0) return;   // Outside buffer window
     const size_t rowBase = static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank;
@@ -300,7 +300,7 @@ Color32 Display::getPixel(int x, int y) const {
     // Live read from the rolling buffer: valid only for scanlines currently in
     // the window; returns 0 (black) outside it, per the hardware's no-random-
     // access rule. (Full-frame output for the frontend goes through getScanline*.)
-    int offsetInBank;
+    int offsetInBank = 0;
     int bank = getBufferBank(y, offsetInBank);
     if (bank < 0) {
         return 0x00000000; // Outside the rolling window

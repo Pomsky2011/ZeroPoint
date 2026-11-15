@@ -1,3 +1,4 @@
+#include "determinism_assumptions.h"
 #ifndef ZEROPOINT_ROM_H
 #define ZEROPOINT_ROM_H
 

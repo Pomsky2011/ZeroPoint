@@ -131,7 +131,7 @@ public:
     // call that moves the window.
     uint8_t* rowSpan(int x, int y, int count) {
         if (y < 0 || y >= FULL_HEIGHT || x < 0 || x + count > FB_WIDTH) return nullptr;
-        int offsetInBank;
+        int offsetInBank = 0;
         const int bank = getBufferBank(y, offsetInBank);
         if (bank < 0) return nullptr;
         const size_t bpp = renderMode == RenderMode::RGBA16 ? 2 : 4;
@@ -171,13 +171,13 @@ private:
     // PPU memory. Holds a sliding window of scanlines (16 in RGBA16, 8 in
     // RGBA32); scanline y lives in slot (y % window). Writes outside the
     // current window are dropped (see getBufferBank).
-    std::array<uint8_t, FB_BANKS * FB_BANK_SIZE> framebuffer;  // 8 KiB
+    std::array<uint8_t, FB_BANKS * FB_BANK_SIZE> framebuffer{};  // 8 KiB
 
     // Latched full-frame output (RGBA32). As each visible scanline is scanned
     // out, it is copied here from the rolling buffer, so the frontend can read
     // a complete 256×256 frame even though the live buffer only holds a window.
     bool latchEnabled = true;
-    std::array<Color32, FB_WIDTH * FULL_HEIGHT> outputFrame;  // 256 KiB
+    std::array<Color32, FB_WIDTH * FULL_HEIGHT> outputFrame{};  // 256 KiB
 
     // Current render mode
     RenderMode renderMode;

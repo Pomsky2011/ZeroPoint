@@ -35,7 +35,7 @@ bool ROM::load(const std::string& filename) {
     }
 
     // Read header
-    ZPBHeader header;
+    ZPBHeader header{};
     file.read(reinterpret_cast<char*>(&header), sizeof(header));
     if (!file) {
         setError("Failed to read ROM header");

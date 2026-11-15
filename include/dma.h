@@ -172,7 +172,7 @@ private:
     // tick() early-out in O(1) when nothing is transferring, instead of
     // scanning all 16 channels every call. Incremented on startTransfer,
     // decremented when a channel reaches Complete; reset() zeroes it.
-    int busyChannels;
+    int busyChannels = 0;
 
     // Maximum of 2 channels can be active at once
     static constexpr int MAX_ACTIVE_CHANNELS = 2;

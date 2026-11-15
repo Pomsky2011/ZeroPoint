@@ -332,6 +332,10 @@ target_link_libraries(test_boot_trig zeropoint_core)
 add_executable(test_determinism tools/test_determinism.cpp)
 target_link_libraries(test_determinism zeropoint_core)
 
+# Differential fuzzer: random guests/TAS-style event schedules must run identically however the machine is stepped
+add_executable(fuzz_determinism tools/fuzz_determinism.cpp)
+target_link_libraries(fuzz_determinism zeropoint_core)
+
 # The native (HLE) Boot ROM against the real one: signature verification, COP #$FF, COP #$F7 (tools/test_hle_cop.sh)
 add_executable(test_hle_cop tools/test_hle_cop.cpp)
 target_link_libraries(test_hle_cop zeropoint_core)
@@ -485,6 +489,10 @@ set_target_properties(test_boot_trig PROPERTIES
 )
 
 set_target_properties(test_determinism PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(fuzz_determinism PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

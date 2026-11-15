@@ -36,7 +36,7 @@ enum class IRQSource : uint8_t {
 
 class InterruptController {
 public:
-    InterruptController() { reset(); }
+    InterruptController() = default;
 
     void reset() {
         pending_ = 0;
@@ -62,8 +62,8 @@ public:
     }
 
 private:
-    uint8_t pending_;
-    uint8_t enable_;
+    uint8_t pending_ = 0;
+    uint8_t enable_ = 0xFF;
 };
 
 } // namespace ZeroPoint

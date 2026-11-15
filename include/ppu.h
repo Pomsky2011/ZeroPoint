@@ -176,7 +176,7 @@ public:
 
 private:
     // 64 registers, 16-bit each
-    std::array<uint16_t, 64> registers;
+    std::array<uint16_t, 64> registers{};
 
     // Special register indices
     static constexpr uint8_t REG_DP = 63;  // Data Pointer
@@ -186,11 +186,11 @@ private:
     static constexpr uint8_t REG_VBLANK_INT = 59;  // V-Blank Interrupt Address
 
     // Target registers for Preset E (4 target registers, each 16-bit)
-    std::array<uint16_t, 4> targetRegisters;
-    std::array<uint8_t, 4> targetBytes;  // 0 = LSB, 1 = MSB
+    std::array<uint16_t, 4> targetRegisters{};
+    std::array<uint8_t, 4> targetBytes{};  // 0 = LSB, 1 = MSB
 
     // 64 KiB memory (shared with ROM)
-    std::array<uint8_t, 65536> memory;
+    std::array<uint8_t, 65536> memory{};
 
     // Execution pointer (actual instruction pointer)
     uint16_t executionPointer;
@@ -235,7 +235,7 @@ private:
     // Call table (DEFCALL/CALL): DEFCALL registers an entry-point address
     // under an 8-bit slot number; CALL's 8-bit operand looks the address up
     // and jumps to it, matching PresetFOpcode::CALL's addressing range.
-    std::array<uint16_t, 256> callTable;
+    std::array<uint16_t, 256> callTable{};
 
     // Cycle counter
     uint32_t cycleCounter;
@@ -261,7 +261,7 @@ private:
     static constexpr size_t TILE_SIZE = 64;      // 8x8 pixels
     static constexpr size_t MAX_TILES = 256;     // per bank
     static constexpr size_t MAX_TILE_BANKS = 4;  // 1024 tiles total
-    std::array<std::array<std::array<uint8_t, TILE_SIZE>, MAX_TILES>, MAX_TILE_BANKS> tileStorage;
+    std::array<std::array<std::array<uint8_t, TILE_SIZE>, MAX_TILES>, MAX_TILE_BANKS> tileStorage{};
     uint8_t currentTileId;                        // Currently selected tile for drawing
     uint8_t currentTileBank;                      // Currently selected tile bank (0..MAX_TILE_BANKS-1)
     uint8_t currentTileMode;                      // Tile mode (0-3): 16BBGR 4bpp, 32RGBA 4bpp, 16BBGR 8bpp, 32RGBA 8bpp
@@ -318,18 +318,18 @@ private:
     uint64_t blitNextDone = UINT64_MAX;
 
     // Palette system
-    std::array<uint16_t, 16> palette16;           // 16-color palette (16-bit BBGR format)
-    std::array<uint32_t, 256> palette256;         // 256-color palette (32-bit RGBA format)
+    std::array<uint16_t, 16> palette16{};           // 16-color palette (16-bit BBGR format)
+    std::array<uint32_t, 256> palette256{};         // 256-color palette (32-bit RGBA format)
     // expandPalette16(palette16[i]) precomputed for all 16 entries. The
     // 4bpp TILEDRAW blit path (executeBlit) looks up this cache instead of
     // recomputing the RGBA expansion per pixel - only 16 distinct palette
     // entries exist, so a 64-pixel tile draw would otherwise redo the same
     // ~16 expansions up to 4x each. Refreshed at every palette16 write site
     // (reset(), CLRPALETTE, loadPalette16()) - see refreshPalette16Expanded().
-    std::array<uint32_t, 16> palette16Expanded;
+    std::array<uint32_t, 16> palette16Expanded{};
     void refreshPalette16Expanded();
-    std::array<uint8_t, 4> tileTranslucency;      // Translucency for last 4 tiles (4 bits each)
-    uint8_t tileBlendMode;                        // Blend mode for tiles (0-3)
+    std::array<uint8_t, 4> tileTranslucency{};      // Translucency for last 4 tiles (4 bits each)
+    uint8_t tileBlendMode = 0;                        // Blend mode for tiles (0-3)
 
     // Video Output Coprocessor (VOC) registers at $00F0-$00FF
     struct VOCRegisters {
@@ -339,7 +339,7 @@ private:
         uint8_t bankOrder[8];           // $00F3-$00FA: Framebuffer bank order
         uint8_t autoRollToggle;         // $00FB: Auto-roll toggle
         uint8_t translucency[4];        // $00FC-$00FF: Tile translucency (32-bit)
-    } vocRegisters;
+    } vocRegisters = {};
 
     // VOC bit masks for $00F0
     static constexpr uint8_t VOC_COLOR_DEPTH = 0x80;   // Bit 7: 0=16-bit, 1=32-bit

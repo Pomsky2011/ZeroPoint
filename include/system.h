@@ -1,6 +1,7 @@
 #ifndef ZEROPOINT_SYSTEM_H
 #define ZEROPOINT_SYSTEM_H
 
+#include "determinism_assumptions.h"
 #include "cpu.h"
 #include "ppu.h"
 #include "apu.h"
@@ -227,7 +228,7 @@ public:
         uint64_t k1024Counter;
         uint64_t microCounter;      // 16777/16777216 second timer
         uint64_t vblank60Counter;
-    } timers;
+    } timers = {};
 
 private:
     // Components

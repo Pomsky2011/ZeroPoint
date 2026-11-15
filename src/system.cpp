@@ -316,7 +316,7 @@ void System::step() {
     // Read the display's blank state once (post-tick) and hand it to both
     // consumers instead of recomputing isVBlank()/isHBlank() four times per
     // master cycle.
-    bool currentVBlank, currentHBlank;
+    bool currentVBlank = false, currentHBlank = false;
     tickComponents(currentVBlank, currentHBlank);
     checkInterrupts(currentVBlank, currentHBlank);
     updateTimers();
@@ -577,7 +577,7 @@ void System::runAhead(uint64_t target) {
 }
 
 void System::lockstepEvent(uint64_t target) {
-    uint64_t displayQuiet;
+    uint64_t displayQuiet = 0;
     const uint64_t q = quietCycles(displayQuiet);
     const uint64_t left = target - masterCycleCount;
     if (q < displayQuiet && q < left) {
@@ -588,7 +588,7 @@ void System::lockstepEvent(uint64_t target) {
         // step(): ppu, display, [idle DMA: nothing], CPU/APU/audio, interrupts, timers, count.
         advanceQuiet(q, true);
         const int phase = static_cast<int>(masterCycleCount % 16);
-        bool currentVBlank, currentHBlank;
+        bool currentVBlank = false, currentHBlank = false;
         tickRest(phase, currentVBlank, currentHBlank);
         checkInterrupts(currentVBlank, currentHBlank);
         updateTimers();

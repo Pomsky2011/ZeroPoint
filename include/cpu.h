@@ -531,17 +531,17 @@ private:
     //                     (the I/O bank $D8); these fall back to a scan
     //                     restricted to that bank. false = bank is unmapped.
     // Rebuilt whenever the memory map changes.
-    std::array<MemoryRegion*, 256> bankFast;
-    std::array<bool, 256> bankScan;
+    std::array<MemoryRegion*, 256> bankFast{};
+    std::array<bool, 256> bankScan{};
     // Flat read view of the same banks, so a plain ROM/RAM read is one bounds check and one load instead of a walk
     // through bankFast[bank] -> region -> startBank/dataSize/data: bankData[bank] is the byte for offset 0 of that
     // bank, bankReadable[bank] how many bytes (<= 65536) are really backed by data. 0 for windows, I/O and unmapped
     // banks, which take the full path.
-    std::array<const uint8_t*, 256> bankData;
-    std::array<uint32_t, 256> bankReadable;
+    std::array<const uint8_t*, 256> bankData{};
+    std::array<uint32_t, 256> bankReadable{};
     // Same for writes: only RAM banks (a write to ROM is dropped by the full path).
-    std::array<uint8_t*, 256> bankWriteData;
-    std::array<uint32_t, 256> bankWritable;
+    std::array<uint8_t*, 256> bankWriteData{};
+    std::array<uint32_t, 256> bankWritable{};
     void rebuildBankTable();
 
     // Legacy memory interface

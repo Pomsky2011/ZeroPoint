@@ -30,6 +30,8 @@ names the culprit. Plus a latch probe: the $D8 write-sequence latches must be cl
 - Floating point in the APU mixer: `cubicInterpolate` was single-precision `float`. FMA contraction (always on for
   ARM64) or a different libm can flip its truncation by 1 LSB; measured 63 vs 42 mismatches per 20 M samples between
   an FMA and a non-FMA build. Now exact integer math (differs from the old output by <= 1 LSB, ~3 samples per million).
+- PPU `MUL` (`registers[a] *= registers[b]` on `uint16_t`) promoted to `int`, so `65535 * 65535` was signed overflow: undefined
+  behaviour any guest PPU program can reach. Found by `fuzz_determinism` under UBSan; now wraps in `uint32_t`.
 - The HLE Boot ROM's trig tables were built with libm at startup; now generated constants (`src/boot_hle/trig_tables.h`,
   `tools/gen_hle_trig_tables.py`).
 - No other `float`/`double` is left in the core (`grep` the sources); `isqrt64` uses a double sqrt but corrects it to
