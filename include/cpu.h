@@ -97,6 +97,8 @@ class CPU {
 public:
     CPU();
     ~CPU();
+    CPU(const CPU&) = delete;              // owns the memoryMap's data buffers (freed in ~CPU)
+    CPU& operator=(const CPU&) = delete;
 
     // Execution
     void reset();

@@ -38,6 +38,7 @@ CPU::CPU()
 }
 
 CPU::~CPU() {
+    for (MemoryRegion& r : memoryMap) delete[] r.data;
 }
 
 void CPU::reset() {
