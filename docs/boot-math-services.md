@@ -38,5 +38,10 @@ words: round(32767 sin(i pi/512)), 257th entry repeated) and `$F204` (ATAN_TAB, 
 atan(i/256) as an angle) by `build.sh`; the code reads them with literal 24-bit addresses
 because `lda label,X` is DB-relative and DB is the caller's.
 
+**From C or asm.** `ZPdevtools/lib/zp_cop.asm` + `include/zeropoint/zp_cop.h` wrap every signature
+(`zp_sin`, `zp_cos`, `zp_atan2`, `zp_sqrt`, `zp_hypot`, `zp_boot_ppu_load`, `zp_verify_chunk`, and the
+generic `zp_cop3`/`zp_cop32` for any `COP #imm`, which also puts DB back after `COP #$FF`); see
+`ZPdevtools/docs/SDK.md`. `bin/test_zp_cop` runs every vector below through them.
+
 `ZPbootROM/def88186/trig_model.py` is the bit-exact reference; `bin/test_boot_trig <bootrom.bin>
 <trig_model.py>` runs all of its vectors through real `COP`s.

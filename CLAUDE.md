@@ -56,6 +56,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Stream port** (MMP `$0070-$007F`): stereo 8-bit PCM ring in APU RAM, CPU/DMA-fed, cubic-resampled by PITCH,
   mixed over the channels; how a whole song plays. `ZPdevtools/docs/apu/mmp.txt`; `examples/stream-player/`,
   `tools/build_stream_rom.py` (WAV -> ROM), tests `bin/test_stream`, `tools/test_stream_rom.py`.
+- **COP calls from C/asm**: `ZPdevtools/lib/zp_cop.asm` + `include/zeropoint/zp_cop.h` (`zp_cop3`/`zp_cop32` for any
+  `COP #imm`, typed Boot ROM wrappers); test `bin/test_zp_cop`. See `ZPdevtools/docs/SDK.md`.
 - **Sequencer / boot jingle**: ZPA score engine in the APU BIOS (`ZPbootROM/apu/internalBIOS/engine.uas`);
   `System` plays it through a native HLE BIOS (`src/apu_hle.cpp`) unless `--apu-bios` loads the real
   image. Tests: `bin/test_zpa_engine`, `bin/test_boot_jingle`; spec `ZPdevtools/docs/apu/zpa.txt`.

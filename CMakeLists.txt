@@ -299,6 +299,10 @@ target_link_libraries(test_mmp zeropoint_core)
 add_executable(test_stream tools/test_stream.cpp)
 target_link_libraries(test_stream zeropoint_core)
 
+# libzp zp_cop (every COP signature) against the real boot ROM
+add_executable(test_zp_cop tools/test_zp_cop.cpp)
+target_link_libraries(test_zp_cop zeropoint_core)
+
 # Plays one sample from a ZPA sound pack through the mixer (see ZPdevtools/scripts/test_zpsnd.py)
 add_executable(zpa_play tools/zpa_play.cpp)
 target_link_libraries(zpa_play zeropoint_core)
@@ -432,6 +436,10 @@ set_target_properties(test_mmp PROPERTIES
 )
 
 set_target_properties(test_stream PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_zp_cop PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
