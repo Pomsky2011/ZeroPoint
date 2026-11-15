@@ -8,8 +8,7 @@
 APU::APU()
     : pc(0), sp(0), rp(0), dp(0), db(0), flags(0), bf(false),
       romBank(0), ioBank(0),
-      cycleCount(0), instructionCount(0), halted(false),
-      reserved1(0)
+      cycleCount(0), instructionCount(0), halted(false)
 {
     std::fill(std::begin(reserved2), std::end(reserved2), 0);
     reset();
@@ -81,7 +80,9 @@ void APU::resetMMP() {
         ch.sampleCache.clear();
     }
 
-    reserved1 = 0;
+    stream = StreamPort{};
+    stream.volume = 255;
+    stream.pitch = 0x1000;
     std::fill(std::begin(reserved2), std::end(reserved2), 0);
 }
 
@@ -169,6 +170,11 @@ void APU::writeByte(uint16_t address, uint8_t value) {
         else if (address >= 0x0040 && address < 0x0050) {
             int channel = address - 0x0040;
             mmpChannels[channel].reserved0 = value;
+        }
+
+        // Stream port: $0070-$007F
+        else if (address >= 0x0070 && address < 0x0080) {
+            writeStreamReg(address, value);
         }
 
         // STL address: $0050-$006F, 2 bytes per channel
@@ -1080,6 +1086,97 @@ void APU::updateMMP() {
             }
         }
     }
+    updateStream();
+}
+
+// Stream port register write; memory[address] already holds value (hardware-owned bytes are put back).
+void APU::writeStreamReg(uint16_t address, uint8_t value) {
+    auto syncPtr = [&](uint16_t reg, uint16_t v) { memory[reg] = v & 0xFF; memory[reg + 1] = v >> 8; };
+    auto syncStatus = [&]() { memory[0x71] = (stream.underrun ? 1 : 0) | (stream.playing ? 2 : 0); };
+    auto wrap = [&]() { if (stream.size) { stream.rd %= stream.size; stream.wr %= stream.size; } };
+
+    switch (address) {
+    case 0x70:
+        stream.enable = value & 0x01;
+        if (value & 0x02) {   // RESET: empty ring, clean status, restart the resampler
+            stream.rd = stream.wr = 0;
+            stream.frac = 0;
+            stream.havePrev = false;
+            stream.underrun = stream.playing = false;
+            stream.outL = stream.outR = 0;
+            syncPtr(0x76, 0);
+            syncPtr(0x78, 0);
+            syncStatus();
+        }
+        memory[0x70] = value & 0x01;
+        break;
+    case 0x71:
+        if (value & 0x01) stream.underrun = false;
+        syncStatus();
+        break;
+    case 0x73: stream.base = memory[0x72] | (memory[0x73] << 8); break;
+    case 0x75:
+        stream.size = memory[0x74] | (memory[0x75] << 8);
+        wrap();
+        syncPtr(0x76, stream.rd);
+        syncPtr(0x78, stream.wr);
+        break;
+    case 0x76: case 0x77: syncPtr(0x76, stream.rd); break;   // read-only
+    case 0x79:
+        stream.wr = memory[0x78] | (memory[0x79] << 8);
+        wrap();
+        syncPtr(0x78, stream.wr);
+        break;
+    case 0x7B: stream.pitch = memory[0x7A] | (memory[0x7B] << 8); break;
+    case 0x7C: stream.volume = value; break;
+    default: break;
+    }
+}
+
+// One output tick of the stream port: resample the ring at PITCH and publish the result for the mixer.
+void APU::updateStream() {
+    auto& st = stream;
+    if (!st.enable || st.size < 4) {
+        st.playing = false;
+        memory[0x71] = st.underrun ? 1 : 0;
+        st.outL = st.outR = 0;
+        return;
+    }
+
+    uint32_t avail = (static_cast<uint32_t>(st.wr) + st.size - st.rd) % st.size;
+    if (avail < 3) {
+        st.underrun = true;
+        st.playing = false;
+        memory[0x71] = 1;
+        st.outL = st.outR = 0;
+        return;
+    }
+    st.playing = true;
+    memory[0x71] = (st.underrun ? 1 : 0) | 2;
+
+    auto frame = [&](uint32_t idx, int ch) {
+        return static_cast<int8_t>(memory[(st.base + ((st.rd + idx) % st.size) * 2 + ch) & 0xFFFF]);
+    };
+    int8_t cur[2] = {frame(0, 0), frame(0, 1)};
+    int8_t prev[2] = {st.havePrev ? st.prevL : cur[0], st.havePrev ? st.prevR : cur[1]};
+    int32_t out[2];
+    for (int ch = 0; ch < 2; ch++)
+        out[ch] = cubicInterpolate(prev[ch], cur[ch], frame(1, ch), frame(2, ch), st.frac & 0xFFF) * 256 * st.volume / 255;
+    st.outL = out[0];
+    st.outR = out[1];
+
+    st.frac += st.pitch;
+    while (st.frac >= 0x1000 && avail > 0) {
+        st.frac -= 0x1000;
+        st.prevL = frame(0, 0);
+        st.prevR = frame(0, 1);
+        st.havePrev = true;
+        st.rd = (st.rd + 1) % st.size;
+        avail--;
+    }
+    if (st.frac >= 0x1000) st.frac &= 0xFFF;
+    memory[0x76] = st.rd & 0xFF;
+    memory[0x77] = st.rd >> 8;
 }
 
 // Sample index a looping channel wraps back to. An STL loop word of 0 means
@@ -1137,6 +1234,8 @@ int16_t APU::mixChannels(bool right) {
         int32_t panGain = right ? ch.pan : (255 - ch.pan);
         mixed += (amplified * panGain) / 255;
     }
+
+    mixed += right ? stream.outR : stream.outL;
 
     if (mixed > 32767)  mixed = 32767;
     if (mixed < -32768) mixed = -32768;

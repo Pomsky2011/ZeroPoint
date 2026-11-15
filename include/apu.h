@@ -90,8 +90,21 @@ public:
     //   $0030-$003F  Pan         ch0-15, 1 byte each  (0 = full L, 128 = center, 255 = full R)
     //   $0040-$004F  Reserved0   ch0-15, 1 byte each  (reserved for future per-channel flags)
     //   $0050-$006F  STL address ch0-15, 2 bytes each (0 = channel off)
-    //   $0070-$007F  Reserved1   16 bytes             (reserved for future global flags)
+    //   $0070-$007F  Stream port 16 bytes             (stereo PCM stream, see below)
     //   $0080-$00FF  Reserved2   128 bytes            (reserved)
+
+    // Stream port ($0070-$007F): a stereo 8-bit PCM ring buffer in APU RAM that the CPU/DMA keeps filled
+    // and the mixer drains at its own rate, added on top of the 16 channels. Frame = 2 bytes (L, R signed).
+    //   $70 CTRL    bit0 ENABLE, bit1 RESET (self-clearing: RDPTR = WRPTR = 0, position and status cleared)
+    //   $71 STATUS  bit0 UNDERRUN (sticky; write 1 to clear), bit1 PLAYING (read-only: last tick had data)
+    //   $72 BASE    16-bit, APU address of the ring (must be below the AROM window, $D000)
+    //   $74 SIZE    16-bit, ring length in frames (so 2*SIZE bytes); set before RESET/ENABLE
+    //   $76 RDPTR   16-bit read-only, frame index the mixer is at (CPU writes ignored)
+    //   $78 WRPTR   16-bit, frame index one past the last frame the CPU has written; applies on the high-byte write
+    //   $7A PITCH   16-bit, 0x1000 = one stream frame per 48 kHz output tick (cubic-resampled); high-byte write applies
+    //   $7C VOL     0-255, default 255
+    // The ring is full at SIZE-1 frames. The mixer needs 3 frames ahead of RDPTR (cubic lookahead): with fewer it
+    // outputs silence, holds position and sets UNDERRUN. Free space = (RDPTR - WRPTR - 1) mod SIZE.
 
     // Statistics
     uint64_t getCycleCount() const { return cycleCount; }
@@ -158,6 +171,8 @@ private:
 
     // MMP helper functions
     void resetMMP();
+    void updateStream();                          // one 48 kHz tick of the stream port
+    void writeStreamReg(uint16_t address, uint8_t value);
     void processChannel(int channel);
     static int16_t cubicInterpolate(int8_t s0, int8_t s1, int8_t s2, int8_t s3, uint32_t frac);
 
@@ -298,8 +313,18 @@ private:
     std::array<MMPChannel, 16> mmpChannels;
     uint32_t loopStartSample(const MMPChannel& ch) const;
 
-    // Reserved for future global MMP flags
-    uint16_t reserved1;
+    // Stream port state ($0070-$007F); RDPTR/STATUS are mirrored into memory[] so CPU reads see them
+    struct StreamPort {
+        bool enable;
+        uint16_t base, size, rd, wr, pitch;
+        uint8_t volume;
+        uint32_t frac;            // Q12 position between the frame at rd and the next
+        int8_t prevL, prevR;      // frame before rd (cubic s0); equals the current frame until one has passed
+        bool havePrev;
+        bool underrun, playing;
+        int32_t outL, outR;       // this tick's output, already scaled to 16 bits and volume
+    };
+    StreamPort stream;
     uint8_t  reserved2[128];
 };
 

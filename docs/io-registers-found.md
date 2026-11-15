@@ -130,7 +130,7 @@ all — CPU code cannot read or write them.
 | $0030-$003F | 16 B  | Pan (ch0-15, 1 byte each)            |
 | $0040-$004F | 16 B  | Reserved0 (ch0-15, per-channel)      |
 | $0050-$006F | 32 B  | STL address (ch0-15, 2 bytes each)   |
-| $0070-$007F | 16 B  | Reserved1 (global)                   |
+| $0070-$007F | 16 B  | Stream port (see ZPdevtools/docs/apu/mmp.txt) |
 | $0080-$00FF | 128 B | Reserved2                            |
 
 **Access Method**: MMP registers are memory-mapped at $0000-$00FF in APU memory, accessible via bank **$A0** window (not $60 — that address was never adopted).

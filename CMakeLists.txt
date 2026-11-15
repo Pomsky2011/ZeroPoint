@@ -295,6 +295,10 @@ target_link_libraries(test_apu zeropoint_core)
 add_executable(test_mmp tools/test_mmp.cpp)
 target_link_libraries(test_mmp zeropoint_core)
 
+# MMP stream port regression test (stereo PCM ring: wraps, underrun, pitch, volume, mixing)
+add_executable(test_stream tools/test_stream.cpp)
+target_link_libraries(test_stream zeropoint_core)
+
 # Plays one sample from a ZPA sound pack through the mixer (see ZPdevtools/scripts/test_zpsnd.py)
 add_executable(zpa_play tools/zpa_play.cpp)
 target_link_libraries(zpa_play zeropoint_core)
@@ -424,6 +428,10 @@ set_target_properties(test_apu PROPERTIES
 )
 
 set_target_properties(test_mmp PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_stream PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
