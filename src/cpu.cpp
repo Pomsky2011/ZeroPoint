@@ -102,6 +102,7 @@ uint8_t CPU::readByte(uint32_t address) {
     if (offset < bankReadable[bank] && !(dataGatingActive && bank <= 0x7F && PB != 0xE0) && useMemoryMap) [[likely]] {
         return bankData[bank][offset];
     }
+    if (bank == apuWindowBank && apuPtr && apuPtr->isFastMode()) cycleCount += 1;   // APU bus contention
     return readByteGated(address, PB == 0xE0);
 }
 
@@ -190,6 +191,7 @@ void CPU::writeByte(uint32_t address, uint8_t value) {
             }
             // Full-range window (PPU/APU) region: fall through to writeMapped.
         }
+        if (bank == apuWindowBank && apuPtr && apuPtr->isFastMode()) cycleCount += 1;   // APU bus contention
         writeMapped(address, value);
         return;
     }
@@ -2070,6 +2072,7 @@ void CPU::mapPPUWindow(uint8_t bank) {
 }
 
 void CPU::mapAPUWindow(uint8_t bank) {
+    apuWindowBank = bank;
     MemoryRegion region;
     region.type = MemoryRegion::APU_WINDOW;
     region.startBank = bank;
@@ -2242,6 +2245,9 @@ void CPU::setupIORegisters() {
                     return 0x00;
                 }
 
+                case 0x0A: // APUCLK: bit 0 = fast mode
+                    return apuPtr->isFastMode() ? 0x01 : 0x00;
+
                 default:
                     return 0x00;
             }
@@ -2291,6 +2297,10 @@ void CPU::setupIORegisters() {
 
                 case 0x07: // APU_IOBANK
                     apuPtr->setIOBank(value);
+                    break;
+
+                case 0x0A: // APUCLK: bit 0 = fast mode (master/8 instead of master/16, plus bus contention)
+                    apuPtr->setFastMode(value & 0x01);
                     break;
 
                 default:

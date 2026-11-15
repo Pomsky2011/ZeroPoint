@@ -18,7 +18,7 @@ public:
 
     // Execution
     void reset();
-    void step();                    // Execute one instruction (4 cycles)
+    void step();                    // Execute one instruction (CYCLES_PER_INSTRUCTION cycles)
     void run(uint64_t cycles);      // Run for N cycles
 
     // Memory
@@ -114,6 +114,15 @@ public:
     // FNV-1a over all APU state (memory, AROM, registers, banking, loops, call stack, MMP channels, stream port,
     // HLE engine). Field by field. For tools/test_determinism.
     uint64_t stateHash() const;
+
+    // Clock mode. Normal: master/16 (4.25 MHz), 2 cycles per instruction = ~2.1 MIPS. Fast: master/8 (8.5 MHz), still
+    // 2 cycles per instruction = ~4.25 MIPS, paid for with bus contention (CPU wait states on the bank $A0 window,
+    // DMA to/from it at half rate). The CPU picks it with APUCLK ($D8001A); reset() drops back to normal.
+    // cycleCount counts cycles of whichever clock is running, so a mid-run switch mixes units; the pacing in System
+    // reads isFastMode() every cycle.
+    static constexpr uint32_t CYCLES_PER_INSTRUCTION = 2;
+    bool isFastMode() const { return fastMode; }
+    void setFastMode(bool value) { fastMode = value; }
 
     // Debug
     bool isHalted() const { return halted; }
@@ -297,6 +306,7 @@ private:
     uint64_t cycleCount;
     uint64_t instructionCount;
     bool halted;
+    bool fastMode;
 
     // MMP State (16 channels with pan)
     struct MMPChannel {

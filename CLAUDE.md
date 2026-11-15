@@ -28,7 +28,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   see `docs/ppu.md`
 
 ### APU (Audio Processing Unit)
-- **4.250710 MHz** (master/16, ~1.0 MIPS), 8-bit RISC
+- **4.250710 MHz** (master/16, CPI 2, ~2.1 MIPS), 8-bit RISC. **Fast mode** (CPU writes `APUCLK` $D8001A bit 0; reset clears it):
+  master/8 = 8.5 MHz, ~4.25 MIPS, paid for with bus contention (bank $A0 window accesses +1 CPU cycle, DMA to/from it
+  half rate). Test `bin/test_apu_clock`.
 - **57 instruction mnemonics** (plus the `HLT` assembler shorthand) decoded from a 5-bit opcode field (30 of the 32
   encodable opcode values are dispatched in `APU::executeInstruction`; many
   opcodes further sub-decode into 2-4 mnemonics off the operand bits — e.g.
@@ -56,6 +58,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Stream port** (MMP `$0070-$007F`): stereo 8-bit PCM ring in APU RAM, CPU/DMA-fed, cubic-resampled by PITCH,
   mixed over the channels; how a whole song plays. `ZPdevtools/docs/apu/mmp.txt`; `examples/stream-player/`,
   `tools/build_stream_rom.py` (WAV -> ROM), tests `bin/test_stream`, `tools/test_stream_rom.py`.
+- **ADPCM player**: stereo IMA 4-bit decoded on the APU in fast mode (77.5 instr/frame, 44.1 kHz stereo ~80% of fast mode),
+  looping, into the stream port. `docs/adpcm.md`; `tools/build_adpcm_rom.py`, tests `tools/test_adpcm.py`, `tools/test_adpcm_rom.py`.
 - **COP calls from C/asm**: `ZPdevtools/lib/zp_cop.asm` + `include/zeropoint/zp_cop.h` (`zp_cop3`/`zp_cop32` for any
   `COP #imm`, typed Boot ROM wrappers); test `bin/test_zp_cop`. See `ZPdevtools/docs/SDK.md`.
 - **HLE Boot ROM**: with no `--boot`, `System` boots natively: verifies the signature (strict: unsigned/bad ROMs halt;

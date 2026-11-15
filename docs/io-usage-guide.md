@@ -118,6 +118,10 @@ STA $D80010        ; APUCTRL: bit 2 = resume
 ; Check if APU is halted
 LDA $D80011        ; APUSTATUS: 0=running, 1=halted
 
+; APU fast mode (8.5 MHz, ~4.25 MIPS; costs bus contention on bank $A0 and DMA to/from it)
+LDA #$01
+STA $D8001A        ; APUCLK: bit 0 = fast (reads back; an APU reset clears it)
+
 ; Read APU program counter
 LDA $D80012        ; APUPC low
 LDX $D80013        ; APUPC high

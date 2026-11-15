@@ -141,6 +141,14 @@ public:
         privilegeQuery = cb;
     }
 
+    // Asked per byte, with the address that byte touches: true when that address sits behind a contended bus (the
+    // APU window while the APU runs in fast mode), which makes the byte cost twice the cycles. Wired by System.
+    using BusContendedQuery = bool(*)(void* ctx, uint32_t address);
+
+    void setBusContendedQuery(BusContendedQuery cb) {
+        busContended = cb;
+    }
+
     // Callback fired when a channel's transfer finishes (used to raise the
     // DMA-complete IRQ). Takes the completed channel's index.
     using CompleteCallback = void(*)(void* ctx, uint8_t channel);
@@ -161,6 +169,7 @@ private:
     MemoryReadCallback memoryRead;
     MemoryWriteCallback memoryWrite;
     PrivilegeQueryCallback privilegeQuery = nullptr;
+    BusContendedQuery busContended = nullptr;
 
     // Transfer-complete callback (nullptr if unset)
     CompleteCallback onComplete = nullptr;
@@ -188,6 +197,10 @@ private:
 
     // Get cycles per byte for a mode
     uint32_t getCyclesPerByte(DMAMode mode) const;
+
+    // Cycles for the transfer's next byte: getCyclesPerByte(), doubled when the byte's source or target is behind
+    // a contended bus
+    uint32_t nextByteCycles(const DMATransfer& transfer) const;
 
     // Get init cycles for a mode
     uint32_t getInitCycles(DMAMode mode, uint8_t sizeBits) const;

@@ -196,7 +196,7 @@ void DMAController::processChannel(uint8_t channel) {
                     } else {
                         // No init needed, go straight to transferring
                         transfer.state = DMAState::Transferring;
-                        transfer.cyclesRemaining = getCyclesPerByte(transfer.config.getMode());
+                        transfer.cyclesRemaining = nextByteCycles(transfer);
                     }
                     break;
                 }
@@ -204,7 +204,7 @@ void DMAController::processChannel(uint8_t channel) {
                 case DMAState::Initializing:
                     // Move to transferring
                     transfer.state = DMAState::Transferring;
-                    transfer.cyclesRemaining = getCyclesPerByte(transfer.config.getMode());
+                    transfer.cyclesRemaining = nextByteCycles(transfer);
                     break;
 
                 case DMAState::Transferring:
@@ -221,7 +221,7 @@ void DMAController::processChannel(uint8_t channel) {
                         }
                     } else {
                         // Set up for next byte
-                        transfer.cyclesRemaining = getCyclesPerByte(transfer.config.getMode());
+                        transfer.cyclesRemaining = nextByteCycles(transfer);
                     }
                     break;
 
@@ -291,6 +291,18 @@ uint32_t DMAController::getCyclesPerByte(DMAMode mode) const {
         case DMAMode::ConstRepeat:    return 2;
         default:                      return 1;
     }
+}
+
+uint32_t DMAController::nextByteCycles(const DMATransfer& transfer) const {
+    const DMAMode mode = transfer.config.getMode();
+    uint32_t cycles = getCyclesPerByte(mode);
+    if (!busContended) return cycles;
+    const uint32_t byte = transfer.bytesTransferred;
+    const bool incrementing = mode != DMAMode::RepeatTransfer && mode != DMAMode::ConstRepeat;
+    const uint32_t target = transfer.config.targetAddr + (incrementing ? byte : 0);
+    bool contended = busContended(callbackCtx, target);
+    if (mode == DMAMode::DataCopy) contended = contended || busContended(callbackCtx, transfer.config.sourceAddr + byte);
+    return contended ? cycles * 2 : cycles;
 }
 
 uint32_t DMAController::getInitCycles(DMAMode mode, uint8_t sizeBits) const {

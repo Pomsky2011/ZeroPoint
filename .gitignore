@@ -82,6 +82,7 @@ ZPdevtools/c_compiler/parser.tab.h
 *.asm
 !ZPdevtools/examples/**/*.asm
 !examples/stream-player/*.asm
+!examples/adpcm-player/*.asm
 
 # IDE
 .vscode/
@@ -124,3 +125,4 @@ temp/
 # Build check / compile commands
 build_check/
 compile_commands.json
+__pycache__/

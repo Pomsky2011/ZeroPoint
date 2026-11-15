@@ -312,6 +312,14 @@ target_link_libraries(test_mmp zeropoint_core)
 add_executable(test_stream tools/test_stream.cpp)
 target_link_libraries(test_stream zeropoint_core)
 
+# APU clock regression test (normal/fast mode rates, APUCLK, bus contention, batched-vs-step identity)
+add_executable(test_apu_clock tools/test_apu_clock.cpp)
+target_link_libraries(test_apu_clock zeropoint_core)
+
+# APU ADPCM decoder harness (driven by tools/test_adpcm.py)
+add_executable(test_adpcm_apu tools/test_adpcm_apu.cpp)
+target_link_libraries(test_adpcm_apu zeropoint_core)
+
 # libzp's 32-bit helpers (zp_long.asm) against host arithmetic
 add_executable(test_zp_long tools/test_zp_long.cpp)
 target_link_libraries(test_zp_long zeropoint_core)
@@ -481,6 +489,14 @@ set_target_properties(test_mmp PROPERTIES
 )
 
 set_target_properties(test_stream PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_apu_clock PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(test_adpcm_apu PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

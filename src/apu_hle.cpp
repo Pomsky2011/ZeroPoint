@@ -27,9 +27,9 @@ constexpr uint64_t TICK_HZ = 120;
 // What the real BIOS spends before the first tick, measured with
 // tools/test_zpa_engine --timing: the header poll plus the 12,256-byte checksum
 // scan, then engine_start's channel setup.
-constexpr uint64_t POLL_CYCLES = 24;
-constexpr uint64_t SCAN_CYCLES = 589328;
-constexpr uint64_t ENGINE_INIT_CYCLES = 8000;
+constexpr uint64_t POLL_CYCLES = 12;
+constexpr uint64_t SCAN_CYCLES = 294676;
+constexpr uint64_t ENGINE_INIT_CYCLES = 4318;
 
 enum Op : uint8_t {
     OP_END = 0x00, OP_NOTE = 0x01, OP_PITCH = 0x02, OP_VOL = 0x03, OP_PAN = 0x04, OP_OFF = 0x05,
@@ -63,7 +63,8 @@ bool APU::hleIntercept() {
     }
 
     // Engine: idle until the next tick is due (the real engine stalls), then run it.
-    const uint64_t due = hle.startCycle + (uint64_t)hle.tick * APU_HZ / TICK_HZ;
+    const uint64_t apuHz = fastMode ? 2 * APU_HZ : APU_HZ;   // cycles of the clock that is running
+    const uint64_t due = hle.startCycle + (uint64_t)hle.tick * apuHz / TICK_HZ;
     if (cycleCount < due) cycleCount = due;
     hleTick();
     return true;
@@ -75,14 +76,14 @@ void APU::hleWaitForHeader() {
     const uint8_t magic = memory[HEADER];
     if (magic != MAGIC_PROGRAM && magic != MAGIC_SCORE) {
         cycleCount += POLL_CYCLES;
-        instructionCount += POLL_CYCLES / 4;
+        instructionCount += POLL_CYCLES / CYCLES_PER_INSTRUCTION;
         return;
     }
 
     uint8_t sum = 0;
     for (uint32_t a = SCORE_BASE; a < SCORE_END; a++) sum += memory[a];
     cycleCount += SCAN_CYCLES;
-    instructionCount += SCAN_CYCLES / 4;
+    instructionCount += SCAN_CYCLES / CYCLES_PER_INSTRUCTION;
     if (sum != memory[HEADER + 0x1F]) return;
 
     // Accepted: zero the magic before running anything, so a program or score

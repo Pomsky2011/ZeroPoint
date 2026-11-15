@@ -281,7 +281,7 @@ case PPUOpcode::JUMP_ZG: {
 - **Only two registers exist (X and Y)** — R2-R127 are debug-only scratch slots (unreadable by any instruction); ALU
   source operands are hardwired to a single bit selecting R0(X)/R1(Y) only,
   and destination fields are 7 bits wide (max R127)
-- **4.250710 MHz clock, 4 cycles per instruction**
+- **4.250710 MHz clock, 2 cycles per instruction** (opt-in fast mode: 8.5 MHz, APUCLK $D8001A)
 
 ### Implementing an APU Instruction
 

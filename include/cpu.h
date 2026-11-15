@@ -147,6 +147,8 @@ public:
     // Memory mapping
     void setPPU(PPU* ppu) { ppuPtr = ppu; }
     void setAPU(APU* apu) { apuPtr = apu; }
+    // Bank the APU window is mapped at (-1: none). While the APU runs in fast mode, CPU accesses to it cost 1 extra cycle.
+    int apuWindowBank = -1;
     void setDisplay(Display* disp) { displayPtr = disp; }
     void setDMA(DMAController* dma) { dmaPtr = dma; }
     void setSystem(class System* sys) { systemPtr = sys; }

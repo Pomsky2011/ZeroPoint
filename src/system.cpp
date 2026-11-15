@@ -68,6 +68,7 @@ System::System()
     dma.setCallbackContext(this);
     dma.setMemoryCallbacks(dmaReadCallback, dmaWriteCallback);
     dma.setPrivilegeQuery(dmaPrivilegeQuery);
+    dma.setBusContendedQuery(dmaBusContendedQuery);
     dma.setCompleteCallback(dmaCompleteCallback);
 
     std::cout << "ZeroPoint System initialized\n";
@@ -429,8 +430,9 @@ uint64_t System::quietCyclesNonVideo() const {
     if (!apu.isHalted()) {
         if (apuCycleBudget > 0) return 0;
         const uint64_t need = static_cast<uint64_t>(1 - apuCycleBudget);
-        const uint64_t firstAccrual = 15 - (c & 15);      // ... c % 16 == 15
-        const uint64_t due = firstAccrual + 16 * (need - 1);
+        const uint64_t period = apu.isFastMode() ? 8 : 16;
+        const uint64_t firstAccrual = (period - 1) - (c & (period - 1));   // ... c % period == period - 1
+        const uint64_t due = firstAccrual + period * (need - 1);
         if (due < q) q = due;
     }
     if (nextTimerEventCycle != UINT64_MAX) {              // updateTimers() fires when c >= nextTimerEventCycle
@@ -447,10 +449,11 @@ void System::advanceNonVideo(uint64_t cycles) {
     // advanceQuiet() without the video chips: the budget accruals and audio accumulation of `cycles` skipped
     // cycles, and the clock itself.
     const uint64_t c = masterCycleCount;
+    const uint64_t apuPeriod = apu.isFastMode() ? 8 : 16;
     if (cpu.getState() == CPUState::Running)
         cpuCycleBudget += static_cast<int64_t>((c + cycles) / 4 - c / 4);
     if (!apu.isHalted())
-        apuCycleBudget += static_cast<int64_t>((c + cycles) / 16 - c / 16);
+        apuCycleBudget += static_cast<int64_t>((c + cycles) / apuPeriod - c / apuPeriod);
     audioSampleAccum += AUDIO_SAMPLE_RATE * cycles;
     masterCycleCount += cycles;
 }
@@ -559,10 +562,11 @@ void System::advanceQuiet(uint64_t cycles, bool foldEventTick) {
     // cycle with c % 4 == 3 (CPU, if running) / c % 16 == 15 (APU, if not halted). By construction none of them
     // makes the budget positive: that cycle is the event cycle after this stretch.
     const uint64_t c = masterCycleCount;
+    const uint64_t apuPeriod = apu.isFastMode() ? 8 : 16;
     if (cpu.getState() == CPUState::Running)
         cpuCycleBudget += static_cast<int64_t>((c + cycles) / 4 - c / 4);
     if (!apu.isHalted())
-        apuCycleBudget += static_cast<int64_t>((c + cycles) / 16 - c / 16);
+        apuCycleBudget += static_cast<int64_t>((c + cycles) / apuPeriod - c / apuPeriod);
     const uint64_t ticks = cycles + (foldEventTick ? 1 : 0);   // the event cycle's own ppu/display tick
     ppu.tickMany(static_cast<uint32_t>(ticks));
     display.advanceQuiet(static_cast<int>(ticks));
@@ -712,10 +716,10 @@ ZP_ALWAYS_INLINE void System::cpuApuAudioCycle(int cyclePhase) {
         cpuCycleBudget -= static_cast<int64_t>(cpu.cycleCount - before);
     }
 
-    // APU runs at master/16 (~4.25 MHz). Same cycle-debited pacing; each APU
-    // instruction costs 4 APU cycles, so it now runs at its rated ~1 MIPS
-    // instead of ~4x too fast.
-    if (cyclePhase == 15 && !apu.isHalted()) {
+    // APU runs at master/16 (~4.25 MHz), or master/8 (~8.5 MHz) in fast mode. Same cycle-debited pacing; each APU
+    // instruction costs 2 APU cycles: ~2.1 MIPS normal, ~4.25 MIPS fast.
+    const int apuMask = apu.isFastMode() ? 7 : 15;
+    if ((cyclePhase & apuMask) == apuMask && !apu.isHalted()) {
         apuCycleBudget++;
     }
     while (apuCycleBudget > 0 && !apu.isHalted()) {
@@ -755,11 +759,14 @@ void System::tickRest(int cyclePhase, bool& outVBlank, bool& outHBlank, bool sam
 }
 
 void System::runCpuBurst(uint64_t target) {
-    // Run-ahead's common case, made cheap: stretches where the only events are CPU instructions. The first cycle of a
-    // non-CPU event (an APU instruction, a timer, an audio sample) is computed once; CPU events before it then run
-    // back to back with just the budget arithmetic between them, through the same cpuApuAudioCycle() a full
-    // tickRest() uses. A CPU instruction can change what is due (it can write the timer control register, start the
-    // APU or a DMA), so those are rechecked after every event and the horizon recomputed (or the burst ended).
+    // Run-ahead's common case, made cheap: stretches where the only events are CPU and APU instructions (the APU is
+    // the busier of the two when it decodes audio: ~4M instructions a second in fast mode, each of which used to end
+    // the burst). The first cycle of a timer or audio-sample event is computed once; CPU/APU events before it then
+    // run back to back with just the budget arithmetic between them, through the same cpuApuAudioCycle() a full
+    // tickRest() uses (it runs whichever of the two is due). A CPU instruction can change what is due (it can write
+    // the timer control register, start or halt the APU, switch its clock, or start a DMA), so those are rechecked
+    // after every event and the horizon recomputed (or the burst ended). Neither the APU nor a timer touches the
+    // video chips, so only a CPU access sets videoAccessed.
     auto horizon = [this]() -> uint64_t {
         const uint64_t c = masterCycleCount;
         uint64_t h = nextAudioCycle > c ? nextAudioCycle : c;
@@ -767,18 +774,13 @@ void System::runCpuBurst(uint64_t target) {
             const uint64_t t = nextTimerEventCycle > c ? nextTimerEventCycle : c;
             if (t < h) h = t;
         }
-        if (!apu.isHalted()) {
-            if (apuCycleBudget > 0) return c;                                           // an APU instruction is due now
-            const uint64_t need = static_cast<uint64_t>(1 - apuCycleBudget);
-            const uint64_t due = c + (15 - (c & 15)) + 16 * (need - 1);                 // as quietCyclesNonVideo()
-            if (due < h) h = due;
-        }
         return h;
     };
 
     uint64_t h = horizon();
     uint64_t timerSnap = nextTimerEventCycle;
     bool apuHaltedSnap = apu.isHalted();
+    bool apuFastSnap = apu.isFastMode();
     while (cpu.getState() == CPUState::Running) {
         const uint64_t c = masterCycleCount;
         uint64_t e = c;                                                // the cycle of the CPU's next instruction
@@ -786,11 +788,23 @@ void System::runCpuBurst(uint64_t target) {
             const uint64_t need = static_cast<uint64_t>(1 - cpuCycleBudget);
             e = c + ((3 - (c & 3)) & 3) + 4 * (need - 1);
         }
+        if (!apuHaltedSnap && e > c) {                                 // ... or the APU's, if that comes first
+            uint64_t ea = c;
+            if (apuCycleBudget <= 0) {
+                const uint64_t need = static_cast<uint64_t>(1 - apuCycleBudget);
+                const uint64_t period = apu.isFastMode() ? 8 : 16;     // as quietCyclesNonVideo()
+                ea = c + ((period - 1) - (c & (period - 1))) + period * (need - 1);
+            }
+            if (ea < e) e = ea;
+        }
         if (e >= h || e >= target) return;                             // not this burst's: the generic path takes it
 
         if (e > c) {                                                   // the quiet cycles before it
             cpuCycleBudget += static_cast<int64_t>(e / 4 - c / 4);
-            if (!apuHaltedSnap) apuCycleBudget += static_cast<int64_t>(e / 16 - c / 16);
+            if (!apuHaltedSnap) {
+                const uint64_t apuPeriod = apu.isFastMode() ? 8 : 16;
+                apuCycleBudget += static_cast<int64_t>(e / apuPeriod - c / apuPeriod);
+            }
             audioSampleAccum += AUDIO_SAMPLE_RATE * (e - c);
             masterCycleCount = e;
         }
@@ -808,10 +822,11 @@ void System::runCpuBurst(uint64_t target) {
         }
 
         if (cpu.isHalted() || !dma.tickIsNoOp()) return;
-        if (nextTimerEventCycle != timerSnap || apu.isHalted() != apuHaltedSnap) {
+        if (nextTimerEventCycle != timerSnap || apu.isHalted() != apuHaltedSnap || apu.isFastMode() != apuFastSnap) {
             h = horizon();
             timerSnap = nextTimerEventCycle;
             apuHaltedSnap = apu.isHalted();
+            apuFastSnap = apu.isFastMode();
         }
     }
 }
@@ -983,6 +998,11 @@ uint8_t System::dmaReadCallback(void* sys, uint32_t address, bool privileged) {
 
 void System::dmaWriteCallback(void* sys, uint32_t address, uint8_t value) {
     static_cast<System*>(sys)->cpu.writeByteForDMA(address, value);
+}
+
+bool System::dmaBusContendedQuery(void* sys, uint32_t address) {
+    System* s = static_cast<System*>(sys);
+    return s->apu.isFastMode() && static_cast<int>(address >> 16) == s->cpu.apuWindowBank;
 }
 
 bool System::dmaPrivilegeQuery(void* sys) {

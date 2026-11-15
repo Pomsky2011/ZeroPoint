@@ -8,7 +8,7 @@
 APU::APU()
     : pc(0), sp(0), rp(0), dp(0), db(0), flags(0), bf(false),
       romBank(0), ioBank(0),
-      cycleCount(0), instructionCount(0), halted(false)
+      cycleCount(0), instructionCount(0), halted(false), fastMode(false)
 {
     std::fill(std::begin(reserved2), std::end(reserved2), 0);
     reset();
@@ -61,6 +61,7 @@ void APU::reset() {
     cycleCount = 0;
     instructionCount = 0;
     halted = false;
+    fastMode = false;
 
     resetMMP();
 }
@@ -251,7 +252,7 @@ void APU::writeDEF88186Input(uint16_t offset, uint8_t value) {
 
 void APU::step() {
     if (halted) {
-        cycleCount += 4;
+        cycleCount += CYCLES_PER_INSTRUCTION;
         return;
     }
 
@@ -264,8 +265,8 @@ void APU::step() {
     // Execute
     executeInstruction(instruction);
 
-    // Each instruction takes 4 cycles
-    cycleCount += 4;
+    // Each instruction takes CYCLES_PER_INSTRUCTION cycles (plus any NOP stall)
+    cycleCount += CYCLES_PER_INSTRUCTION;
     instructionCount++;
 }
 
@@ -1309,7 +1310,7 @@ uint64_t APU::stateHash() const {
     for (const FunctionState& f : functions) { mixv(f.address); mixv(f.defined); }
     mixv(callStack.size());
     for (uint16_t v : callStack) mixv(v);
-    mixv(cycleCount); mixv(instructionCount); mixv(halted);
+    mixv(cycleCount); mixv(instructionCount); mixv(halted); mixv(fastMode);
     for (const MMPChannel& c : mmpChannels) {
         mixv(c.pitch); mixv(c.volume); mixv(c.pan); mixv(c.reserved0); mixv(c.stlAddress); mixv(c.samplePosition);
         mixv(c.active); mixv(c.sampleDataAddress); mixv(c.loopAddress); mixv(c.oneShot);
