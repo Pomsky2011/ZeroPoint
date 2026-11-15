@@ -299,6 +299,10 @@ target_link_libraries(test_mmp zeropoint_core)
 add_executable(test_stream tools/test_stream.cpp)
 target_link_libraries(test_stream zeropoint_core)
 
+# Runs a compiled C test image (ZPdevtools/tests/cc) and prints what it recorded
+add_executable(zp_run_c tools/zp_run_c.cpp)
+target_link_libraries(zp_run_c zeropoint_core)
+
 # libzp zp_cop (every COP signature) against the real boot ROM
 add_executable(test_zp_cop tools/test_zp_cop.cpp)
 target_link_libraries(test_zp_cop zeropoint_core)
@@ -436,6 +440,10 @@ set_target_properties(test_mmp PROPERTIES
 )
 
 set_target_properties(test_stream PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(zp_run_c PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
