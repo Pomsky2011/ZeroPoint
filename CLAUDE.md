@@ -58,8 +58,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Stream port** (MMP `$0070-$007F`): stereo 8-bit PCM ring in APU RAM, CPU/DMA-fed, cubic-resampled by PITCH,
   mixed over the channels; how a whole song plays. `ZPdevtools/docs/apu/mmp.txt`; `examples/stream-player/`,
   `tools/build_stream_rom.py` (WAV -> ROM), tests `bin/test_stream`, `tools/test_stream_rom.py`.
-- **ADPCM player**: stereo IMA 4-bit decoded on the APU in fast mode (77.5 instr/frame, 44.1 kHz stereo ~80% of fast mode),
-  looping, into the stream port. `docs/adpcm.md`; `tools/build_adpcm_rom.py`, tests `tools/test_adpcm.py`, `tools/test_adpcm_rom.py`.
+- **ADPCM player** (lives in ZPdevtools: `docs/apu/adpcm.md`, `scripts/build_adpcm_rom.py`, `scripts/test_adpcm*.py`): stereo IMA
+  4-bit decoded on the APU in fast mode (77.5 instr/frame, 44.1 kHz stereo ~80% of fast mode), looping, into the stream port.
+  This repo keeps the harness it tests through: `bin/test_adpcm_apu`, plus `bin/zpb_wav` (`--verify` = strict HLE signature check).
 - **COP calls from C/asm**: `ZPdevtools/lib/zp_cop.asm` + `include/zeropoint/zp_cop.h` (`zp_cop3`/`zp_cop32` for any
   `COP #imm`, typed Boot ROM wrappers); test `bin/test_zp_cop`. See `ZPdevtools/docs/SDK.md`.
 - **HLE Boot ROM**: with no `--boot`, `System` boots natively: verifies the signature (strict: unsigned/bad ROMs halt;

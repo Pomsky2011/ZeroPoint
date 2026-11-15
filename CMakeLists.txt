@@ -316,7 +316,7 @@ target_link_libraries(test_stream zeropoint_core)
 add_executable(test_apu_clock tools/test_apu_clock.cpp)
 target_link_libraries(test_apu_clock zeropoint_core)
 
-# APU ADPCM decoder harness (driven by tools/test_adpcm.py)
+# APU ADPCM decoder harness (driven by ZPdevtools scripts/test_adpcm.py)
 add_executable(test_adpcm_apu tools/test_adpcm_apu.cpp)
 target_link_libraries(test_adpcm_apu zeropoint_core)
 

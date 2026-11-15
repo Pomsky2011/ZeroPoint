@@ -1,4 +1,4 @@
-// Headless harness for the APU ADPCM decoder (tools/gen_adpcm_apu.py): loads the program and tables into a bare
+// Headless harness for the APU ADPCM decoder (ZPdevtools scripts/gen_adpcm_apu.py; driven by its scripts/test_adpcm.py): loads the program and tables into a bare
 // APU, plays the CPU's part (keeps the input ring filled through the $1000/$1800 mailbox, wrapping the ADPCM stream
 // the way the real feeder wraps the ROM) and the mixer's part (one updateMMP() per 48 kHz tick, which is what
 // advances the stream's RDPTR), and records every byte the decoder writes into the stream ring.
