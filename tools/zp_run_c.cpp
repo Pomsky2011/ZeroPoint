@@ -3,7 +3,8 @@
 //   zp_run_c <bootrom.bin|none> <image.bin>
 //
 // The image is loaded at $80:0200 and run with PB = DB = $80 and the stack in bank $80 (the CPU's stack bank), so
-// code, data and stack share Work RAM - the layout both C compilers' DB-relative temporaries assume. The test's
+// code, data and stack share Work RAM. The whole System is clocked (not just the CPU), so DMA, timers and the
+// other peripherals the SDK drives actually run. The test's
 // rec() (ZPdevtools/tests/cc/rec.asm) appends 16-bit words at $80:8100 and bumps the byte count at $80:8000; this prints
 // them as signed decimals, space separated, on the last line of output (System prints a banner first), once the count stops changing (main returned or hung). Exit status 1 if
 // the program never recorded anything. main returning (SP rising above its starting $F000) also ends the run. With ZP_TRACE=1 the last 60 instructions (PC, registers, SP) are printed to
@@ -42,7 +43,11 @@ int main(int argc, char** argv) {
     const bool trace = std::getenv("ZP_TRACE") != nullptr;
     const long stopPc = std::getenv("ZP_STOP") ? std::strtol(std::getenv("ZP_STOP"), nullptr, 16) : -1;
     std::deque<std::string> ring;
+    uint64_t lastCycles = cpu.getCycleCount();
     for (long i = 0; i < 400000000L; i++) {
+        sys.step();   // one master cycle; the rest of this loop runs once per retired CPU instruction
+        if (cpu.getCycleCount() == lastCycles) continue;
+        lastCycles = cpu.getCycleCount();
         if (trace) {
             char b[96];
             std::snprintf(b, sizeof b, "%02X:%04X op=%02X A=%04X X=%04X Y=%04X SP=%04X", cpu.getPB(), cpu.getPC(),
@@ -50,7 +55,6 @@ int main(int argc, char** argv) {
             ring.push_back(b);
             if (ring.size() > 60) ring.pop_front();
         }
-        cpu.step();
         if (stopPc >= 0 && cpu.getPB() == 0x80 && cpu.getPC() == stopPc) break;
         if (cpu.getSP() > 0xF000) break;   // main returned
         if (trace && (cpu.getPB() != 0x80 || cpu.getPC() < 0x0200 || cpu.getPC() >= 0x0200 + img.size())) break;

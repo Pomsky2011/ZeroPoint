@@ -58,6 +58,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   `tools/build_stream_rom.py` (WAV -> ROM), tests `bin/test_stream`, `tools/test_stream_rom.py`.
 - **COP calls from C/asm**: `ZPdevtools/lib/zp_cop.asm` + `include/zeropoint/zp_cop.h` (`zp_cop3`/`zp_cop32` for any
   `COP #imm`, typed Boot ROM wrappers); test `bin/test_zp_cop`. See `ZPdevtools/docs/SDK.md`.
+- **C compilers** (`zpcc`, `def88186cc`; 16-bit `int`, 32-bit `long` via `ZPdevtools/lib/zp_long.asm`): regression suite
+  `ZPdevtools/tests/cc/run.sh` runs C in the emulator through `bin/zp_run_c` (`ZP_TRACE=1` traces a hang); runtime test
+  `bin/test_zp_long`. Arrays/pointer-deref/struct members only reach bank $00 and `def88186cc` has no globals.
 - **Sequencer / boot jingle**: ZPA score engine in the APU BIOS (`ZPbootROM/apu/internalBIOS/engine.uas`);
   `System` plays it through a native HLE BIOS (`src/apu_hle.cpp`) unless `--apu-bios` loads the real
   image. Tests: `bin/test_zpa_engine`, `bin/test_boot_jingle`; spec `ZPdevtools/docs/apu/zpa.txt`.
