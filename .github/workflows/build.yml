@@ -215,38 +215,24 @@ jobs:
 
   build-macos-intel:
     name: macOS Build (Intel x86_64)
-    # GitHub retired free-tier Intel macOS hosted runners (macos-13 no longer
-    # schedules — confirmed by a 24h queue timeout). The remaining Intel
-    # labels (macos-15-intel etc.) are billed "Larger Runners", not enabled
-    # on this repo. Instead: cross-compile x86_64 on a normal Apple Silicon
-    # runner using a Rosetta-based x86_64 Homebrew. Experimental — x86_64
-    # bottles for Qt/MoltenVK may not always be available; if this job is
-    # flaky, it's a known tradeoff of this approach, not a regression.
-    runs-on: macos-15
+    # Native x86_64 on GitHub's Intel macOS image. (The old approach - cross-compiling on an Apple Silicon runner against
+    # a Rosetta-installed x86_64 Homebrew - is dead: Homebrew's installer now refuses to run under Rosetta, and an x86_64
+    # macOS VM can't run on Apple Silicon at all.) If this label doesn't schedule on this repo (it has been billed as a
+    # "larger runner" before; macos-13 stopped scheduling entirely), the job sits queued: cancel it and see
+    # docs/determinism-proof.md for the Rosetta core-only alternative.
+    runs-on: macos-15-intel
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install x86_64 dependencies (Rosetta Homebrew)
+    - name: Install dependencies
       run: |
-        # The hosted image may already have Rosetta, and softwareupdate then exits non-zero ("Package Authoring Error ...
-        # RosettaUpdateAuto is missing installKBytes"). What matters is whether x86_64 code runs.
-        softwareupdate --install-rosetta --agree-to-license || echo "softwareupdate failed; checking Rosetta directly"
-        arch -x86_64 /usr/bin/true
-        arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        arch -x86_64 /usr/local/bin/brew install sdl2 qt vulkan-headers vulkan-loader molten-vk
+        brew install sdl2 qt vulkan-headers vulkan-loader molten-vk cmake
 
-    # cmake itself stays the native arm64 binary (Rosetta only translates
-    # x86_64 -> arm64, not the reverse, so `arch -x86_64 cmake` can't even
-    # exec it). Xcode's clang is a universal binary, so passing
-    # -DCMAKE_OSX_ARCHITECTURES=x86_64 is enough to make it emit and link
-    # x86_64 object code against the x86_64 Homebrew libs on CMAKE_PREFIX_PATH.
-    - name: Configure CMake (cross x86_64)
+    - name: Configure CMake
       run: |
-        cmake -B build -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-          -DCMAKE_PREFIX_PATH="/usr/local;/usr/local/opt/qt"
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix);$(brew --prefix qt)"
 
     - name: Build
       run: |
