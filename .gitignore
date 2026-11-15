@@ -75,6 +75,8 @@ ZPdevtools/c_compiler/parser.tab.h
 *.bin
 *.rom
 *.txt
+# ...except the cross-platform determinism digests CI checks (tools/fuzz_determinism --golden-check)
+!tools/determinism_golden.txt
 !CMakeLists.txt
 !README.md
 *.asm
