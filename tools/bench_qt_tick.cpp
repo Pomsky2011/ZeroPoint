@@ -17,7 +17,11 @@ int main(int argc, char** argv) {
     const int seconds = argc > 3 ? std::atoi(argv[3]) : 12;
     const int px = argc > 4 ? std::atoi(argv[4]) : 512;
 
+#ifdef _WIN32
+    _putenv_s("ZEROPOINT_NO_VERIFY", "1");   // benchmark ROMs are unsigned
+#else
     setenv("ZEROPOINT_NO_VERIFY", "1", 1);   // benchmark ROMs are unsigned
+#endif
     EmulatorWidget w;
     w.resize(px, px);
     w.setBootROMPath(argv[1]);
