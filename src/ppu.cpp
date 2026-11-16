@@ -1167,7 +1167,8 @@ void PPU::executeBlit(const BlitChannel& channel) {
     if (display == nullptr) return;
     if (channel.kind == 1) { executeLineBlit(channel); return; }
 
-    uint16_t x = channel.x;
+    // x is signed (like the line blitter's), so a tile can hang off the left edge; the display clips it per pixel.
+    const int x = static_cast<int16_t>(channel.x);
     uint16_t y = channel.y;
 
     // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp
@@ -1294,8 +1295,9 @@ void PPU::executeBlit(const BlitChannel& channel) {
             // Apply blending if mode is set and we have a non-zero blend mode
             if (channel.blendMode != 0) {
                 // Calculate framebuffer address for this pixel
-                uint16_t pixelX = x + tx;
+                const int pixelX = x + tx;
                 uint16_t pixelY = y + ty;
+                if (pixelX < 0 || pixelX >= FB_WIDTH) continue;   // off the scanline: setPixel32 would drop it
 
                 // Read existing pixel from framebuffer
                 uint32_t dstColor = 0;

@@ -179,6 +179,12 @@ async path — with fewer channels, the excess dispatches would hit the
 264-cycle-plus synchronous fallback and could blow the 340-cycle H-blank
 budget.
 
+**Clipping**: the draw position's x (`$0200-$0201`) is signed 16-bit, so a tile can start off the left edge
+(`0xFFFC` = -4 draws columns 4-7 at x = 0-3); pixels off either side of the 256-pixel scanline are dropped, and a
+tile wholly off an edge draws nothing. Before CORE_REVISION 4 the x was read as unsigned, so any x >= `$8000` (every
+negative one) dropped the whole tile. y is an absolute row in the rolling-buffer space, not signed. Test:
+`bin/test_tiledraw_clip`.
+
 ### Line Blitter
 
 A second async blit unit, for writing a horizontal run of pixels at an arbitrary (signed) x on one row: four more
