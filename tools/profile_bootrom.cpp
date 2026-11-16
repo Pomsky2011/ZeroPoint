@@ -6,7 +6,7 @@
 // to be run under `perf record` to profile the whole core (CPU+PPU+APU+
 // DMA+Display) under a realistic workload instead of a synthetic one.
 //
-// Usage: profile_bootrom <path/to/bootrom.bin> [frames] [cartridge.zpb] [--frontend] [--vthread]
+// Usage: profile_bootrom <path/to/bootrom.bin|none> [frames] [cartridge.zpb] [--frontend] [--vthread]
 // --vthread runs the PPU/display catch-up on a worker thread (System::setVideoThread).
 // --frontend latches only the last raster of each 13 (what the Qt/SDL frontends do, see Display::setLatchEnabled).
 // With a cartridge it also prints the real-time ratio of every console second (>= 1.0 holds 60 FPS).
@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     uint64_t frames = (argc > 2) ? strtoull(argv[2], nullptr, 10) : 300;
 
     System system;
-    if (!system.loadBootROM(argv[1])) {
+    if (std::string(argv[1]) != "none" && !system.loadBootROM(argv[1])) {   // "none" = the native (HLE) boot
         std::fprintf(stderr, "Failed to load boot ROM: %s\n", argv[1]);
         return 1;
     }

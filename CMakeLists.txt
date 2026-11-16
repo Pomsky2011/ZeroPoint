@@ -381,6 +381,11 @@ add_executable(test_line_blit tools/test_line_blit.cpp)
 target_link_libraries(test_line_blit zeropoint_core)
 set_target_properties(test_line_blit PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+# Dump the APU's address space some time after the cartridge takes over (diff HLE vs real boot ROM leftovers)
+add_executable(dump_apu_state tools/dump_apu_state.cpp)
+target_link_libraries(dump_apu_state zeropoint_core)
+set_target_properties(dump_apu_state PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 # Headless splash frame dumper (boot ROM + cartridge -> raw RGBA frames; tools/splash_frames.py compares/converts)
 add_executable(dump_splash tools/dump_splash.cpp)
 target_link_libraries(dump_splash zeropoint_core)
