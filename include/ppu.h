@@ -280,10 +280,9 @@ private:
     // storage, palettes, or blend modes, so a tile blit isn't representable
     // as one of its existing transfer modes without duplicating all of this
     // state inside dma.cpp for no benefit over keeping it where the state
-    // already lives. If every channel is busy when TILEDRAW issues, it falls
-    // back to the old fully-synchronous blit (never drops a draw, only ever
-    // costs extra cycles in that pathological case) - see opTILEDRAW's
-    // TILEDRAW case and advanceBlitChannels().
+    // already lives. If every channel is busy when TILEDRAW issues, it waits
+    // (re-executes each cycle) until one frees, and blits retire in issue
+    // order - see opTILEDRAW and advanceBlitChannels().
     struct BlitChannel {
         bool busy = false;
         uint64_t completeAt = 0;     // blitClock value at which this blit finishes (see advanceBlitChannels)
@@ -301,9 +300,9 @@ private:
     // 8, not 4: the boot ROM splash's band-0 vblank-tail dispatch (see
     // ZPbootROM/ppu/code/gen_mosaic.py) issues 8 TILEDRAWs per H-blank call
     // to fit all 32 of a band's columns into the 4 scanlines the vblank tail
-    // gives it. With only 4 channels, the 5th-8th dispatch in that call hit
-    // the synchronous fallback (a real ~264-cycle stall each, not a cheap
-    // dispatch) and blew the 340-cycle H-blank budget, corrupting the ISR
+    // gives it. With only 4 channels, the 5th-8th dispatch in that call had to
+    // wait for a channel (a ~264-cycle stall each when this was a synchronous
+    // draw, not a cheap dispatch) and blew the 340-cycle H-blank budget, corrupting the ISR
     // via re-entry. 8 channels means all 8 dispatches stay on the cheap
     // async path - strictly more headroom than 4 gave the existing 4-per-
     // H-blank general schedule too (bands 1-31), never less.
@@ -333,6 +332,7 @@ private:
     // instead of an 8-entry scan; the order blits complete in (channel index order within a cycle) is unchanged.
     uint64_t blitClock = 0;
     uint64_t blitNextDone = UINT64_MAX;
+    uint64_t lastTileCompleteAt = 0;   // completeAt of the newest tile blit: the next one retires strictly after it (issue order)
 
     // Palette system
     std::array<uint16_t, 16> palette16{};           // 16-color palette (16-bit BBGR format)

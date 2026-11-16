@@ -165,10 +165,14 @@ for a free slot among `NUM_BLIT_CHANNELS` (8) background blit channels
   every cycle regardless of what the PPU itself is doing (including while
   stalled on something else), and the pixel write happens when a channel's
   `cyclesRemaining` reaches 0.
-- **No channel is free**: `TILEDRAW` falls back to drawing synchronously
-  inline, paying the full blit cost as its own instruction stall — this is
-  the same behavior the PPU always had before concurrent dispatch existed,
-  and is strictly a worse-case-only path.
+- **No channel is free**: `TILEDRAW` waits: it re-executes every cycle until a channel frees (a stalled blitter queue),
+  then dispatches as above. Before CORE_REVISION 7 it drew synchronously right there, ahead of the older blits still in
+  flight, which put a later layer *under* an earlier one.
+
+**Order**: blits retire (draw) in issue order whatever they cost: a blit's completion is held strictly after the one issued
+before it, and completions that fall due together run in that order. So program order is z-order: a cheap clipped sprite
+tile issued after a full background tile lands on top of it. Throughput settles at the channel limit by itself, one blit per
+~33 cycles (264 / 8) once all eight are busy; a program needs no pacing code of its own. Test: `bin/test_blit_order`.
 
 **Blit cost**: `CYC_TILE_BASE + TILE_PIXELS * (blended ? CYC_TILE_PX_BLEND :
 CYC_TILE_PX)` = `8 + 64*4 = 264` cycles for an opaque tile, `8 + 64*6 = 392`
@@ -309,7 +313,7 @@ not a clock/60 Hz approximation:
 
 - **Cycles per scanline**: 340 (`TOTAL_PIXELS_PER_LINE`, `include/display.h`) — a hard ceiling on how much work (including `TILEDRAW` dispatches, see "Concurrent TILEDRAW Blitter" above) fits between two H-Blank edges
 - **Cycles per frame**: 88,740 (340 × 261 `TOTAL_SCANLINES` = `System::CYCLES_PER_FRAME`)
-- **Peak issue rate if never stalled**: ~68 million instructions/second (fewer in practice — branches/MUL/DIV/palette loads/`CLRTILE`/`CLRPALETTE` all cost more than 1 cycle, and `TILEDRAW`'s synchronous fallback costs far more — see the `CYC_*` constants in `src/ppu.cpp`)
+- **Peak issue rate if never stalled**: ~68 million instructions/second (fewer in practice — branches/MUL/DIV/palette loads/`CLRTILE`/`CLRPALETTE` all cost more than 1 cycle, and `TILEDRAW` stalls while all eight blit channels are busy — see the `CYC_*` constants in `src/ppu.cpp`)
 
 An H-Blank ISR's real deadline is the full 340-cycle scanline (the interrupt
 is edge-triggered once per scanline, not tied to the 84-pixel physical

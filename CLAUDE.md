@@ -23,9 +23,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **Tiles**: 8×8 pixels, 256 per bank × 4 banks (1024 total, `SETTILEBANK`), 4 modes (16/32-bit, 4/8bpp)
 - **Palettes**: 16-color (16-bit) / 256-color (32-bit)
 - **TILEDRAW**: dispatches onto one of 8 concurrent background blit channels
-  (async, ~8-cycle issue cost) when one is free, falling back to a
-  synchronous ~264/392-cycle draw (opaque/blended) only when all are busy —
-  see `docs/ppu.md`
+  (async, ~8-cycle issue cost) when one is free and waits when all are busy; blits retire in issue order,
+  so program order is z-order — see `docs/ppu.md`
   Per-blit attributes in VOC `$00FC` bits 2-5 (transparent/hflip/vflip/row clip), signed x clips at the left edge, 8bpp
   tiles use the real 256-entry palette in either render mode — see `docs/ppu.md` "Tile attributes"
 
@@ -367,7 +366,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - MMP audio (16 channels with pan, SDL output)
 - **PPU instruction timing model**: multi-cycle cost per instruction (branches, MUL/DIV, palette loads, the TILEDRAW blitter). Costs are tunable constants at the top of `src/ppu.cpp`; `PPU::tick()` stalls for `cost-1` cycles after issuing.
 - **PPU batched executor** (`PPU::runBatch`): fast interpreter path that runs whole instructions and collapses stalls (1.2x-4x faster than per-cycle ticking, provably state-identical). The `--jit` flag drives this. NOTE: the "JIT" is this batched executor, **not** a native compiler — the `emit*` codegen only ever wrapped `tick()` in a native loop; real per-opcode codegen was scoped and deliberately not built.
-- **PPU tile banking + concurrent TILEDRAW blitter**: 4 tile banks × 256 tiles (`SETTILEBANK`), and TILEDRAW dispatches onto one of 8 async blit channels that complete in the background over ~264/392 cycles (opaque/blended) instead of stalling the issuing instruction — falls back to the old synchronous draw only when all channels are busy. Exercised by `ZPbootROM`'s full-width tile-mosaic splash screen. See `docs/ppu.md`.
+- **PPU tile banking + concurrent TILEDRAW blitter**: 4 tile banks × 256 tiles (`SETTILEBANK`), and TILEDRAW dispatches onto one of 8 async blit channels that complete in the background over ~264/392 cycles (opaque/blended) instead of stalling the issuing instruction — waits when all channels are busy (blits retire in issue order). Exercised by `ZPbootROM`'s full-width tile-mosaic splash screen. See `docs/ppu.md`.
 - **Vulkan Renderer** (28% faster than SDL, native GPU acceleration, cross-platform)
 - **Boot ROM infrastructure**: bank $E0 mapped read-only, `CPU::loadBootROM()`/`hasBootROM()`, hardware reset lands in the Boot ROM when one is loaded. Default stub hands off to the cartridge entry point via a Work-RAM JMP-long trampoline (this CPU's indirect-jump modes always source their pointer from bank $00, which is cartridge ROM).
 - **Boot ROM math services**: `COP #$F0-#$F6` = SIN/COS/SINCOS/ATAN2/ATAN/SQRT/HYPOT in the real ZPbootROM

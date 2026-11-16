@@ -393,6 +393,10 @@ add_executable(test_tile_rowclip tools/test_tile_rowclip.cpp)
 target_link_libraries(test_tile_rowclip zeropoint_core)
 set_target_properties(test_tile_rowclip PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+add_executable(test_blit_order tools/test_blit_order.cpp)
+target_link_libraries(test_blit_order zeropoint_core)
+set_target_properties(test_blit_order PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 # Dump the APU's address space some time after the cartridge takes over (diff HLE vs real boot ROM leftovers)
 add_executable(dump_apu_state tools/dump_apu_state.cpp)
 target_link_libraries(dump_apu_state zeropoint_core)

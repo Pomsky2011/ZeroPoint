@@ -122,6 +122,7 @@ void PPU::reset() {
     busyBlitChannelCount = 0;
     blitClock = 0;
     blitNextDone = UINT64_MAX;
+    lastTileCompleteAt = 0;
     lineOverrun = false;
 
     // Initialize palette system (default grayscale palettes)
@@ -570,7 +571,10 @@ void PPU::opTILEDRAW(const DecodedOp&) {
             BlitChannel& ch = blitChannels[freeChannel];
             ch.busy = true;
             busyBlitChannelCount++;
-            ch.completeAt = blitClock + blitCost;
+            // Blits retire (draw) in issue order, whatever they cost: a clipped, cheaper tile issued after a full one
+            // would otherwise land first and then be overwritten by the older, longer blit.
+            ch.completeAt = std::max(blitClock + blitCost, lastTileCompleteAt + 1);
+            lastTileCompleteAt = ch.completeAt;
             if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
             ch.x = memory[0x0200] | (memory[0x0201] << 8);
             ch.y = memory[0x0202] | (memory[0x0203] << 8);
@@ -587,23 +591,11 @@ void PPU::opTILEDRAW(const DecodedOp&) {
             // different channel) while this one runs in the background.
             instrCycles = CYC_TILE_BASE;
         } else {
-            // All channels busy: fall back to the old fully-synchronous
-            // blit rather than drop this draw or corrupt an in-flight
-            // one. Never worse than pre-concurrency behavior, and with
-            // sane pacing (channels free up faster than a well-tuned
-            // scheduler re-issues TILEDRAW) this path shouldn't trigger.
-            BlitChannel synchronous;
-            synchronous.x = memory[0x0200] | (memory[0x0201] << 8);
-            synchronous.y = memory[0x0202] | (memory[0x0203] << 8);
-            synchronous.tileBank = currentTileBank;
-            synchronous.tileId = currentTileId;
-            synchronous.tileMode = currentTileMode;
-            synchronous.blendMode = tileBlendMode;
-            synchronous.attrs = attrs;
-            synchronous.clipY0 = clipY0; synchronous.clipY1 = clipY1;
-            synchronous.translucency = tileTranslucency;
-            executeBlit(synchronous);
-            instrCycles = blitCost;
+            // Every channel is busy: wait for one. Run this TILEDRAW again next cycle (the pointer already stepped past
+            // it) until a channel frees, like a stalled blitter queue. It used to draw synchronously right here, ahead
+            // of the older blits still in flight, which turned a layered scene inside out.
+            executionPointer = static_cast<uint16_t>(executionPointer - 2);
+            instrCycles = 1;
         }
 }
 void PPU::opSETTILEBANK(const DecodedOp& d) {
@@ -1057,6 +1049,7 @@ void PPU::applyVOCReset() {
     busyBlitChannelCount = 0;
     blitClock = 0;
     blitNextDone = UINT64_MAX;
+    lastTileCompleteAt = 0;
     lineOverrun = false;
 
     // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
@@ -1173,16 +1166,21 @@ void PPU::advanceBlitChannels(uint32_t elapsed) {
     blitClock += elapsed;
     if (blitClock < blitNextDone) return;     // nothing finishes yet
 
+    // Everything due retires in completion order (channel order would draw a later blit first whenever one batched
+    // advance covers several). Tile blits' completion times already follow issue order, see opTILEDRAW.
+    for (;;) {
+        BlitChannel* due = nullptr;
+        for (auto& ch : blitChannels) {
+            if (ch.busy && ch.completeAt <= blitClock && (due == nullptr || ch.completeAt < due->completeAt)) due = &ch;
+        }
+        if (due == nullptr) break;
+        executeBlit(*due);
+        due->busy = false;
+        busyBlitChannelCount--;
+    }
     uint64_t next = UINT64_MAX;
     for (auto& ch : blitChannels) {
-        if (!ch.busy) continue;
-        if (ch.completeAt <= blitClock) {
-            executeBlit(ch);
-            ch.busy = false;
-            busyBlitChannelCount--;
-        } else if (ch.completeAt < next) {
-            next = ch.completeAt;
-        }
+        if (ch.busy && ch.completeAt < next) next = ch.completeAt;
     }
     blitNextDone = next;
 }
@@ -1428,6 +1426,7 @@ uint64_t PPU::stateHash() const {
         h = fnv(h, c.translucency.data(), c.translucency.size());
         h = fnvv(h, c.kind); h = fnvv(h, c.lineSrc); h = fnvv(h, c.lineCount);
     }
+    h = fnvv(h, lastTileCompleteAt > blitClock ? lastTileCompleteAt - blitClock : 0ull);
     h = fnvv(h, lineOverrun);
     h = fnvv(h, busyBlitChannelCount);
     h = fnv(h, palette16.data(), sizeof(uint16_t) * palette16.size());
