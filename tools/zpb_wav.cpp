@@ -1,7 +1,7 @@
 // zpb_wav: run a ROM in the whole System (CPU, PPU, APU, DMA - what the frontends run) and write the audio
 // it plays to a WAV, headlessly.
 //
-//   zpb_wav <rom.zpb> <seconds> <out.wav> [--boot bootrom.bin] [--verify]
+//   zpb_wav <rom.zpb> <seconds> <out.wav> [--boot bootrom.bin] [--apu-bios bios.bin] [--verify]
 //
 // <seconds> is console time (a System frame is ~1.3 ms, not 1/60 s). Prints the audio's peak, when it was last
 // audible, and where the APU's sequencer is, so a script can check that a cartridge really got a score
@@ -35,19 +35,23 @@ bool writeWav(const char* path, const std::vector<int16_t>& lr, uint32_t rate) {
 
 int main(int argc, char** argv) {
     if (argc < 4) {
-        std::fprintf(stderr, "usage: %s <rom.zpb> <seconds> <out.wav> [--boot bootrom.bin] [--verify]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <rom.zpb> <seconds> <out.wav> [--boot bootrom.bin] [--apu-bios bios.bin] [--verify]\n", argv[0]);
         return 2;
     }
     const double seconds = std::atof(argv[2]);
     const char* bootPath = nullptr;
-    for (int i = 4; i + 1 < argc; i++)
+    const char* apuBiosPath = nullptr;   // --apu-bios: the real internal BIOS image instead of the native HLE one
+    for (int i = 4; i + 1 < argc; i++) {
         if (!std::strcmp(argv[i], "--boot")) bootPath = argv[i + 1];
+        if (!std::strcmp(argv[i], "--apu-bios")) apuBiosPath = argv[i + 1];
+    }
 
     System system;
     bool verify = false;                 // --verify: the HLE boot checks the signature strictly, like the default frontends
     for (int i = 4; i < argc; i++) if (!std::strcmp(argv[i], "--verify")) verify = true;
     system.setVerifySignatures(verify);  // by default renders whatever it's given (a --boot ROM ignores this)
     if (bootPath && !system.loadBootROM(bootPath)) { std::fprintf(stderr, "cannot load boot ROM\n"); return 1; }
+    if (apuBiosPath && !system.loadAPUBios(apuBiosPath)) { std::fprintf(stderr, "cannot load APU BIOS\n"); return 1; }
     if (!system.loadROM(argv[1])) { std::fprintf(stderr, "cannot load %s\n", argv[1]); return 1; }
     system.powerOn();
 
