@@ -347,6 +347,7 @@ private:
     void refreshPalette16Expanded();
     std::array<uint8_t, 4> tileTranslucency{};      // Translucency for last 4 tiles (4 bits each)
     uint8_t tileBlendMode = 0;                        // Blend mode for tiles (0-3)
+    uint8_t tileAttrs = 0;                            // TILE_ATTR_* in force, latched from $00FC by its own push flag ($00FD bit 4)
 
     // Video Output Coprocessor (VOC) registers at $00F0-$00FF
     struct VOCRegisters {
@@ -366,8 +367,9 @@ private:
     static constexpr uint8_t VOC_PALETTE_MODE = 0x08;  // Bit 3: 0=16 color, 1=256 color
     static constexpr uint8_t VOC_RESET = 0x01;         // Bit 0: Reset switch
 
-    // Per-blit tile attributes: $00FC bits 2-5, sampled live at each TILEDRAW (no push needed) and writable in either
-    // color depth, unlike the rest of $00FC-$00FF. docs/ppu.md "Tile attributes".
+    // Per-blit tile attributes: $00FC bits 2-5, latched by their own push flag ($00FD bit 4), separate from the blend mode's, and
+    // writable in either color depth, unlike the rest of $00FC-$00FF. Stray bytes there (a program image DMA'd over the
+    // VOC window) do nothing until a push, which is why they are not sampled live. docs/ppu.md "Tile attributes".
     static constexpr uint8_t TILE_ATTR_TRANSPARENT = 0x04;  // Bit 2: palette entries with alpha 0 leave the framebuffer alone
     static constexpr uint8_t TILE_ATTR_HFLIP = 0x08;        // Bit 3: mirror left-right
     static constexpr uint8_t TILE_ATTR_VFLIP = 0x10;        // Bit 4: mirror top-bottom

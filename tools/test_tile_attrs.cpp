@@ -23,6 +23,7 @@ struct Draw {
     bool blend = false;
     bool render32 = false;
     bool prefill = false;                    // sentinel under the tile, to see what a draw leaves alone
+    bool push = true;                        // false: write the attribute byte but not the push flag
 };
 
 static int idx4(int tx, int ty) { return (tx + ty) % 3; }        // 0 is the alpha-0 palette entry
@@ -61,13 +62,13 @@ static void draw(Display& display, int16_t x, const Draw& d) {
                 ppu.writeMemory(0x0300 + ty * 4 + k, static_cast<uint8_t>((idx4(2 * k, ty) << 4) | idx4(2 * k + 1, ty)));
         }
     }
-    if (d.blend) {
-        ppu.writeMemory(0x00FC, 0x01);   // average
-        ppu.writeMemory(0x00FE, 0xFF);
-        ppu.writeMemory(0x00FF, 0xFF);
-        ppu.writeMemory(0x00FD, 0x08);   // push
+    if (d.blend || d.attrs) {
+        ppu.writeMemory(0x00FC, static_cast<uint8_t>(d.attrs | (d.blend ? 0x01 : 0x00)));   // attributes + blend mode (average)
+        if (d.blend) { ppu.writeMemory(0x00FE, 0xFF); ppu.writeMemory(0x00FF, 0xFF); }
+        // $00FD: bit 3 pushes the blend mode and translucency, bit 4 pushes the attributes
+        const uint8_t pushBits = static_cast<uint8_t>((d.blend ? 0x08 : 0x00) | (d.push ? 0x10 : 0x00));
+        if (pushBits) ppu.writeMemory(0x00FD, pushBits);
     }
-    if (d.attrs) ppu.writeMemory(0x00FC, static_cast<uint8_t>(d.attrs | (d.blend ? 0x01 : 0x00)));
 
     ppu.writeMemory(0x0200, static_cast<uint16_t>(x) & 0xFF); ppu.writeMemory(0x0201, static_cast<uint16_t>(x) >> 8);
     ppu.writeMemory(0x0202, kRow);                            ppu.writeMemory(0x0203, 0);
@@ -187,6 +188,19 @@ int main() {
         for (int ty = 0; ty < 8; ty++) for (int tx = 0; tx < 8; tx++)
             if (idx4(tx, ty) == 0 && px(c, 100 + tx, kRow + ty) != px(c, 98, kRow + ty)) ok3 = false;
         check(ok3, "T with blending: alpha-0 pixels are skipped, not blended");
+    }
+
+    std::printf("== attribute bits take effect on the push flag, not when written ==\n");
+    {
+        // a program image DMA'd over the VOC window leaves arbitrary bytes in $00FC (the boot ROM splash got $30: vflip +
+        // row clip with an inverted window, which blanked every tile it drew)
+        Draw plain = d8; Display refp; draw(refp, 100, plain);
+        Draw stray = d8; stray.attrs = static_cast<uint8_t>(T | H | V | 0x20); stray.push = false;
+        Display a; draw(a, 100, stray);
+        check(matchesRef(a, refp, 100, false, false), "T/X/Y/C written to $00FC without a push (bit 4 of $00FD) change nothing");
+        Draw pushed = stray; pushed.push = true;
+        Display b; draw(b, 100, pushed);
+        check(!matchesRef(b, refp, 100, false, false), "the same byte followed by a push does");
     }
 
     std::printf("== 32-bit render mode ==\n");

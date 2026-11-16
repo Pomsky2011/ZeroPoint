@@ -17,8 +17,8 @@ static void word(PPU& ppu, uint16_t addr, uint16_t v) { ppu.writeMemory(addr, v 
 enum : uint8_t { TILEDRAW = 0xFC, SETDP = 0xF2, MOVDP = 0xF3, JMR = 0xF7 };
 
 // Runs `prog` (parked on a JMR at its end) with tile 0 = left half palette index 1, right half index 2, at (8, 0),
-// R4 = $00FC (VOC attribute byte), R5 = `attrs`: SETDP R4 / MOVDP R5 in the program writes it.
-static void run(Display& d, const std::vector<uint8_t>& body, uint8_t attrs, int clip1) {
+// R4 = $00FC (VOC attribute byte), R5 = `attrs`: SETDP R4 / MOVDP R5 in the program writes it ($00FD = $10 pushes the attributes).
+static void run(Display& d, const std::vector<uint8_t>& body, uint16_t attrs, int clip1) {
     PPU ppu;
     ppu.setDisplay(&d);
     for (int row = 0; row < 8; row++) {
@@ -49,7 +49,7 @@ int main() {
     {
         // A: the full tile (264 cycles). B: hflip, rows 0-1 only (8 + 2*8*4 = 72 cycles), issued right after.
         Display d; d.setRenderMode(RenderMode::RGBA16);
-        run(d, {TILEDRAW, 0x00, SETDP, 0x10, MOVDP, 0x14, TILEDRAW, 0x00}, 0x08 | 0x20, 2);
+        run(d, {TILEDRAW, 0x00, SETDP, 0x10, MOVDP, 0x14, TILEDRAW, 0x00}, 0x1000 | 0x08 | 0x20, 2);
         bool top = true, rest = true;
         for (int tx = 0; tx < 8; tx++) {
             const Color32 flipped = tx < 4 ? c2 : c1, plain = tx < 4 ? c1 : c2;
@@ -69,7 +69,7 @@ int main() {
         const uint8_t tail[] = {SETDP, 0x10, MOVDP, 0x14, TILEDRAW, 0x00};
         body.insert(body.end(), tail, tail + sizeof tail);
         Display d; d.setRenderMode(RenderMode::RGBA16);
-        run(d, body, 0x08, 0);
+        run(d, body, 0x1000 | 0x08, 0);
         bool flipped = true;
         for (int tx = 0; tx < 8; tx++) for (int y = 0; y < 8; y++)
             if (d.getPixel(8 + tx, y) != (tx < 4 ? c2 : c1)) flipped = false;

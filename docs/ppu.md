@@ -191,9 +191,16 @@ negative one) dropped the whole tile. y is an absolute row in the rolling-buffer
 
 ### Tile attributes
 
-Four per-blit bits in the VOC's `$00FC` (bits 2-5), sampled live at each `TILEDRAW` issue and snapshotted into its
-channel (no push write needed, unlike the blend mode in bits 1-0). Unlike the rest of `$00FC-$00FF` they are writable in
-either color depth; they reset to 0 and change no timing.
+Four per-blit bits in the VOC's `$00FC` (bits 2-5). They take effect when `$00FD` bit 4 is written as 1 (the attribute
+push; bit 3 is the blend mode's, and the two are independent, so changing a flip never re-latches the translucency
+bytes), and each `TILEDRAW` snapshots the latched value into its channel. One `MOVDP` of `attrs | $1000` to `$00FC`
+sets and pushes in a single word write. Unlike the rest of `$00FC-$00FF` they are writable in either color depth; they
+reset to 0 and change no timing.
+
+Why a push and not "read live": a program image DMA'd over the VOC window leaves arbitrary bytes in `$00FC`. The boot
+ROM splash's image put `$30` there, which with live sampling was a vflip plus a row clip with an inverted window and
+blanked every tile it drew. A stray byte now does nothing until a push, and the splash's `$00FD` is 0. Test:
+`tools/test_splash.sh` (the real boot ROM's frames, byte for byte).
 
 | Bit | Name | Effect |
 |-----|------|--------|

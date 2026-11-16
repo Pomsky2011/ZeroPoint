@@ -136,6 +136,7 @@ void PPU::reset() {
     }
     tileTranslucency.fill(0x0F);  // Fully opaque by default
     tileBlendMode = 0;
+    tileAttrs = 0;
 
     // Initialize VOC registers
     vocRegisters.renderModeControl = 0x00;  // 16-bit mode, auto-roll enabled by default
@@ -554,7 +555,7 @@ void PPU::opTILEDRAW(const DecodedOp&) {
         }
 
         // TILE_ATTR_CLIP: the blit writes only the rows of [$0204, $0206) and is charged only for those rows
-        const uint8_t attrs = vocRegisters.translucency[0] & TILE_ATTR_MASK;
+        const uint8_t attrs = tileAttrs;
         const uint16_t clipY0 = memory[0x0204] | (memory[0x0205] << 8);
         const uint16_t clipY1 = memory[0x0206] | (memory[0x0207] << 8);
         uint32_t rows = 8;
@@ -928,9 +929,15 @@ void PPU::handleVOCWrite(uint16_t address, uint8_t value) {
         case 0x0D:  // $00FD: Translucency byte 1 (PH - push/halt flags)
         case 0x0E:  // $00FE: Translucency byte 2 (TT - translucency values 0-1)
         case 0x0F:  // $00FF: Translucency byte 3 (TT - translucency values 2-3)
-            // The per-blit attribute bits ($00FC bits 2-4) are writable in either color depth
+            // The per-blit attribute bits ($00FC bits 2-5) are writable in either color depth, and take effect on
+            // their own push flag ($00FD bit 4), separate from the blend mode's (bit 3) so changing a flip doesn't
+            // re-latch the translucency bytes. A stray byte written alone (a program image DMA'd over the VOC window)
+            // changes nothing.
             if (offset == 0x0C) {
                 vocRegisters.translucency[0] = (vocRegisters.translucency[0] & ~TILE_ATTR_MASK) | (value & TILE_ATTR_MASK);
+            }
+            if (offset == 0x0D && (value & 0x10)) {
+                tileAttrs = vocRegisters.translucency[0] & TILE_ATTR_MASK;
             }
             // In 32-bit RGBA mode, the rest of translucency is read-only
             if (display != nullptr && display->getRenderMode() == RenderMode::RGBA16) {
@@ -1433,6 +1440,7 @@ uint64_t PPU::stateHash() const {
     h = fnv(h, palette256.data(), sizeof(uint32_t) * palette256.size());
     h = fnv(h, tileTranslucency.data(), tileTranslucency.size());
     h = fnvv(h, tileBlendMode);
+    h = fnvv(h, tileAttrs);
     h = fnvv(h, vocRegisters);
     return h;
 }

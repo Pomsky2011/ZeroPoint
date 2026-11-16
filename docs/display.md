@@ -182,7 +182,8 @@ Format: `0xTTTTPHMM` (stored as 4 bytes: MM, PH, TT, TT)
 | 5 | C: row clip, write only the rows in `[$0204, $0206)` |
 | 7-6 | unused |
 
-Bits 2-5 are not latched by a push: each `TILEDRAW` samples them as it issues. See `docs/ppu.md` "Tile attributes".
+Bits 2-5 are latched by their own push flag, `$00FD` bit 4 (bit 3 is the blend mode's push), and each `TILEDRAW` snapshots the
+latched value. See `docs/ppu.md` "Tile attributes".
 
 ### VOC Usage Examples
 

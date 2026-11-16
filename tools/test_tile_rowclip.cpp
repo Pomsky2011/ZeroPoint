@@ -25,10 +25,9 @@ static void blit(Display& display, int base, int x, int y, uint8_t attrs, int cl
     ppu.setDisplay(&display);
     for (int i = 0; i < 256; i++) pal16(ppu, i, static_cast<uint16_t>(((i & 15) << 11) | (((i >> 5) * 3 + 1) << 6) | ((i & 31) << 1) | 1));
     for (int i = 0; i < 64; i++) ppu.writeMemory(0x0300 + i, static_cast<uint8_t>(base + i + 1));
-    if (blend) {
-        ppu.writeMemory(0x00FC, 0x01); ppu.writeMemory(0x00FE, 0xFF); ppu.writeMemory(0x00FF, 0xFF); ppu.writeMemory(0x00FD, 0x08);
-    }
-    ppu.writeMemory(0x00FC, static_cast<uint8_t>(attrs | (blend ? 0x01 : 0x00)));
+    ppu.writeMemory(0x00FC, static_cast<uint8_t>(attrs | (blend ? 0x01 : 0x00)));   // attributes + blend mode (average)
+    if (blend) { ppu.writeMemory(0x00FE, 0xFF); ppu.writeMemory(0x00FF, 0xFF); }
+    ppu.writeMemory(0x00FD, static_cast<uint8_t>(0x10 | (blend ? 0x08 : 0x00)));   // push the attributes (and the blend mode)
     word(ppu, 0x0200, static_cast<uint16_t>(x)); word(ppu, 0x0202, static_cast<uint16_t>(y));
     word(ppu, 0x0204, static_cast<uint16_t>(clip0)); word(ppu, 0x0206, static_cast<uint16_t>(clip1));
     // SETDP R2, PALETTE256, SETTILE R0 mode 2 (8bpp), TILEDRAW, then JMR to itself: parked, so the PPU doesn't run on
@@ -120,6 +119,7 @@ int main() {
             PPU ppu; ppu.setDisplay(&dd);
             for (int i = 0; i < 32; i++) ppu.writeMemory(0x0300 + i, 0x55);
             ppu.writeMemory(0x00FC, attrs);
+            ppu.writeMemory(0x00FD, 0x10);   // push the attributes
             word(ppu, 0x0200, 8); word(ppu, 0x0202, 0); word(ppu, 0x0204, static_cast<uint16_t>(clip0)); word(ppu, 0x0206, static_cast<uint16_t>(clip1));
             const uint8_t prog[] = {0xFC, 0x00, 0xF7, 0x00};   // TILEDRAW, then park on the JMR
             ppu.loadMicrocode(prog, sizeof prog);

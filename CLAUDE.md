@@ -25,7 +25,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **TILEDRAW**: dispatches onto one of 8 concurrent background blit channels
   (async, ~8-cycle issue cost) when one is free and waits when all are busy; blits retire in issue order,
   so program order is z-order — see `docs/ppu.md`
-  Per-blit attributes in VOC `$00FC` bits 2-5 (transparent/hflip/vflip/row clip), signed x clips at the left edge, 8bpp
+  Per-blit attributes in VOC `$00FC` bits 2-5 (transparent/hflip/vflip/row clip, pushed with `$00FD` bit 4), signed x clips at the left edge, 8bpp
   tiles use the real 256-entry palette in either render mode — see `docs/ppu.md` "Tile attributes"
 
 - **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in

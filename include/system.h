@@ -107,7 +107,7 @@ public:
     void softReset() { reset(); }
     void hardReset();
     // Bump when a change to the emulation changes what any program computes (a movie pins this; docs/movies.md).
-    static constexpr uint32_t CORE_REVISION = 7;
+    static constexpr uint32_t CORE_REVISION = 8;
 
     // Load a real Boot ROM image (bank $E0) - e.g. ZPbootROM's bootrom.bin, or a demo that never hands
     // off to a cartridge at all. Call reset() afterward to actually jump into it. Without one, System

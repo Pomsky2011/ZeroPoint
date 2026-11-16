@@ -1,0 +1,5 @@
+# test_splash.sh: sha256 of the boot ROM splash's latched frames (raw RGBA, 256x256), recorded from the emulator
+# before the tile attribute / row clip / blit ordering work, whose output was correct. frame sha256
+100 f2f35b324aee1ad79db56094a3d3231a3848db7c63282955c3c719d57684ea64
+300 10fc69535d4e3878d07af187208147f50f9652cdc639dfa82e41ee73b5008862
+600 d790061264e05d928efda65290c684adcc6a4821a186c383fbcad38936c23547
