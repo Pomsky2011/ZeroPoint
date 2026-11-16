@@ -376,6 +376,11 @@ target_link_libraries(test_hle_cop zeropoint_core)
 add_executable(test_boot_handoff tools/test_boot_handoff.cpp)
 target_link_libraries(test_boot_handoff zeropoint_core)
 
+# Headless splash frame dumper (boot ROM + cartridge -> raw RGBA frames; tools/splash_frames.py compares/converts)
+add_executable(dump_splash tools/dump_splash.cpp)
+target_link_libraries(dump_splash zeropoint_core)
+set_target_properties(dump_splash PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 # System::runCycles (batched master clock) must be state-identical to per-cycle step()
 add_executable(test_batched tools/test_batched.cpp)
 target_link_libraries(test_batched zeropoint_core)
