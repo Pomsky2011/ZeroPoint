@@ -568,6 +568,7 @@ void PPU::opTILEDRAW(const DecodedOp&) {
             ch.tileId = currentTileId;
             ch.tileMode = currentTileMode;
             ch.blendMode = tileBlendMode;
+            ch.attrs = vocRegisters.translucency[0] & TILE_ATTR_MASK;
             ch.translucency = tileTranslucency;
 
             // Dispatch-only cost: the PPU is free to issue its next
@@ -587,6 +588,7 @@ void PPU::opTILEDRAW(const DecodedOp&) {
             synchronous.tileId = currentTileId;
             synchronous.tileMode = currentTileMode;
             synchronous.blendMode = tileBlendMode;
+            synchronous.attrs = vocRegisters.translucency[0] & TILE_ATTR_MASK;
             synchronous.translucency = tileTranslucency;
             executeBlit(synchronous);
             instrCycles = blitCost;
@@ -922,7 +924,11 @@ void PPU::handleVOCWrite(uint16_t address, uint8_t value) {
         case 0x0D:  // $00FD: Translucency byte 1 (PH - push/halt flags)
         case 0x0E:  // $00FE: Translucency byte 2 (TT - translucency values 0-1)
         case 0x0F:  // $00FF: Translucency byte 3 (TT - translucency values 2-3)
-            // In 32-bit RGBA mode, translucency is read-only
+            // The per-blit attribute bits ($00FC bits 2-4) are writable in either color depth
+            if (offset == 0x0C) {
+                vocRegisters.translucency[0] = (vocRegisters.translucency[0] & ~TILE_ATTR_MASK) | (value & TILE_ATTR_MASK);
+            }
+            // In 32-bit RGBA mode, the rest of translucency is read-only
             if (display != nullptr && display->getRenderMode() == RenderMode::RGBA16) {
                 vocRegisters.translucency[offset - 0x0C] = value;
 
@@ -1068,8 +1074,17 @@ void PPU::loadPalette256() {
     // Load 256-color palette from memory address pointed to by DP
     uint16_t addr = registers[REG_DP];
 
-    // Read 256 palette entries (32-bit format: RRGGBBAA, b0=R first in memory)
+    // 16-bit render mode: 256 entries of 16-bit BBGR like PALETTE16's (512 bytes), expanded to the 32-bit form the
+    // blitters work in. 32-bit render mode: 256 entries of RRGGBBAA, b0=R first in memory (1024 bytes).
     // (Wraps at 16 bits, see loadPalette16.)
+    if (display == nullptr || display->getRenderMode() != RenderMode::RGBA32) {
+        for (int i = 0; i < 256; i++) {
+            const uint8_t low = memory[(addr + i * 2) & 0xFFFF];
+            const uint8_t high = memory[(addr + i * 2 + 1) & 0xFFFF];
+            palette256[i] = expandPalette16((high << 8) | low);
+        }
+        return;
+    }
     for (int i = 0; i < 256; i++) {
         uint8_t b0 = memory[(addr + i * 4) & 0xFFFF];
         uint8_t b1 = memory[(addr + i * 4 + 1) & 0xFFFF];
@@ -1171,13 +1186,17 @@ void PPU::executeBlit(const BlitChannel& channel) {
     const int x = static_cast<int16_t>(channel.x);
     uint16_t y = channel.y;
 
-    // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp
+    // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp. Bit 0 picks nothing: 4bpp tiles read the
+    // 16-entry palette and 8bpp tiles the 256-entry one (palette256, loaded in the render mode's entry format).
     bool is4bpp = (channel.tileMode & 0x02) == 0;
-    bool is32bit = (channel.tileMode & 0x01) != 0;
+    const bool transparent = (channel.attrs & TILE_ATTR_TRANSPARENT) != 0;
+    const bool hflip = (channel.attrs & TILE_ATTR_HFLIP) != 0;
+    const bool vflip = (channel.attrs & TILE_ATTR_VFLIP) != 0;
 
-    // No blending (the common case): nothing reads the framebuffer back, so build each 8-pixel row and hand it
-    // to the display in one go - same colors, same order, one rolling-buffer lookup per row instead of per pixel.
-    if (channel.blendMode == 0) {
+    // No blending and no attributes (the common case): nothing reads the framebuffer back, so build each 8-pixel row
+    // and hand it to the display in one go - same colors, same order, one rolling-buffer lookup per row instead of
+    // per pixel. Flips, transparency and blending take the per-pixel loop below.
+    if (channel.blendMode == 0 && channel.attrs == 0) {
         const auto& tile = tileStorage[channel.tileBank][channel.tileId];
         if (is4bpp) {
             // 4bpp: both color modes read the 16-entry palette, and translucency depends only on the color, so
@@ -1237,14 +1256,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
                     const uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
                     color = palette16Expanded[paletteIndex];
                 } else {
-                    const uint8_t paletteIndex = tile[ty * 8 + tx];
-                    if (is32bit) {
-                        color = palette256[paletteIndex];
-                    } else if (paletteIndex < 16) {
-                        color = palette16Expanded[paletteIndex];
-                    } else {
-                        color = (paletteIndex << 24) | (paletteIndex << 16) | (paletteIndex << 8) | 0xFF;
-                    }
+                    color = palette256[tile[ty * 8 + tx]];
                 }
                 rowColors[tx] = applyTranslucency(color, channel.tileId);
             }
@@ -1254,43 +1266,29 @@ void PPU::executeBlit(const BlitChannel& channel) {
     }
 
     for (int ty = 0; ty < 8; ty++) {
+        const int sy = vflip ? 7 - ty : ty;   // source row: the destination row is always (y + ty)
         for (int tx = 0; tx < 8; tx++) {
+            const int sx = hflip ? 7 - tx : tx;
             uint32_t color = 0;
 
             if (is4bpp) {
                 // 4bpp mode: 2 pixels per byte, use palette lookup
-                uint8_t byteIndex = (ty * 8 + tx) / 2;
+                uint8_t byteIndex = (sy * 8 + sx) / 2;
                 uint8_t pixelByte = tileStorage[channel.tileBank][channel.tileId][byteIndex];
 
                 // Get 4-bit palette index (high nibble for even pixels, low nibble for odd)
-                uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
-
-                // Both is32bit and !is32bit draw from the 16-color
-                // palette; the entry is always 16-bit, so expansion
-                // to 32-bit RGBA is identical either way.
+                uint8_t paletteIndex = (sx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
                 color = palette16Expanded[paletteIndex];
             } else {
-                // 8bpp mode: 1 pixel per byte, use palette lookup
-                uint8_t paletteIndex = tileStorage[channel.tileBank][channel.tileId][ty * 8 + tx];
-
-                if (is32bit) {
-                    // 32-bit RGBA mode with 256-color palette
-                    color = palette256[paletteIndex];
-                } else {
-                    // 16-bit mode with 256-color palette
-                    // Use lower 16 entries or convert to 16-bit format
-                    if (paletteIndex < 16) {
-                        color = palette16Expanded[paletteIndex];
-                    } else {
-                        // Fallback: grayscale for palette indices >= 16
-                        color = (paletteIndex << 24) | (paletteIndex << 16) |
-                               (paletteIndex << 8) | 0xFF;
-                    }
-                }
+                // 8bpp mode: 1 pixel per byte, 256-entry palette
+                color = palette256[tileStorage[channel.tileBank][channel.tileId][sy * 8 + sx]];
             }
 
             // Apply translucency to the color
             color = applyTranslucency(color, channel.tileId);
+
+            // Transparent blits leave the framebuffer alone for alpha-0 pixels (blending included: no read-back)
+            if (transparent && (color & 0xFF) == 0) continue;
 
             // Apply blending if mode is set and we have a non-zero blend mode
             if (channel.blendMode != 0) {
@@ -1412,7 +1410,7 @@ uint64_t PPU::stateHash() const {
     h = fnvv(h, currentTileId); h = fnvv(h, currentTileBank); h = fnvv(h, currentTileMode);
     for (const auto& c : blitChannels) {
         h = fnvv(h, c.busy); h = fnvv(h, c.busy ? c.completeAt - blitClock : 0ull); h = fnvv(h, c.x); h = fnvv(h, c.y);
-        h = fnvv(h, c.tileBank); h = fnvv(h, c.tileId); h = fnvv(h, c.tileMode); h = fnvv(h, c.blendMode);
+        h = fnvv(h, c.tileBank); h = fnvv(h, c.tileId); h = fnvv(h, c.tileMode); h = fnvv(h, c.blendMode); h = fnvv(h, c.attrs);
         h = fnv(h, c.translucency.data(), c.translucency.size());
         h = fnvv(h, c.kind); h = fnvv(h, c.lineSrc); h = fnvv(h, c.lineCount);
     }

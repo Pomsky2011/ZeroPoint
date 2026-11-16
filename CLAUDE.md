@@ -26,6 +26,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   (async, ~8-cycle issue cost) when one is free, falling back to a
   synchronous ~264/392-cycle draw (opaque/blended) only when all are busy —
   see `docs/ppu.md`
+  Per-blit attributes in VOC `$00FC` bits 2-4 (transparent/hflip/vflip), signed x clips at the left edge, 8bpp tiles use
+  the real 256-entry palette in either render mode — see `docs/ppu.md` "Tile attributes"
 
 - **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in
   from the right and even from the left (slide-out at handoff). A display frame is ~1.3 ms of console time (~766/s), not

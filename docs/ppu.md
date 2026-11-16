@@ -121,7 +121,7 @@ Extended graphics and control instructions.
 | 0x3 | MOV(DP) | `0011 XXXXXX 00` | Move register X to address (DP) |
 | 0x4 | SETRENDMOD | `0100 B 0000000` | Set render mode: B=0→16-bit RGBA, B=1→32-bit RGBA |
 | 0x5 | PALETTE16 | `0101 00000000` | Load 16-color palette from (DP) (32/64 bytes) |
-| 0x6 | PALETTE256 | `0110 00000000` | Load 256-color palette from (DP) (512/1024 bytes) |
+| 0x6 | PALETTE256 | `0110 00000000` | Load 256-color palette from (DP): 256 16-bit BBGR entries (512 bytes) in 16-bit render mode, 256 RRGGBBAA entries (1024 bytes) in 32-bit mode |
 | 0x7 | JMR | `0111 00000000` | Jump relative to (PC) |
 | 0x8 | MOV | `1000 XXXXXX 00` | Move from address (DP) to register X |
 | 0x9 | SETREGBANK | `1001 00 ZZ WW 00` | Set register banks: Z (bits 5-4) for X, W (bits 3-2) for Y — used by SETPOS and CPREG |
@@ -184,6 +184,27 @@ budget.
 tile wholly off an edge draws nothing. Before CORE_REVISION 4 the x was read as unsigned, so any x >= `$8000` (every
 negative one) dropped the whole tile. y is an absolute row in the rolling-buffer space, not signed. Test:
 `bin/test_tiledraw_clip`.
+
+### Tile attributes
+
+Three per-blit bits in the VOC's `$00FC` (bits 2-4), sampled live at each `TILEDRAW` issue and snapshotted into its
+channel (no push write needed, unlike the blend mode in bits 1-0). Unlike the rest of `$00FC-$00FF` they are writable in
+either color depth; they reset to 0 and change no timing.
+
+| Bit | Name | Effect |
+|-----|------|--------|
+| 2 | T | transparent: a pixel whose palette entry has alpha 0 (after `$00FC-$00FF` translucency) leaves the framebuffer alone, like the line blitter. With blending on it is skipped, not blended |
+| 3 | X | mirror left-right |
+| 4 | Y | mirror top-bottom |
+
+Flips change which tile pixel lands where, never where the tile lands: x/y, clipping and the cost are as unflipped.
+Any attribute bit set (or a blend mode) takes the per-pixel blit path instead of the whole-row fast path, with the same
+cycle cost. Test: `bin/test_tile_attrs`.
+
+**Palettes**: 4bpp tiles read the 16-entry palette (`PALETTE16`), 8bpp tiles the 256-entry one (`PALETTE256`) in either
+render mode; the tile mode's bit 0 (16BBGR vs 32RGBA) no longer selects anything. Before CORE_REVISION 5, 8bpp tiles in
+16-bit mode used only the first 16 entries and showed indices 16+ as gray, and `PALETTE256` always read 1024 bytes of
+32-bit entries. `$00F0` bit 3 only picks the table for the single-pixel port's index at `$0104`.
 
 ### Line Blitter
 

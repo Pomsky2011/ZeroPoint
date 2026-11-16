@@ -168,7 +168,20 @@ Format: `0xTTTTPHMM` (stored as 4 bytes: MM, PH, TT, TT)
   - 10: Subtract (color subtraction)
   - 11: Add (lighten/additive)
 
-**Important**: In 32-bit RGBA mode, this register becomes **read-only** since alpha channel handles transparency directly.
+**Important**: In 32-bit RGBA mode, this register becomes **read-only** since alpha channel handles transparency directly
+— except the per-blit tile attribute bits below, which work in both color depths.
+
+**`$00FC` (the first byte) in full**:
+
+| Bit | Meaning |
+|-----|---------|
+| 1-0 | M: blend mode, latched by the push flag (`$00FD` bit 3) |
+| 2 | T: tile transparency, alpha-0 palette entries leave the framebuffer alone |
+| 3 | X: horizontal flip |
+| 4 | Y: vertical flip |
+| 7-5 | unused |
+
+Bits 2-4 are not latched by a push: each `TILEDRAW` samples them as it issues. See `docs/ppu.md` "Tile attributes".
 
 ### VOC Usage Examples
 

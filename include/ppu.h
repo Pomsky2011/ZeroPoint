@@ -290,6 +290,7 @@ private:
         uint16_t x = 0, y = 0;
         uint8_t tileBank = 0, tileId = 0, tileMode = 0;
         uint8_t blendMode = 0;
+        uint8_t attrs = 0;           // TILE_ATTR_* snapshot at dispatch ($00FC bits 2-4)
         std::array<uint8_t, 4> translucency{};   // tileTranslucency snapshot at dispatch
         // Line blits (channels NUM_BLIT_CHANNELS..): kind 1, x/y above are the destination pixel (x signed), the
         // source is `lineCount` 4bpp palette indices at PPU address `lineSrc`. See startLineBlit().
@@ -363,6 +364,13 @@ private:
     static constexpr uint8_t VOC_VBLANK_INT = 0x10;    // Bit 4: V-blank interrupt enable
     static constexpr uint8_t VOC_PALETTE_MODE = 0x08;  // Bit 3: 0=16 color, 1=256 color
     static constexpr uint8_t VOC_RESET = 0x01;         // Bit 0: Reset switch
+
+    // Per-blit tile attributes: $00FC bits 2-4, sampled live at each TILEDRAW (no push needed) and writable in either
+    // color depth, unlike the rest of $00FC-$00FF. docs/ppu.md "Tile attributes".
+    static constexpr uint8_t TILE_ATTR_TRANSPARENT = 0x04;  // Bit 2: palette entries with alpha 0 leave the framebuffer alone
+    static constexpr uint8_t TILE_ATTR_HFLIP = 0x08;        // Bit 3: mirror left-right
+    static constexpr uint8_t TILE_ATTR_VFLIP = 0x10;        // Bit 4: mirror top-bottom
+    static constexpr uint8_t TILE_ATTR_MASK = TILE_ATTR_TRANSPARENT | TILE_ATTR_HFLIP | TILE_ATTR_VFLIP;
 
     // Execution methods
     void executeInstruction();
