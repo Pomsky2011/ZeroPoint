@@ -100,6 +100,16 @@ void Window::queueAudio(const int16_t* interleaved, int frameCount) {
     if (audioDevice == 0 || frameCount <= 0) {
         return;
     }
+    if (audioPrimed && SDL_GetQueuedAudioSize(audioDevice) == 0) {
+        audioUnderruns++;
+        const auto now = std::chrono::steady_clock::now();
+        if (now - audioLastReport >= std::chrono::seconds(1)) {
+            audioLastReport = now;
+            std::cerr << "audio: the device queue ran dry (" << audioUnderruns
+                      << " so far): the emulator fell behind the wall clock\n";
+        }
+    }
+    audioPrimed = true;
     SDL_QueueAudio(audioDevice, interleaved, static_cast<Uint32>(frameCount) * 2 * sizeof(int16_t));
 }
 

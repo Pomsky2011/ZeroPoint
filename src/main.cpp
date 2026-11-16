@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
     if (romPath.empty() && !movieMode) {
         system.powerOn();
         std::cout << "Running Boot ROM demo (no cartridge)...\n";
-        FramePacer pacer;
+        FramePacer pacer(FramePacer::AUDIO_LEAD);
         while (!window.shouldClose()) {
             auto frameStart = std::chrono::steady_clock::now();
             window.pollEvents();
@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
     // tick so we don't spin the host CPU at 100%. (A movie runs for as long as its time lasts, not until the CPU
     // halts: a reset can bring a halted machine back.)
     const auto frameDuration = std::chrono::microseconds(16667);
-    FramePacer pacer;
+    FramePacer pacer(FramePacer::AUDIO_LEAD);
     bool playbackEnded = false;
     long ticks = 0;
     while (!window.shouldClose() && (movieMode || !system.getCPU().isHalted()) && !playbackEnded &&

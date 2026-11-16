@@ -5,6 +5,7 @@
 #include "cpu.h"
 #include "system.h"
 #include <SDL2/SDL.h>
+#include <chrono>
 #include <cstdint>
 
 namespace ZeroPoint {
@@ -50,6 +51,10 @@ public:
     // with an empty/zero-length buffer.
     void queueAudio(const int16_t* interleaved, int frameCount);
 
+    // How many times queueAudio() found the device's queue already empty after audio had started (the speakers
+    // played silence). Also logged to stderr, at most once a second.
+    unsigned long audioUnderrunCount() const { return audioUnderruns; }
+
 private:
     // Convert ZeroPoint color format to SDL RGBA
     uint32_t convertColor(Color16 color) const;
@@ -59,6 +64,9 @@ private:
     SDL_Renderer* renderer;
     SDL_Texture* texture;
     SDL_AudioDeviceID audioDevice;
+    bool audioPrimed = false;
+    unsigned long audioUnderruns = 0;
+    std::chrono::steady_clock::time_point audioLastReport{};
 
     int scale;
     bool quit;

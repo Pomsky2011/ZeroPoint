@@ -58,9 +58,20 @@ void AudioOutput::queue(const int16_t *interleaved, int frameCount)
         return;
     }
 
-    if (SDL_GetQueuedAudioSize(device) > MAX_QUEUED_BYTES) {
+    const Uint32 queued = SDL_GetQueuedAudioSize(device);
+    if (primed && queued == 0) {
+        underruns++;
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastReport >= std::chrono::seconds(1)) {
+            lastReport = now;
+            std::cerr << "audio: the device queue ran dry (" << underruns
+                      << " so far): the emulator fell behind the wall clock\n";
+        }
+    }
+    if (queued > MAX_QUEUED_BYTES) {
         SDL_ClearQueuedAudio(device);
     }
+    primed = true;
 
     const size_t count = static_cast<size_t>(frameCount) * 2;
     const int gain = volume;   // one read: the GUI thread can change it mid-call
@@ -77,6 +88,7 @@ void AudioOutput::queue(const int16_t *interleaved, int frameCount)
 
 void AudioOutput::flush()
 {
+    primed = false;
     if (device != 0) {
         SDL_ClearQueuedAudio(device);
     }

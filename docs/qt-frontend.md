@@ -42,11 +42,14 @@ The configuration dialog (`configdialog.h/cpp`) contains three tabs:
   `mainwindow.cpp` references it — selecting a filter has no effect
 
 ### Audio Tab
-- **Enable Audio / Volume:** these settings are stored and persisted, but
-  the Qt frontend has no audio output implementation at all (no `QAudio`
-  usage anywhere) — `mainwindow.cpp`'s own comment on applying settings
-  reads `// Would apply settings here when implemented`. Live APU audio
-  output only exists in the standalone `run_apu_demo` dev tool.
+- **Enable Audio / Volume** are applied: `AudioOutput` (`qt/audiooutput.cpp`) pushes the mixer's 48 kHz stereo S16 samples
+  to an SDL device in push mode, scaled by the volume, dropped while muted.
+- **Stability:** the emulator thread runs the console `FramePacer::AUDIO_LEAD` (80 ms) *ahead* of the wall clock, so the
+  device queue holds a real buffer instead of one tick's worth and a host stall shorter than that is inaudible (the SDL
+  frontend does the same). The price is ~80 ms between what the console does and what you hear; the picture is not
+  delayed. If the queue still runs dry (the emulator fell behind: a loaded host, a heavy ROM) `AudioOutput` counts it
+  and logs `audio: the device queue ran dry (N so far)` to stderr at most once a second. Past 0.25 s queued it clears the
+  backlog instead of letting the sound drift behind the picture.
 
 ### Input Tab
 - The UI has an input tab, but `ConfigDialog` exposes no way to view or

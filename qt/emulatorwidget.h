@@ -97,7 +97,7 @@ private:
     std::mutex frameMutex;
     bool frameReady = false;    // publishedFrame is newer than frameBuffer; guarded by frameMutex
     int timerId;
-    ZeroPoint::FramePacer pacer;
+    ZeroPoint::FramePacer pacer{ZeroPoint::FramePacer::AUDIO_LEAD};
     AudioOutput audio;
     std::thread emuThread;
     std::atomic<bool> stopRequested{false};

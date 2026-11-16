@@ -2,6 +2,7 @@
 #define AUDIOOUTPUT_H
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <vector>
 
@@ -31,12 +32,19 @@ public:
     void setVolume(int percent);
     void setEnabled(bool on);
 
+    // How many times queue() found the device's queue already empty after audio had started, i.e. the emulator fell
+    // behind and the speakers played silence. Also logged to stderr (at most once a second).
+    uint64_t underrunCount() const { return underruns; }
+
 private:
     uint32_t device;               // SDL_AudioDeviceID
     bool subsystemUp;
     std::atomic<int> volume;       // set by the GUI thread, read by whichever thread calls queue()
     std::atomic<bool> enabled;
     std::vector<int16_t> scaled;
+    std::atomic<bool> primed{false};   // something has been queued since the last flush(): an empty queue now is an underrun
+    uint64_t underruns = 0;            // only touched by whichever thread calls queue()
+    std::chrono::steady_clock::time_point lastReport{};
 };
 
 #endif // AUDIOOUTPUT_H
