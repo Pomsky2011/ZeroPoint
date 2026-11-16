@@ -552,9 +552,19 @@ void PPU::opTILEDRAW(const DecodedOp&) {
             }
         }
 
+        // TILE_ATTR_CLIP: the blit writes only the rows of [$0204, $0206) and is charged only for those rows
+        const uint8_t attrs = vocRegisters.translucency[0] & TILE_ATTR_MASK;
+        const uint16_t clipY0 = memory[0x0204] | (memory[0x0205] << 8);
+        const uint16_t clipY1 = memory[0x0206] | (memory[0x0207] << 8);
+        uint32_t rows = 8;
+        if (attrs & TILE_ATTR_CLIP) {
+            const uint32_t y = memory[0x0202] | (memory[0x0203] << 8);
+            rows = 0;
+            for (uint32_t ty = 0; ty < 8; ty++) rows += (y + ty >= clipY0 && y + ty < clipY1);
+        }
         uint32_t blitCost = CYC_TILE_BASE +
-                             TILE_PIXELS * (tileBlendMode != 0 ? CYC_TILE_PX_BLEND
-                                                               : CYC_TILE_PX);
+                             (rows * (TILE_PIXELS / 8)) * (tileBlendMode != 0 ? CYC_TILE_PX_BLEND
+                                                                              : CYC_TILE_PX);
 
         if (freeChannel >= 0) {
             BlitChannel& ch = blitChannels[freeChannel];
@@ -568,7 +578,8 @@ void PPU::opTILEDRAW(const DecodedOp&) {
             ch.tileId = currentTileId;
             ch.tileMode = currentTileMode;
             ch.blendMode = tileBlendMode;
-            ch.attrs = vocRegisters.translucency[0] & TILE_ATTR_MASK;
+            ch.attrs = attrs;
+            ch.clipY0 = clipY0; ch.clipY1 = clipY1;
             ch.translucency = tileTranslucency;
 
             // Dispatch-only cost: the PPU is free to issue its next
@@ -588,7 +599,8 @@ void PPU::opTILEDRAW(const DecodedOp&) {
             synchronous.tileId = currentTileId;
             synchronous.tileMode = currentTileMode;
             synchronous.blendMode = tileBlendMode;
-            synchronous.attrs = vocRegisters.translucency[0] & TILE_ATTR_MASK;
+            synchronous.attrs = attrs;
+            synchronous.clipY0 = clipY0; synchronous.clipY1 = clipY1;
             synchronous.translucency = tileTranslucency;
             executeBlit(synchronous);
             instrCycles = blitCost;
@@ -1192,6 +1204,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
     const bool transparent = (channel.attrs & TILE_ATTR_TRANSPARENT) != 0;
     const bool hflip = (channel.attrs & TILE_ATTR_HFLIP) != 0;
     const bool vflip = (channel.attrs & TILE_ATTR_VFLIP) != 0;
+    const bool clipRows = (channel.attrs & TILE_ATTR_CLIP) != 0;
 
     // No blending and no attributes (the common case): nothing reads the framebuffer back, so build each 8-pixel row
     // and hand it to the display in one go - same colors, same order, one rolling-buffer lookup per row instead of
@@ -1267,6 +1280,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
 
     for (int ty = 0; ty < 8; ty++) {
         const int sy = vflip ? 7 - ty : ty;   // source row: the destination row is always (y + ty)
+        if (clipRows && (y + ty < channel.clipY0 || y + ty >= channel.clipY1)) continue;
         for (int tx = 0; tx < 8; tx++) {
             const int sx = hflip ? 7 - tx : tx;
             uint32_t color = 0;
@@ -1410,7 +1424,7 @@ uint64_t PPU::stateHash() const {
     h = fnvv(h, currentTileId); h = fnvv(h, currentTileBank); h = fnvv(h, currentTileMode);
     for (const auto& c : blitChannels) {
         h = fnvv(h, c.busy); h = fnvv(h, c.busy ? c.completeAt - blitClock : 0ull); h = fnvv(h, c.x); h = fnvv(h, c.y);
-        h = fnvv(h, c.tileBank); h = fnvv(h, c.tileId); h = fnvv(h, c.tileMode); h = fnvv(h, c.blendMode); h = fnvv(h, c.attrs);
+        h = fnvv(h, c.tileBank); h = fnvv(h, c.tileId); h = fnvv(h, c.tileMode); h = fnvv(h, c.blendMode); h = fnvv(h, c.attrs); h = fnvv(h, c.clipY0); h = fnvv(h, c.clipY1);
         h = fnv(h, c.translucency.data(), c.translucency.size());
         h = fnvv(h, c.kind); h = fnvv(h, c.lineSrc); h = fnvv(h, c.lineCount);
     }

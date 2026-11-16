@@ -42,10 +42,12 @@ static void drawTile(Display& display, int16_t x, uint16_t y, bool blend) {
     ppu.writeMemory(0x0200, static_cast<uint16_t>(x) & 0xFF); ppu.writeMemory(0x0201, static_cast<uint16_t>(x) >> 8);
     ppu.writeMemory(0x0202, y & 0xFF);                        ppu.writeMemory(0x0203, y >> 8);
 
-    uint8_t prog[2 * kDraws];
+    uint8_t prog[2 * kDraws + 2];
     for (int i = 0; i < kDraws; i++) { prog[2 * i] = 0xFC; prog[2 * i + 1] = 0x00; }   // TILEDRAW
+    prog[2 * kDraws] = 0xF7; prog[2 * kDraws + 1] = 0x00;   // JMR to itself: parked, not running on into the tile buffer
     ppu.loadMicrocode(prog, sizeof prog);
     ppu.start();
+    ppu.setRegister(62, 2 * kDraws);
     for (int i = 0; i < 600; i++) ppu.tick();
 }
 

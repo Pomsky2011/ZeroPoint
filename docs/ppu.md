@@ -187,7 +187,7 @@ negative one) dropped the whole tile. y is an absolute row in the rolling-buffer
 
 ### Tile attributes
 
-Three per-blit bits in the VOC's `$00FC` (bits 2-4), sampled live at each `TILEDRAW` issue and snapshotted into its
+Four per-blit bits in the VOC's `$00FC` (bits 2-5), sampled live at each `TILEDRAW` issue and snapshotted into its
 channel (no push write needed, unlike the blend mode in bits 1-0). Unlike the rest of `$00FC-$00FF` they are writable in
 either color depth; they reset to 0 and change no timing.
 
@@ -196,10 +196,19 @@ either color depth; they reset to 0 and change no timing.
 | 2 | T | transparent: a pixel whose palette entry has alpha 0 (after `$00FC-$00FF` translucency) leaves the framebuffer alone, like the line blitter. With blending on it is skipped, not blended |
 | 3 | X | mirror left-right |
 | 4 | Y | mirror top-bottom |
+| 5 | C | row clip: write only the screen rows in `[$0204, $0206)` (16-bit words, sampled at issue like the position) |
 
-Flips change which tile pixel lands where, never where the tile lands: x/y, clipping and the cost are as unflipped.
-Any attribute bit set (or a blend mode) takes the per-pixel blit path instead of the whole-row fast path, with the same
-cycle cost. Test: `bin/test_tile_attrs`.
+Flips change which tile pixel lands where, never where the tile lands: x/y and clipping are as unflipped. Any attribute
+bit set (or a blend mode) takes the per-pixel blit path instead of the whole-row fast path, with the same cycle cost.
+Test: `bin/test_tile_attrs`.
+
+**Row clip (C)**: only destination rows `y + ty` inside `[$0204, $0206)` are written (an empty or inverted window writes
+nothing); the clip is independent of flips and blending. The blit is charged only for the rows it writes,
+`8 + rows * 8 * px_cost` (so 264 cycles for all 8 rows, as before). What it is for: the framebuffer is a 16-row
+rolling window and a band of tiles is only writable for 8 scanlines, so a sprite tile at any y that straddles two
+bands is issued once per band with that band as the window. A tile can then never overwrite rows another, later-drawn
+tile already owns, so z-order between sprites stays exact (re-issuing it unclipped redraws it over a sprite that drew
+after it), and the double issue costs the same channel time as one full blit. Test: `bin/test_tile_rowclip`.
 
 **Palettes**: 4bpp tiles read the 16-entry palette (`PALETTE16`), 8bpp tiles the 256-entry one (`PALETTE256`) in either
 render mode; the tile mode's bit 0 (16BBGR vs 32RGBA) no longer selects anything. Before CORE_REVISION 5, 8bpp tiles in

@@ -26,8 +26,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   (async, ~8-cycle issue cost) when one is free, falling back to a
   synchronous ~264/392-cycle draw (opaque/blended) only when all are busy —
   see `docs/ppu.md`
-  Per-blit attributes in VOC `$00FC` bits 2-4 (transparent/hflip/vflip), signed x clips at the left edge, 8bpp tiles use
-  the real 256-entry palette in either render mode — see `docs/ppu.md` "Tile attributes"
+  Per-blit attributes in VOC `$00FC` bits 2-5 (transparent/hflip/vflip/row clip), signed x clips at the left edge, 8bpp
+  tiles use the real 256-entry palette in either render mode — see `docs/ppu.md` "Tile attributes"
 
 - **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in
   from the right and even from the left (slide-out at handoff). A display frame is ~1.3 ms of console time (~766/s), not
@@ -128,7 +128,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 ### PPU Memory-Mapped I/O
 - **$00F0-$00FF**: VOC control registers
 - **$0100-$010B**: Pixel drawing
-- **$0200-$0203**: Tile drawing (X/Y position; `$0204-$0207` are plain PPU RAM, not wired to any handler)
+- **$0200-$0203**: Tile drawing (X/Y position); **$0204-$0207**: row-clip window `[$0204,$0206)` (used when `$00FC` bit 5 is set)
 - **$0300-$033F**: Tile definition buffer
 - **$0340-$034F**: Line-blit port (src/x/y/count, `$0348` launches, `$034A` status): async 4bpp runs at any signed x,
   alpha-0 palette entries transparent, 4 channels — see `docs/ppu.md`, test `bin/test_line_blit`

@@ -73,12 +73,15 @@ static void draw(Display& display, int16_t x, const Draw& d) {
     ppu.writeMemory(0x0202, kRow);                            ppu.writeMemory(0x0203, 0);
 
     // SETDP R1, PALETTE16, SETDP R2, PALETTE256, SETTILE R0 (mode 0 = 4bpp, 2 = 8bpp), TILEDRAW x kDraws
-    uint8_t prog[2 * (5 + kDraws)] = {0xF2, 0x04, 0xF5, 0x00, 0xF2, 0x08, 0xF6, 0x00, 0xF1, static_cast<uint8_t>(d.bpp8 ? 2 : 0)};
+    // ... then JMR to itself (R62 = its address), so the PPU doesn't run on through zero memory into the tile buffer
+    uint8_t prog[2 * (5 + kDraws + 1)] = {0xF2, 0x04, 0xF5, 0x00, 0xF2, 0x08, 0xF6, 0x00, 0xF1, static_cast<uint8_t>(d.bpp8 ? 2 : 0)};
     for (int i = 0; i < kDraws; i++) { prog[10 + 2 * i] = 0xFC; prog[11 + 2 * i] = 0x00; }
+    prog[10 + 2 * kDraws] = 0xF7; prog[11 + 2 * kDraws] = 0x00;
     ppu.loadMicrocode(prog, sizeof prog);
     ppu.start();
     ppu.setRegister(1, 0x9000);
     ppu.setRegister(2, 0x9100);
+    ppu.setRegister(62, 10 + 2 * kDraws);
     for (int i = 0; i < 3000; i++) ppu.tick();
 }
 
@@ -201,7 +204,7 @@ int main() {
         p.setDisplay(&d32);
         d32.setRenderMode(RenderMode::RGBA32);
         p.writeMemory(0x00FC, 0xFF);
-        check(p.readMemory(0x00FC) == 0x1C, "in 32-bit mode only the attribute bits of $00FC are writable");
+        check(p.readMemory(0x00FC) == 0x3C, "in 32-bit mode only the attribute bits of $00FC are writable");
         d32.setRenderMode(RenderMode::RGBA16);
         p.writeMemory(0x00FC, 0xFF);
         check(p.readMemory(0x00FC) == 0xFF, "in 16-bit mode all of $00FC is");

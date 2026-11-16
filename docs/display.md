@@ -179,9 +179,10 @@ Format: `0xTTTTPHMM` (stored as 4 bytes: MM, PH, TT, TT)
 | 2 | T: tile transparency, alpha-0 palette entries leave the framebuffer alone |
 | 3 | X: horizontal flip |
 | 4 | Y: vertical flip |
-| 7-5 | unused |
+| 5 | C: row clip, write only the rows in `[$0204, $0206)` |
+| 7-6 | unused |
 
-Bits 2-4 are not latched by a push: each `TILEDRAW` samples them as it issues. See `docs/ppu.md` "Tile attributes".
+Bits 2-5 are not latched by a push: each `TILEDRAW` samples them as it issues. See `docs/ppu.md` "Tile attributes".
 
 ### VOC Usage Examples
 
