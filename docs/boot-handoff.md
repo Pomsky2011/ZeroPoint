@@ -32,3 +32,41 @@ into bank `$E0` at `$F500` by `build.sh`).
 Tests: `ZPbootROM/tests/handoff/run_test.sh` (needs `bin/test_boot_handoff`): brightness must fall
 monotonically to black over the last 0.3 s before the handoff, the PPU must be idle afterwards, and a
 cartridge's `COP #$F7`-loaded program must run (a marker word shows up in PPU memory).
+
+## The APU is NOT reset at handoff (a known flaw: read this before starting an APU program)
+
+The Boot ROM resets the PPU before it jumps to the cartridge; it does **not** touch the APU. A cartridge gets the APU
+in whatever state the BIOS jingle engine left it, and that state is different for the two BIOS flavours:
+
+| APU state a cartridge sees | native HLE BIOS (no `--apu-bios`) | real BIOS image (`--apu-bios`; the Qt frontend loads one from its saved settings) |
+|----------------------------|-----------------------------------|---------------------------------------------------|
+| PC (idle loop)             | `$8000`                           | `$82C4`                                           |
+| SP / flags                 | `$0000` / `00`                    | `$0100` / `04`                                    |
+| RP / DP                    | `$80` / `$00`                     | `$82` / `$02`                                     |
+
+(Measured two seconds after power-on with the real Boot ROM. Both can also leave jingle channels sounding with their STL
+addresses and volumes set, and the Boot ROM's verify result `1` in mailbox `$A0:1000`.)
+
+A program that only writes the APU's PC and runs inherits all of that. The ADPCM player did, and with the real APU BIOS
+its decoder's stack grew up through its own code (SP `$0B02`, inside the program) and it played loud, clipped noise; it
+was perfect with the HLE BIOS, which is why it went unnoticed. Which instruction first leaked the stack was not traced
+(different starting flags are the likely cause, since a conditional jump on this APU pushes a return address), but a
+reset before the start fixed it completely.
+
+**What to do.** Start every APU program from a reset, in this order:
+
+1. `APUCTRL` (`$D80010`) = `$03`: reset **and halt**. A plain reset restarts the BIOS engine at `$8000` while you upload.
+2. Upload the program and its data (DMA to the `$A0` window). A reset clears APU RAM, so the reset comes first.
+3. Write the PC (`$D80012/13`); set the fast-mode bit (`APUCLK`, `$D8001A`) if you use it, since a reset clears it.
+4. `APUCTRL` = `$04`: resume.
+
+The SDK's `zp_apu_boot()` resets first but leaves the APU *running*, which only helps while the upload is short: with the
+real APU BIOS the engine is still at its reset values 8,000 master cycles after a reset, but by 40,000 (~0.6 ms) it has
+restarted and set SP `$0100`, DP `$30` and flags `02`, and it keeps those if your upload is still going. A long upload
+(the ADPCM player's is ~10 KB) should reset **and halt** as above; a hand-written loader has to do it itself (see
+`ZPdevtools/examples/adpcm-player/player.asm`). Test an APU program with `--apu-bios ZPbootROM/build/bios_full.bin`
+as well as the default HLE BIOS: `ZPdevtools/scripts/test_adpcm_rom.py` does both.
+
+Decision (2026-11-15): left as it is. The Boot ROM *could* reset the APU at handoff, which would make every cartridge
+safe and make the two BIOS flavours agree, but it is a documented platform flaw instead; do not rely on a clean APU.
+

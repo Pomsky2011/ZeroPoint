@@ -375,6 +375,8 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - **Batched master clock**: `System::runCycles`/`stepFrame` apply quiet cycles (only PPU ticks + pixel counter) in
   bulk and run event cycles through `step()`; state-identical, checked by `bin/test_batched`. ~1.9-3x so far (busy PPU ~1x real time); see
   `docs/batched-clock.md` for the profile and what a 3x target still needs (PPU JIT).
+- **APU is NOT reset at handoff** (known flaw, left on purpose): it holds the BIOS engine's leftovers (real APU BIOS vs HLE differ), so a
+  cartridge must `APUCTRL=$03` (reset+halt), upload, set PC, `$04` (resume) before its own APU program — `docs/boot-handoff.md`
 - **Boot ROM PPU handoff**: after a good signature the splash fades to black and the PPU is reset (idle, black);
   the cartridge loads its own PPU program with `COP #$F7`. Test: `ZPbootROM/tests/handoff/run_test.sh`
   (`bin/test_boot_handoff`); see `docs/boot-handoff.md`.
