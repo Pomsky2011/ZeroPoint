@@ -27,6 +27,11 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   synchronous ~264/392-cycle draw (opaque/blended) only when all are busy —
   see `docs/ppu.md`
 
+- **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in
+  from the right and even from the left (slide-out at handoff). A display frame is ~1.3 ms of console time (~766/s), not
+  1/60 s. Interrupts nest at any instruction boundary and share `DP`, so each splash handler saves/restores it; the
+  hblank handler must stay under 340 cycles. Check with `bin/dump_splash` + `tools/splash_frames.py`.
+
 ### APU (Audio Processing Unit)
 - **4.250710 MHz** (master/16, CPI 2, ~2.1 MIPS), 8-bit RISC. **Fast mode** (CPU writes `APUCLK` $D8001A bit 0; reset clears it):
   master/8 = 8.5 MHz, ~4.25 MIPS, paid for with bus contention (bank $A0 window accesses +1 CPU cycle, DMA to/from it
@@ -123,6 +128,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 - **$0100-$010B**: Pixel drawing
 - **$0200-$0203**: Tile drawing (X/Y position; `$0204-$0207` are plain PPU RAM, not wired to any handler)
 - **$0300-$033F**: Tile definition buffer
+- **$0340-$034F**: Line-blit port (src/x/y/count, `$0348` launches, `$034A` status): async 4bpp runs at any signed x,
+  alpha-0 palette entries transparent, 4 channels — see `docs/ppu.md`, test `bin/test_line_blit`
 - **$E000-$FFFF**: Framebuffer (8 KiB rolling)
 
 ### VOC Registers ($00F0-$00FF)

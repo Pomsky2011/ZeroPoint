@@ -179,6 +179,35 @@ async path — with fewer channels, the excess dispatches would hit the
 264-cycle-plus synchronous fallback and could blow the 340-cycle H-blank
 budget.
 
+### Line Blitter
+
+A second async blit unit, for writing a horizontal run of pixels at an arbitrary (signed) x on one row: four more
+channels in the same blit-channel array (`NUM_LINE_CHANNELS`, after the eight tile channels), advanced and completed
+by the same bookkeeping, so it costs the scheduler nothing. It exists because a tile blit rewrites all 64 pixels of
+its 8x8 block with no transparency, which can't express "row 105 only, shifted 37 pixels".
+
+**Launch port** (plain PPU memory the launch reads, so `MOVDP` works; a program stores the words, then the launch):
+
+| Address | Meaning |
+|---------|---------|
+| `$0340` | source: PPU address of the first of `count` 4bpp palette indices (high nibble first, like a tile row) |
+| `$0342` | destination x, signed 16-bit (a run may start off the left edge) |
+| `$0344` | destination y |
+| `$0346` | count, in pixels |
+| `$0348` | write = launch (the low byte of the word `MOVDP` stores) |
+| `$034A` | read: bits 0-3 = line channel busy; bit 7 = a launch was dropped (sticky). Any write clears bit 7 |
+
+**Behaviour.** The port is snapshotted at launch into a free line channel; the pixels are written when the channel
+completes, `CYC_LINE_BASE + count * CYC_LINE_PX` cycles later (8 + 1 per pixel, constants at the top of
+`src/ppu.cpp`), reading the source and the live palette at completion like a tile blit. A palette entry with alpha 0
+is transparent (the pixel is left alone), which is how a run gets ragged edges. Pixels off the scanline and rows
+outside the rolling window are dropped by the same checks the tile blitter uses. If all four line channels are busy
+the launch is **dropped** and the overrun bit is set (a write can't stall the instruction that made it). Both the
+launch and the channel state are in `stateHash()`.
+
+The boot ROM splash uses it for the ZEROPOINT logo: one launch per scanline from the hblank handler, one row ahead
+(`ZPbootROM/ppu/code/gen_mosaic.py`, `emit_logo_section`). `test_line_blit` covers the unit.
+
 ### GBLS - Get Blank Status
 
 Returns blank status in specified register:

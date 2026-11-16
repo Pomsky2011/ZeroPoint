@@ -37,6 +37,10 @@ constexpr uint16_t CYC_TILE_BASE     = 8;
 constexpr uint16_t CYC_TILE_PX       = 4;   // opaque pixel
 constexpr uint16_t CYC_TILE_PX_BLEND = 6;   // blended pixel (extra dst read)
 constexpr uint16_t TILE_PIXELS       = 64;
+
+// Line blitter: setup + one cycle per source pixel (the engine streams the run, nothing is re-decoded per pixel).
+constexpr uint16_t CYC_LINE_BASE     = 8;
+constexpr uint16_t CYC_LINE_PX       = 1;
 } // namespace
 
 PPU::PPU()
@@ -118,6 +122,7 @@ void PPU::reset() {
     busyBlitChannelCount = 0;
     blitClock = 0;
     blitNextDone = UINT64_MAX;
+    lineOverrun = false;
 
     // Initialize palette system (default grayscale palettes)
     for (int i = 0; i < 16; i++) {
@@ -728,6 +733,13 @@ uint8_t PPU::handleMemoryRead(uint16_t address) const {
         return handleVOCRead(address);
     }
 
+    if (address == LINE_PORT_STATUS) {
+        uint8_t status = lineOverrun ? LINE_STATUS_OVERRUN : 0;
+        for (size_t i = 0; i < NUM_LINE_CHANNELS; i++)
+            if (blitChannels[NUM_BLIT_CHANNELS + i].busy) status |= static_cast<uint8_t>(1u << i);
+        return status;
+    }
+
     // Framebuffer region: 0xE000-0xFFFF (8 KiB max)
     if (address >= 0xE000 && display != nullptr) {
         uint16_t offset = address - 0xE000;
@@ -801,6 +813,65 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
     // 0x0200-0x0201: X position (16-bit) for TILEDRAW
     // 0x0202-0x0203: Y position (16-bit) for TILEDRAW
     // Position is used by TILEDRAW instruction in Preset F
+
+    // Line-blit port: the other port words are plain memory the launch reads, so $0348 (the low byte of the
+    // word a MOVDP stores) is the trigger; a write to $034A clears the sticky overrun flag.
+    if (address == LINE_PORT_GO) startLineBlit();
+    if (address == LINE_PORT_STATUS) lineOverrun = false;
+}
+
+void PPU::startLineBlit() {
+    // Snapshot the port into a free line channel; the run is written when the channel completes, like a tile blit.
+    // All four busy: the launch is dropped and the sticky overrun flag set (a write has no way to stall the
+    // instruction that made it, and a program that paces its launches never sees this).
+    for (size_t i = NUM_BLIT_CHANNELS; i < blitChannels.size(); i++) {
+        BlitChannel& ch = blitChannels[i];
+        if (ch.busy) continue;
+        ch = BlitChannel();
+        ch.kind = 1;
+        ch.lineSrc = memory[LINE_PORT_SRC] | (memory[LINE_PORT_SRC + 1] << 8);
+        ch.x = memory[LINE_PORT_X] | (memory[LINE_PORT_X + 1] << 8);
+        ch.y = memory[LINE_PORT_Y] | (memory[LINE_PORT_Y + 1] << 8);
+        ch.lineCount = memory[LINE_PORT_COUNT] | (memory[LINE_PORT_COUNT + 1] << 8);
+        ch.busy = true;
+        busyBlitChannelCount++;
+        ch.completeAt = blitClock + CYC_LINE_BASE + static_cast<uint64_t>(ch.lineCount) * CYC_LINE_PX;
+        if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
+        return;
+    }
+    lineOverrun = true;
+}
+
+void PPU::executeLineBlit(const BlitChannel& ch) {
+    // `lineCount` 4bpp palette indices (high nibble first, like a tile row) from PPU memory at `lineSrc`, through
+    // the live 16-colour palette, along row y from x (signed, so a run can start off the left edge). An entry
+    // with alpha 0 is transparent and leaves the framebuffer alone; pixels off the scanline or outside the
+    // rolling window are dropped by the same checks the tile blitter uses.
+    if (display == nullptr) return;
+    const int x0 = static_cast<int16_t>(ch.x);
+    const int y = ch.y;
+    const int count = ch.lineCount;
+    const bool mode16 = display->getRenderMode() == RenderMode::RGBA16;
+    uint8_t* span = display->rowSpan(x0, y, count);
+    for (int i = 0; i < count; i++) {
+        const uint8_t pair = memory[static_cast<uint16_t>(ch.lineSrc + (i >> 1))];
+        const uint32_t color = palette16Expanded[(i & 1) ? (pair & 0x0F) : (pair >> 4)];
+        if ((color & 0xFF) == 0) continue;
+        if (span != nullptr) {
+            if (mode16) {
+                const uint16_t c16 = Display::color32To16(color);
+                span[2 * i] = c16 & 0xFF;
+                span[2 * i + 1] = c16 >> 8;
+            } else {
+                span[4 * i] = color >> 24;
+                span[4 * i + 1] = (color >> 16) & 0xFF;
+                span[4 * i + 2] = (color >> 8) & 0xFF;
+                span[4 * i + 3] = color & 0xFF;
+            }
+        } else {
+            display->setPixel32(x0 + i, y, color);
+        }
+    }
 }
 
 void PPU::handleVOCWrite(uint16_t address, uint8_t value) {
@@ -968,6 +1039,7 @@ void PPU::applyVOCReset() {
     busyBlitChannelCount = 0;
     blitClock = 0;
     blitNextDone = UINT64_MAX;
+    lineOverrun = false;
 
     // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
 }
@@ -1093,6 +1165,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
     // driven off a channel's snapshotted state (see TILEDRAW's dispatch
     // case) so it can complete long after the instruction that issued it.
     if (display == nullptr) return;
+    if (channel.kind == 1) { executeLineBlit(channel); return; }
 
     uint16_t x = channel.x;
     uint16_t y = channel.y;
@@ -1339,7 +1412,9 @@ uint64_t PPU::stateHash() const {
         h = fnvv(h, c.busy); h = fnvv(h, c.busy ? c.completeAt - blitClock : 0ull); h = fnvv(h, c.x); h = fnvv(h, c.y);
         h = fnvv(h, c.tileBank); h = fnvv(h, c.tileId); h = fnvv(h, c.tileMode); h = fnvv(h, c.blendMode);
         h = fnv(h, c.translucency.data(), c.translucency.size());
+        h = fnvv(h, c.kind); h = fnvv(h, c.lineSrc); h = fnvv(h, c.lineCount);
     }
+    h = fnvv(h, lineOverrun);
     h = fnvv(h, busyBlitChannelCount);
     h = fnv(h, palette16.data(), sizeof(uint16_t) * palette16.size());
     h = fnv(h, palette256.data(), sizeof(uint32_t) * palette256.size());

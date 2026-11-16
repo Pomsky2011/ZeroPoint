@@ -291,6 +291,10 @@ private:
         uint8_t tileBank = 0, tileId = 0, tileMode = 0;
         uint8_t blendMode = 0;
         std::array<uint8_t, 4> translucency{};   // tileTranslucency snapshot at dispatch
+        // Line blits (channels NUM_BLIT_CHANNELS..): kind 1, x/y above are the destination pixel (x signed), the
+        // source is `lineCount` 4bpp palette indices at PPU address `lineSrc`. See startLineBlit().
+        uint8_t kind = 0;            // 0 = tile blit, 1 = line blit
+        uint16_t lineSrc = 0, lineCount = 0;
     };
     // 8, not 4: the boot ROM splash's band-0 vblank-tail dispatch (see
     // ZPbootROM/ppu/code/gen_mosaic.py) issues 8 TILEDRAWs per H-blank call
@@ -302,7 +306,18 @@ private:
     // async path - strictly more headroom than 4 gave the existing 4-per-
     // H-blank general schedule too (bands 1-31), never less.
     static constexpr size_t NUM_BLIT_CHANNELS = 8;
-    std::array<BlitChannel, NUM_BLIT_CHANNELS> blitChannels;
+    // Line-blit channels live after the tile channels in the same array, so the completion bookkeeping below is
+    // shared; TILEDRAW only ever looks at the first NUM_BLIT_CHANNELS, line launches only at the last four.
+    static constexpr size_t NUM_LINE_CHANNELS = 4;
+    std::array<BlitChannel, NUM_BLIT_CHANNELS + NUM_LINE_CHANNELS> blitChannels;
+    // Line-blit port ($0340-$034F, plain PPU memory the launch reads): src, x, y, count (words), $0348 launches.
+    // $034A reads back busy/overrun status. The splash's gen_mosaic.py and docs/ppu.md describe the contract.
+    static constexpr uint16_t LINE_PORT_SRC = 0x0340, LINE_PORT_X = 0x0342, LINE_PORT_Y = 0x0344,
+                              LINE_PORT_COUNT = 0x0346, LINE_PORT_GO = 0x0348, LINE_PORT_STATUS = 0x034A;
+    static constexpr uint8_t LINE_STATUS_OVERRUN = 0x80;   // a launch found all four line channels busy and was dropped
+    bool lineOverrun = false;
+    void startLineBlit();                       // the $0348 write: snapshot the port into a free line channel
+    void executeLineBlit(const BlitChannel& channel);
     // Count of currently-busy blitChannels entries, kept in lockstep with
     // each ch.busy flip (TILEDRAW dispatch sets it, advanceBlitChannels()
     // clears it on completion). advanceBlitChannels() runs every single PPU

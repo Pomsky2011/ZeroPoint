@@ -39,7 +39,12 @@ int main(int argc, char** argv) {
             }
         }
         std::fclose(out);
-        std::printf("wrote %s\n", path);
+        const PPU& ppu = sys.getPPU();
+        std::printf("wrote %s  (PPU %s EP=$%04X R44=%u R51=%u R63=$%04X, CPU PB=$%02X)\n", path,
+                    ppu.getState() == PPUState::Running ? "running" : "NOT running", ppu.getExecutionPointer(),
+                    ppu.getRegister(44), ppu.getRegister(51), ppu.getRegister(63), sys.getCPU().getPB());
+        std::printf("   CPU PC=$%04X  PPU $9300(req)=%u $9301(ack)=%u R28(tiles left)=%u SP=$%04X\n",
+                    sys.getCPU().getPC(), ppu.readMemory(0x9300), ppu.readMemory(0x9301), ppu.getRegister(28), ppu.getRegister(61));
     }
     return 0;
 }
