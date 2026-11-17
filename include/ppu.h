@@ -346,6 +346,22 @@ private:
     std::array<uint32_t, 16> palette16Expanded{};
     void refreshPalette16Expanded();
     std::array<uint8_t, 4> tileTranslucency{};      // Translucency for last 4 tiles (4 bits each)
+    // applyTranslucency(palette16Expanded[i], tile) for the 16 entries, per translucency slot (tile & 3), in both the
+    // 32-bit form and the 16-bit one the framebuffer stores. Derived from palette16Expanded + tileTranslucency (not
+    // hashed): rebuilt lazily by tileLut(), dropped by dropTileLuts() wherever either of those changes.
+    struct TileLut { uint32_t c32[16]; uint16_t c16[16]; };
+    std::array<TileLut, 4> tileLutCache{};
+    uint8_t tileLutValid = 0;                         // bit s: tileLutCache[s] is current
+    // The same for the 256-entry palette (8bpp tiles). A rebuild is 256 entries, more than one tile reads, so after a
+    // palette change the first few blits take the direct path and only a palette that stays put gets a table.
+    struct TileLut256 { uint32_t c32[256]; uint16_t c16[256]; };
+    std::array<TileLut256, 4> tileLut256Cache{};
+    uint8_t tileLut256Valid = 0;
+    uint8_t tileLut256Warmup = 0;                     // blits since the last change that did without a table
+    static constexpr uint8_t LUT256_WARMUP_BLITS = 2;
+    void dropTileLuts() { tileLutValid = 0; tileLut256Valid = 0; tileLut256Warmup = 0; }
+    const TileLut& tileLut(uint8_t tileId);
+    const TileLut256* tileLut256(uint8_t tileId);   // nullptr while the palette is still settling
     uint8_t tileBlendMode = 0;                        // Blend mode for tiles (0-3)
     uint8_t tileAttrs = 0;                            // TILE_ATTR_* in force, latched from $00FC by its own push flag ($00FD bit 4)
 

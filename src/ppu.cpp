@@ -135,6 +135,7 @@ void PPU::reset() {
         palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;  // 32-bit RGBA grayscale
     }
     tileTranslucency.fill(0x0F);  // Fully opaque by default
+    dropTileLuts();   // (also after palette256, which the table below it is derived from)
     tileBlendMode = 0;
     tileAttrs = 0;
 
@@ -538,6 +539,7 @@ void PPU::opCLRPALETTE(const DecodedOp&) {
         for (int i = 0; i < 256; i++) {
             palette256[i] = (i << 24) | (i << 16) | (i << 8) | 0xFF;
         }
+        dropTileLuts();
         instrCycles = CYC_CLRPAL;  // bulk fixed-function reset
 }
 void PPU::opTILEDRAW(const DecodedOp&) {
@@ -964,6 +966,7 @@ void PPU::handleVOCWrite(uint16_t address, uint8_t value) {
                         tileTranslucency[1] = (byte2 >> 4) & 0x0F; // High nibble of byte 2
                         tileTranslucency[2] = byte3 & 0x0F;        // Low nibble of byte 3
                         tileTranslucency[3] = (byte3 >> 4) & 0x0F; // High nibble of byte 3
+                        dropTileLuts();
                     }
                 }
             }
@@ -1080,11 +1083,40 @@ void PPU::refreshPalette16Expanded() {
     for (int i = 0; i < 16; i++) {
         palette16Expanded[i] = expandPalette16(palette16[i]);
     }
+    dropTileLuts();
+}
+
+const PPU::TileLut& PPU::tileLut(uint8_t tileId) {
+    const unsigned slot = tileId & 0x03;
+    TileLut& t = tileLutCache[slot];
+    if (!(tileLutValid & (1u << slot))) {
+        for (int i = 0; i < 16; i++) {
+            t.c32[i] = applyTranslucency(palette16Expanded[i], tileId);
+            t.c16[i] = Display::color32To16(t.c32[i]);
+        }
+        tileLutValid |= static_cast<uint8_t>(1u << slot);
+    }
+    return t;
+}
+
+const PPU::TileLut256* PPU::tileLut256(uint8_t tileId) {
+    const unsigned slot = tileId & 0x03;
+    if (!(tileLut256Valid & (1u << slot))) {
+        if (tileLut256Warmup < LUT256_WARMUP_BLITS) { tileLut256Warmup++; return nullptr; }
+        TileLut256& t = tileLut256Cache[slot];
+        for (int i = 0; i < 256; i++) {
+            t.c32[i] = applyTranslucency(palette256[i], tileId);
+            t.c16[i] = Display::color32To16(t.c32[i]);
+        }
+        tileLut256Valid |= static_cast<uint8_t>(1u << slot);
+    }
+    return &tileLut256Cache[slot];
 }
 
 void PPU::loadPalette256() {
     // Load 256-color palette from memory address pointed to by DP
     uint16_t addr = registers[REG_DP];
+    dropTileLuts();
 
     // 16-bit render mode: 256 entries of 16-bit BBGR like PALETTE16's (512 bytes), expanded to the 32-bit form the
     // blitters work in. 32-bit render mode: 256 entries of RRGGBBAA, b0=R first in memory (1024 bytes).
@@ -1218,16 +1250,14 @@ void PPU::executeBlit(const BlitChannel& channel) {
         const auto& tile = tileStorage[channel.tileBank][channel.tileId];
         if (is4bpp) {
             // 4bpp: both color modes read the 16-entry palette, and translucency depends only on the color, so
-            // apply it to the 16 entries once and decode each row (4 bytes) straight into 8 colors.
-            uint32_t lut[16];
-            for (int i = 0; i < 16; i++) lut[i] = applyTranslucency(palette16Expanded[i], channel.tileId);
+            // the 16 entries are translated once (tileLut() keeps them until the palette or translucency changes)
+            // and each row (4 bytes) decodes straight into 8 colors.
+            const TileLut& tl = tileLut(channel.tileId);
+            const uint32_t* lut = tl.c32;
+            const uint16_t* lut16 = tl.c16;
             // Whole-row stores straight into the framebuffer when the tile is on screen and the window holds
             // the row (nearly always); setPixelRow32 below is the clipped / out-of-window path.
             const bool mode16 = display->getRenderMode() == RenderMode::RGBA16;
-            uint16_t lut16[16];
-            if (mode16) {
-                for (int i = 0; i < 16; i++) lut16[i] = Display::color32To16(lut[i]);
-            }
             for (int ty = 0; ty < 8; ty++) {
                 const uint8_t* src = &tile[ty * 4];
                 if (uint8_t* dst = display->rowSpan(x, y + ty, 8)) {
@@ -1261,6 +1291,35 @@ void PPU::executeBlit(const BlitChannel& channel) {
                     rowColors[2 * k] = lut[src[k] >> 4];
                     rowColors[2 * k + 1] = lut[src[k] & 0x0F];
                 }
+                display->setPixelRow32(x, y + ty, rowColors, 8);
+            }
+            return;
+        }
+        // 8bpp: the same through the 256-entry table, once the palette has settled (tileLut256)
+        if (const TileLut256* t8 = tileLut256(channel.tileId)) {
+            const bool mode16 = display->getRenderMode() == RenderMode::RGBA16;
+            for (int ty = 0; ty < 8; ty++) {
+                const uint8_t* src = &tile[ty * 8];
+                if (uint8_t* dst = display->rowSpan(x, y + ty, 8)) {
+                    if (mode16) {
+                        for (int k = 0; k < 8; k++) {
+                            const uint16_t c = t8->c16[src[k]];
+                            dst[2 * k] = c & 0xFF;
+                            dst[2 * k + 1] = c >> 8;
+                        }
+                    } else {
+                        for (int k = 0; k < 8; k++) {
+                            const uint32_t c = t8->c32[src[k]];
+                            dst[4 * k] = c >> 24;
+                            dst[4 * k + 1] = (c >> 16) & 0xFF;
+                            dst[4 * k + 2] = (c >> 8) & 0xFF;
+                            dst[4 * k + 3] = c & 0xFF;
+                        }
+                    }
+                    continue;
+                }
+                uint32_t rowColors[8];
+                for (int k = 0; k < 8; k++) rowColors[k] = t8->c32[src[k]];
                 display->setPixelRow32(x, y + ty, rowColors, 8);
             }
             return;

@@ -389,6 +389,10 @@ add_executable(test_tile_attrs tools/test_tile_attrs.cpp)
 target_link_libraries(test_tile_attrs zeropoint_core)
 set_target_properties(test_tile_attrs PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+add_executable(test_tile_lut tools/test_tile_lut.cpp)
+target_link_libraries(test_tile_lut zeropoint_core)
+set_target_properties(test_tile_lut PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 add_executable(test_tile_rowclip tools/test_tile_rowclip.cpp)
 target_link_libraries(test_tile_rowclip zeropoint_core)
 set_target_properties(test_tile_rowclip PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
