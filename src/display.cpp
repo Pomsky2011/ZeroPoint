@@ -58,13 +58,13 @@ void Display::tick() {
             int window = windowScanlines();
             int slotsPerBank = (renderMode == RenderMode::RGBA16) ? 2 : 1;
             while (windowStart < target) {
-                int slot = windowStart % window;
+                int slot = windowSlot(windowStart, window);
                 // In block mode, the earlier half of a bank pair is held
                 // (not cleared) until its later half also exits, so both
                 // clear together. slotsPerBank alternates defer/flush every
                 // iteration, so a pending slot - if any - is always exactly
                 // this one's bank partner, never stale.
-                bool isLastOfBank = (slot % slotsPerBank) == slotsPerBank - 1;
+                bool isLastOfBank = slotsPerBank == 1 || (slot > 0 && (slot & 1) == 1);   // slot % slotsPerBank == slotsPerBank - 1
                 if (!rollingModeBlock || slotsPerBank == 1 || isLastOfBank) {
                     // Flush a deferral left over from before rollingModeBlock
                     // changed mid-pair, so toggling the VOC bit mid-frame can
@@ -114,7 +114,8 @@ int Display::getBufferBank(int y, int& offsetInBank) const {
         return -1;  // Outside the rolling window
     }
 
-    int slot = y % window;
+    // A negative y lands in a negative slot (and so a negative bank) unless y is a multiple of window: see windowSlot.
+    int slot = windowSlot(y, window);
     if (renderMode == RenderMode::RGBA16) {
         // 2 scanlines per bank, 512 bytes each
         offsetInBank = (slot & 1) * FB_WIDTH * sizeof(Color16);
@@ -174,7 +175,7 @@ void Display::latchScanline(int fbY) {
 }
 
 void Display::setPixel(int x, int y, Color16 color) {
-    if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FULL_HEIGHT) {
+    if (x >= 0 && x < FB_WIDTH && rowInRange(y)) {
         // Use rolling bank system
         int offsetInBank = 0;
         int bank = getBufferBank(y, offsetInBank);
@@ -205,7 +206,7 @@ void Display::setPixel(int x, int y, Color16 color) {
 }
 
 void Display::setPixel32(int x, int y, Color32 color) {
-    if (x >= 0 && x < FB_WIDTH && y >= 0 && y < FULL_HEIGHT) {
+    if (x >= 0 && x < FB_WIDTH && rowInRange(y)) {
         // Use rolling bank system
         int offsetInBank = 0;
         int bank = getBufferBank(y, offsetInBank);
@@ -236,7 +237,7 @@ void Display::setPixel32(int x, int y, Color32 color) {
 }
 
 void Display::setPixelRow32(int x, int y, const Color32* colors, int count) {
-    if (y < 0 || y >= FULL_HEIGHT) return;
+    if (!rowInRange(y)) return;
     int offsetInBank = 0;
     int bank = getBufferBank(y, offsetInBank);
     if (bank < 0) return;   // Outside buffer window

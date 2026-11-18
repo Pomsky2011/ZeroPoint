@@ -296,6 +296,15 @@ private:
         // source is `lineCount` 4bpp palette indices at PPU address `lineSrc`. See startLineBlit().
         uint8_t kind = 0;            // 0 = tile blit, 1 = line blit
         uint16_t lineSrc = 0, lineCount = 0;
+        // Blits dispatched by the tile-row queue keep their rows in the absolute row space (frameRowOffset + y), so a
+        // blit that completes after the frame boundary still lands in the frame it was queued for; x/y above are unused for y.
+        bool fromQueue = false;
+        int64_t absY = 0, absClip0 = 0, absClip1 = 0;
+        // The rectangle a queued blit writes (absolute rows, screen columns). A queued blit only has to retire after
+        // the older in-flight blits it overlaps - ones that touch other pixels cannot change what it draws - so
+        // alternating clipped halves of different cost no longer hold each other's channels up (see stepQueueEngine).
+        int64_t rowLo = 0, rowHi = 0;
+        int32_t colLo = 0, colHi = 0;
     };
     // 8, not 4: the boot ROM splash's band-0 vblank-tail dispatch (see
     // ZPbootROM/ppu/code/gen_mosaic.py) issues 8 TILEDRAWs per H-blank call
@@ -310,13 +319,65 @@ private:
     // Line-blit channels live after the tile channels in the same array, so the completion bookkeeping below is
     // shared; TILEDRAW only ever looks at the first NUM_BLIT_CHANNELS, line launches only at the last four.
     static constexpr size_t NUM_LINE_CHANNELS = 4;
-    std::array<BlitChannel, NUM_BLIT_CHANNELS + NUM_LINE_CHANNELS> blitChannels;
+    static constexpr size_t NUM_ALL_CHANNELS = NUM_BLIT_CHANNELS + NUM_LINE_CHANNELS;
+    std::array<BlitChannel, NUM_ALL_CHANNELS> blitChannels;
+    // Compact copies of the few fields the per-event bookkeeping scans (a completion looks at every channel's finish
+    // time, a queue dispatch at every tile channel's busy flag and rectangle): a scan reads a cache line or two instead
+    // of a dozen 112-byte structs, and with no data-dependent branches it does not mispredict. Derived state, not hashed:
+    // set where a channel is dispatched or retired and in resetBlitMirrors(), never read for anything the struct has.
+    std::array<uint64_t, NUM_ALL_CHANNELS> blitDoneAt{};   // completeAt while busy, UINT64_MAX while idle
+    uint32_t tileBusyMask = 0;                             // bit i: tile channel i is busy
+    // The rectangle a tile channel's blit writes, as the queue's overlap test wants it; a TILEDRAW blit (no known extent)
+    // is the whole plane, so it overlaps everything, like `!fromQueue` used to.
+    std::array<int64_t, NUM_BLIT_CHANNELS> ovRowLo{}, ovRowHi{};
+    std::array<int32_t, NUM_BLIT_CHANNELS> ovColLo{}, ovColHi{};
+    void resetBlitMirrors();
     // Line-blit port ($0340-$034F, plain PPU memory the launch reads): src, x, y, count (words), $0348 launches.
     // $034A reads back busy/overrun status. The splash's gen_mosaic.py and docs/ppu.md describe the contract.
     static constexpr uint16_t LINE_PORT_SRC = 0x0340, LINE_PORT_X = 0x0342, LINE_PORT_Y = 0x0344,
                               LINE_PORT_COUNT = 0x0346, LINE_PORT_GO = 0x0348, LINE_PORT_STATUS = 0x034A;
     static constexpr uint8_t LINE_STATUS_OVERRUN = 0x80;   // a launch found all four line channels busy and was dropped
     bool lineOverrun = false;
+
+    // Tile-row queue ("write-ahead", docs/ppu.md): a program queues whole rows of tilemap cells ahead of the beam and
+    // the hardware dispatches them onto the blit channels when their rows become writable. Port words are plain PPU
+    // memory the launch reads, $0360 launches (the low byte of the word MOVDP stores); capacity is counted in cells.
+    static constexpr uint16_t TQ_SRC = 0x0350, TQ_COUNT = 0x0352, TQ_X = 0x0354, TQ_Y = 0x0356, TQ_CLIP0 = 0x0358,
+                              TQ_CLIP1 = 0x035A, TQ_FLAGS = 0x035C, TQ_FRAME = 0x035E, TQ_GO = 0x0360, TQ_MODE = 0x0362, TQ_STATUS = 0x0364,
+                              TQ_HWFRAME = 0x0366;   // $0360: a write launches, a read is the cells still pending; $0366 reads the hardware's frame
+    static constexpr uint16_t TQ_F_CLIP = 0x01, TQ_F_FLIPX = 0x02, TQ_F_FLIPY = 0x04, TQ_F_WRAP = 0x08,
+                              TQ_F_TRANSPARENT = 0x40;   // bits 4-5: tile mode
+    static constexpr uint8_t TQ_STATUS_LATE = 0x01, TQ_STATUS_OVERFLOW = 0x02;
+    static constexpr uint32_t TQ_CAPACITY = 128;          // cells pending across all queued rows
+    static constexpr uint32_t TQ_DISPATCH_CYCLES = 8;     // hardware cost of reading a cell and dispatching it
+    struct RowCmd {
+        uint16_t src = 0, count = 0, x = 0, flags = 0;
+        uint16_t next = 0;                                // cells already dispatched
+        int64_t absY = 0, absClip0 = 0, absClip1 = 0;
+        uint8_t blendMode = 0;
+        std::array<uint8_t, 4> translucency{};
+    };
+    std::array<RowCmd, TQ_CAPACITY> tqRing;
+    uint32_t tqHead = 0, tqCount = 0;                     // queued rows (ring), and how many
+    uint32_t tqPending = 0;                               // cells not yet dispatched, across them
+    uint32_t tqCooldown = 0;
+    // The last look at the head cell held it (its rows not free yet, or no free channel). Derived, not state: it only
+    // lets advanceBlitsAndQueue() skip cycles in which looking again would change nothing, and is cleared by every
+    // event that could change the answer (a render-mode change, a new row, a reset, a new call).
+    bool tqHold = false;
+    bool tqLate = false, tqOverflow = false;              // sticky status bits ($0364)
+    bool writeAhead = false;                              // $0362 bit 0: the $C000-$FFFF windows read open bus
+    void resetQueue();
+    void startRowCommand();                               // the $035E write
+    void stepQueueEngine();                               // once per PPU cycle while cells are pending, after the blit channels advance
+    // tickMany runs instructions back to back while nothing can happen to a blit or the queue (blitHorizon cycles, see
+    // blitQuietHorizon()), only counting the cycles in blitOwed; settleBlits() pays them before anything that depends on
+    // them changes. Both are zero outside tickMany.
+    uint32_t blitOwed = 0, blitHorizon = 0;
+    uint32_t blitQuietHorizon() const;
+    void settleBlits();
+    void advanceBlitsAndQueue(uint32_t cycles);           // advanceBlitChannels(1) + stepQueueEngine() per cycle
+    uint8_t framebufferByte(uint16_t address) const;      // the raw rolling buffer, unaffected by writeAhead (blits read it back)
     void startLineBlit();                       // the $0348 write: snapshot the port into a free line channel
     void executeLineBlit(const BlitChannel& channel);
     // Count of currently-busy blitChannels entries, kept in lockstep with
@@ -349,12 +410,12 @@ private:
     // applyTranslucency(palette16Expanded[i], tile) for the 16 entries, per translucency slot (tile & 3), in both the
     // 32-bit form and the 16-bit one the framebuffer stores. Derived from palette16Expanded + tileTranslucency (not
     // hashed): rebuilt lazily by tileLut(), dropped by dropTileLuts() wherever either of those changes.
-    struct TileLut { uint32_t c32[16]; uint16_t c16[16]; };
+    struct TileLut { uint32_t c32[16]; uint16_t c16[16]; uint8_t opq[16]; };   // opq: alpha != 0 (a transparent blit stores it)
     std::array<TileLut, 4> tileLutCache{};
     uint8_t tileLutValid = 0;                         // bit s: tileLutCache[s] is current
     // The same for the 256-entry palette (8bpp tiles). A rebuild is 256 entries, more than one tile reads, so after a
     // palette change the first few blits take the direct path and only a palette that stays put gets a table.
-    struct TileLut256 { uint32_t c32[256]; uint16_t c16[256]; };
+    struct TileLut256 { uint32_t c32[256]; uint16_t c16[256]; uint8_t opq[256]; };
     std::array<TileLut256, 4> tileLut256Cache{};
     uint8_t tileLut256Valid = 0;
     uint8_t tileLut256Warmup = 0;                     // blits since the last change that did without a table
@@ -362,7 +423,7 @@ private:
     void dropTileLuts() { tileLutValid = 0; tileLut256Valid = 0; tileLut256Warmup = 0; }
     const TileLut& tileLut(uint8_t tileId);
     const TileLut256* tileLut256(uint8_t tileId);   // nullptr while the palette is still settling
-    uint8_t tileBlendMode = 0;                        // Blend mode for tiles (0-3)
+    uint8_t tileBlendMode = 0;                       // Blend mode for tiles (0-3)
     uint8_t tileAttrs = 0;                            // TILE_ATTR_* in force, latched from $00FC by its own push flag ($00FD bit 4)
 
     // Video Output Coprocessor (VOC) registers at $00F0-$00FF

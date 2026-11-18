@@ -78,6 +78,26 @@ public:
     // Get current scanline (0-260)
     int getCurrentScanline() const { return currentScanline; }
 
+    // The rolling window, for the PPU's tile-row queue (PPU::stepQueueEngine): rows [windowStart, windowStart +
+    // windowRows) are writable, in the same ever-growing absolute row space as frameRowOffset + y.
+    // While a queued blit completes, its rows are absolute and may lie in the frame before or after the one the raster is
+    // in (a row queued for the next frame's top, finishing before scanline 257), so the writers accept one frame either
+    // side of 0..255. Everything else keeps the strict 0..255 range: a TILEDRAW below row 255 is still dropped.
+    void setAbsoluteRows(bool on) { absoluteRows = on; }
+    int64_t getWindowStart() const { return windowStart; }
+    int64_t getFrameRowOffset() const { return frameRowOffset; }
+    int getWindowRows() const { return windowScanlines(); }
+    bool isRowWritable(int y) const { int offsetInBank; return getBufferBank(y, offsetInBank) >= 0; }
+    // Whether a write to absolute row `absRow` would survive: its slot must have been cleared of the row one window
+    // earlier. In RGBA16 block mode slots clear in bank pairs (see tick()), so an even row that has only just entered
+    // the window shares a slot whose clear is still deferred, and a write to it is wiped a scanline later - the window
+    // check alone (getBufferBank) lets that write through.
+    bool rowIsClear(int64_t absRow) const {
+        int64_t previous = absRow - windowScanlines();
+        if (rollingModeBlock && renderMode == RenderMode::RGBA16) previous |= 1;
+        return previous < windowStart;
+    }
+
     // Get current pixel position in scanline (0-339)
     int getCurrentPixel() const { return currentPixel; }
 
@@ -119,6 +139,13 @@ public:
     Color32* getFramebuffer32() { return reinterpret_cast<Color32*>(framebuffer.data()); }
     const Color32* getFramebuffer32() const { return reinterpret_cast<const Color32*>(framebuffer.data()); }
 
+    // v % window for the window's size (8 or 16 rows, a power of two) with no divide. A negative v keeps the signed
+    // remainder C++ gives it (negative unless v is a multiple of window), so every caller sees the same slot as before.
+    static int windowSlot(int64_t v, int window) {
+        const int r = static_cast<int>(v & (window - 1));
+        return (v < 0 && r != 0) ? r - window : r;
+    }
+
     // Get the bank and offset for a given Y coordinate in the rolling buffer
     // Returns bank index (0-7) or -1 if outside buffer window
     int getBufferBank(int y, int& offsetInBank) const;
@@ -137,12 +164,23 @@ public:
     // screen or outside the rolling window, or the run not wholly inside the scanline. Valid until the next
     // call that moves the window.
     uint8_t* rowSpan(int x, int y, int count) {
-        if (y < 0 || y >= FULL_HEIGHT || x < 0 || x + count > FB_WIDTH) return nullptr;
+        if (!rowInRange(y) || x < 0 || x + count > FB_WIDTH) return nullptr;
         int offsetInBank = 0;
         const int bank = getBufferBank(y, offsetInBank);
         if (bank < 0) return nullptr;
         const size_t bpp = renderMode == RenderMode::RGBA16 ? 2 : 4;
         return &framebuffer[static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank + static_cast<size_t>(x) * bpp];
+    }
+
+    // The framebuffer bytes of scanline y's column 0 (rowSpan's address without the column checks), or null when a
+    // pixel store to that row would be dropped (off the screen or outside the rolling window). Column x of the row
+    // is at + x * bytes-per-pixel; the caller keeps its columns on the scanline. Valid until the window moves.
+    uint8_t* rowBase(int y) {
+        if (!rowInRange(y)) return nullptr;
+        int offsetInBank = 0;
+        const int bank = getBufferBank(y, offsetInBank);
+        if (bank < 0) return nullptr;
+        return &framebuffer[static_cast<size_t>(bank) * FB_BANK_SIZE + offsetInBank];
     }
 
     // Set a pixel in the framebuffer (32-bit)
@@ -222,6 +260,8 @@ private:
     // See setRollingMode(). Defaults to true (block), matching the VOC
     // render-mode-control register's power-on value of 0x00 (bit 6 clear).
     bool rollingModeBlock = true;
+    bool absoluteRows = false;   // see setAbsoluteRows()
+    bool rowInRange(int y) const { return absoluteRows ? (y >= -FULL_HEIGHT && y < 2 * FULL_HEIGHT) : (y >= 0 && y < FULL_HEIGHT); }
 
     // Block-mode's deferred clear: the earlier half of a bank pair, held
     // until its partner exits so both clear together. -1 when nothing is

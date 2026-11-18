@@ -1,7 +1,10 @@
 #include "ppu.h"
 #include "display.h"
+#include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <iostream>
+#include <type_traits>
 
 namespace ZeroPoint {
 
@@ -119,11 +122,13 @@ void PPU::reset() {
     for (auto& ch : blitChannels) {
         ch = BlitChannel();
     }
+    resetBlitMirrors();
     busyBlitChannelCount = 0;
     blitClock = 0;
     blitNextDone = UINT64_MAX;
     lastTileCompleteAt = 0;
     lineOverrun = false;
+    resetQueue();
 
     // Initialize palette system (default grayscale palettes)
     for (int i = 0; i < 16; i++) {
@@ -250,6 +255,8 @@ void PPU::tick() {
     // BlitChannel's comment in ppu.h) - advance them every cycle regardless
     // of whether the PPU itself is stalled on something else.
     advanceBlitChannels(1);
+    if (tqPending != 0) [[unlikely]] stepQueueEngine();
+    tqHold = false;   // only tickMany/runBatch skip held cycles, and they start by looking again
 
     // Latch blank-line edges every cycle, even mid-stall (see
     // latchInterruptEdges()'s comment) - a short blank pulse could otherwise
@@ -277,6 +284,11 @@ void PPU::tick() {
     stallCycles = instrCycles - 1;
 }
 
+void PPU::resetBlitMirrors() {
+    blitDoneAt.fill(UINT64_MAX);
+    tileBusyMask = 0;
+}
+
 void PPU::burnBlitCycles(uint32_t k) {
     // k cycles' worth of advanceBlitChannels(1), without the per-cycle call: blitClock moves by k unless a blit
     // completes inside them, and a completion draws pixels and must run in its own cycle (the one that brings
@@ -302,19 +314,33 @@ void PPU::tickMany(uint32_t n) {
     // whether any is pending is a local that only a serviced interrupt can change.
     if (n == 0 || state != PPUState::Running) [[unlikely]] return;
     latchInterruptEdges();
+    tqHold = false;   // the display may have moved since the last call: look at the queue again
+    blitOwed = 0;
+    blitHorizon = blitQuietHorizon();
     bool pending = cpuIrqPending | vblankPending | hblankPending;
     uint32_t stall = stallCycles;
     for (;;) {
+        // The stall's cycles and the boundary cycle after them see no instruction in between, so they are one
+        // advance of the blits and the queue.
+        uint32_t owed = 0;
         if (stall > 0) {
-            const uint32_t k = stall < n ? stall : n;
-            if (busyBlitChannelCount != 0) burnBlitCycles(k);
-            stall -= k;
-            n -= k;
-            if (n == 0) break;
+            owed = stall < n ? stall : n;
+            stall -= owed;
+            n -= owed;
+            if (n == 0) { blitOwed += owed; break; }
         }
-        // An instruction boundary: this cycle advances the blits, then takes an interrupt or issues.
+        // An instruction boundary: this cycle advances the blits, then takes an interrupt or issues. While nothing
+        // can happen to a blit or the queue (blitHorizon) the cycles are only owed: whatever an instruction touches
+        // that depends on them settles first (settleBlits()), and tickMany pays up before it returns.
         n--;
-        if (busyBlitChannelCount != 0) advanceBlitChannels(1);
+        if (static_cast<uint64_t>(blitOwed) + owed + 1 <= blitHorizon) {
+            blitOwed += owed + 1;
+        } else {
+            const uint32_t due = blitOwed + owed + 1;
+            blitOwed = 0;
+            advanceBlitsAndQueue(due);
+            blitHorizon = blitQuietHorizon();
+        }
         if (pending) [[unlikely]] {
             stallCycles = 0;
             const bool taken = serviceInterrupts();
@@ -330,11 +356,45 @@ void PPU::tickMany(uint32_t n) {
         if (state != PPUState::Running) [[unlikely]] break;   // an instruction (a write to the VOC halt bit) stopped it
         if (n == 0) break;
     }
+    if (blitOwed != 0) {
+        const uint32_t due = blitOwed;
+        blitOwed = 0;
+        advanceBlitsAndQueue(due);
+    }
     stallCycles = stall;
+}
+
+uint32_t PPU::blitQuietHorizon() const {
+    // How many cycles advanceBlitsAndQueue() could advance right now without any of them being more than a count-down:
+    // up to the cycle before a blit completes, and (cells pending) through the cooldown or, while a cell is held, for
+    // as long as it is.
+    uint64_t h = UINT64_MAX;
+    if (busyBlitChannelCount != 0) {
+        const uint64_t room = blitNextDone - blitClock;
+        h = room > 0 ? room - 1 : 0;
+    }
+    if (tqPending != 0) {
+        if (tqCooldown > 0) h = std::min<uint64_t>(h, tqCooldown);
+        else if (!tqHold) h = 0;
+    }
+    return h > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(h);
+}
+
+void PPU::settleBlits() {
+    // Called first by everything an instruction does to the blit channels, the queue or the window they wait on: the
+    // cycles tickMany has only owed so far happen now, so the change lands at the cycle it would have, and the horizon
+    // is no longer known.
+    if (blitOwed != 0) {
+        const uint32_t due = blitOwed;
+        blitOwed = 0;
+        advanceBlitsAndQueue(due);
+    }
+    blitHorizon = 0;
 }
 
 uint32_t PPU::runBatch(uint32_t cycles) {
     uint32_t remaining = cycles;
+    tqHold = false;
     while (remaining > 0 && state == PPUState::Running) {
         // Collapse a multi-cycle stall in one step instead of spinning one
         // iteration per cycle. Blit channels must see the same elapsed time
@@ -350,7 +410,7 @@ uint32_t PPU::runBatch(uint32_t cycles) {
             uint32_t consumed = stallCycles < remaining ? stallCycles : remaining;
             stallCycles -= consumed;
             remaining -= consumed;
-            advanceBlitChannels(consumed);
+            advanceBlitsAndQueue(consumed);
             latchInterruptEdges();
             continue;
         }
@@ -360,14 +420,14 @@ uint32_t PPU::runBatch(uint32_t cycles) {
         // Instruction boundary: same interrupt/issue logic as tick(), one cycle.
         if (serviceInterrupts()) {
             remaining--;
-            advanceBlitChannels(1);
+            advanceBlitsAndQueue(1);
             continue;
         }
 
         executeInstruction();
         stallCycles = instrCycles - 1;
         remaining--;
-        advanceBlitChannels(1);
+        advanceBlitsAndQueue(1);
     }
     return cycles - remaining;
 }
@@ -489,9 +549,11 @@ void PPU::opMOVDP(const DecodedOp& d) {
     instrCycles = CYC_MEM;  // word store to (DP)
 }
 void PPU::opSETRENDMOD(const DecodedOp& d) {
+    settleBlits();
     if (display != nullptr) {
         const bool is32bit = (d.operand & 0x80) != 0;
         display->setRenderMode(is32bit ? RenderMode::RGBA32 : RenderMode::RGBA16);
+        tqHold = false;   // the window the queue waits on may have changed
     }
 }
 void PPU::opPALETTE16_LOAD(const DecodedOp&) {
@@ -543,6 +605,7 @@ void PPU::opCLRPALETTE(const DecodedOp&) {
         instrCycles = CYC_CLRPAL;  // bulk fixed-function reset
 }
 void PPU::opTILEDRAW(const DecodedOp&) {
+        settleBlits();
         // tiledraw - snapshot the current draw state (position, tile,
         // mode, blend settings) into a free blit channel and dispatch
         // it to run concurrently - see BlitChannel's comment in ppu.h.
@@ -573,12 +636,17 @@ void PPU::opTILEDRAW(const DecodedOp&) {
         if (freeChannel >= 0) {
             BlitChannel& ch = blitChannels[freeChannel];
             ch.busy = true;
+            ch.fromQueue = false;
             busyBlitChannelCount++;
             // Blits retire (draw) in issue order, whatever they cost: a clipped, cheaper tile issued after a full one
             // would otherwise land first and then be overwritten by the older, longer blit.
             ch.completeAt = std::max(blitClock + blitCost, lastTileCompleteAt + 1);
             lastTileCompleteAt = ch.completeAt;
             if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
+            blitDoneAt[freeChannel] = ch.completeAt;
+            tileBusyMask |= 1u << freeChannel;
+            ovRowLo[freeChannel] = INT64_MIN; ovRowHi[freeChannel] = INT64_MAX;
+            ovColLo[freeChannel] = INT32_MIN; ovColHi[freeChannel] = INT32_MAX;
             ch.x = memory[0x0200] | (memory[0x0201] << 8);
             ch.y = memory[0x0202] | (memory[0x0203] << 8);
             ch.tileBank = currentTileBank;
@@ -749,16 +817,24 @@ uint8_t PPU::handleMemoryRead(uint16_t address) const {
         return status;
     }
 
+    // Tile-row queue: $0360 reads the cells still pending as a clean word, $0364 the sticky late/overflow bits.
+    if (address == TQ_GO) return static_cast<uint8_t>(tqPending);
+    if (address == TQ_GO + 1) return 0;
+    if (address == TQ_STATUS) return static_cast<uint8_t>((tqLate ? TQ_STATUS_LATE : 0) | (tqOverflow ? TQ_STATUS_OVERFLOW : 0));
+    if (address == TQ_STATUS + 1) return 0;
+    // $0366: the frame the hardware is on (its frame-row offset / 256, bumped at scanline 257).
+    if (address == TQ_HWFRAME || address == TQ_HWFRAME + 1) {
+        const uint16_t frame = display != nullptr ? static_cast<uint16_t>(display->getFrameRowOffset() / VISIBLE_SCANLINES) : 0;
+        return static_cast<uint8_t>(address == TQ_HWFRAME ? frame & 0xFF : frame >> 8);
+    }
+
+    // Write-ahead mode: the framebuffer ($E000-$FFFF) and the queue's backing store ($C000-$DFFF) are not on the
+    // PPU's bus - they read open bus ($FF, like the CPU's) and ignore writes.
+    if (writeAhead && address >= 0xC000) return 0xFF;
+
     // Framebuffer region: 0xE000-0xFFFF (8 KiB max)
     if (address >= 0xE000 && display != nullptr) {
-        uint16_t offset = address - 0xE000;
-
-        // Rolling buffer is always 8 KiB ($E000-$FFFF) in both modes.
-        if (offset < 0x2000) {
-            const uint8_t* fbBytes = reinterpret_cast<const uint8_t*>(display->getFramebuffer16());
-            return fbBytes[offset];
-        }
-        return 0; // Out of bounds
+        return framebufferByte(address);
     }
 
     // Normal memory
@@ -771,6 +847,8 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
         handleVOCWrite(address, value);
         return;  // Don't also write to regular memory
     }
+
+    if (writeAhead && address >= 0xC000 && address != TQ_MODE) return;   // open bus: see handleMemoryRead
 
     // Framebuffer region: 0xE000-0xFFFF (8 KiB max)
     if (address >= 0xE000 && display != nullptr) {
@@ -827,9 +905,165 @@ void PPU::handleMemoryWrite(uint16_t address, uint8_t value) {
     // word a MOVDP stores) is the trigger; a write to $034A clears the sticky overrun flag.
     if (address == LINE_PORT_GO) startLineBlit();
     if (address == LINE_PORT_STATUS) lineOverrun = false;
+
+    // Tile-row queue: $0360 launches, a write to $0364/$0365 clears the sticky bits, $0362 bit 0 is write-ahead mode.
+    if (address == TQ_GO) startRowCommand();
+    if (address == TQ_STATUS || address == TQ_STATUS + 1) { tqLate = false; tqOverflow = false; }
+    if (address == TQ_MODE) writeAhead = (value & 1) != 0;
+}
+
+void PPU::resetQueue() {
+    settleBlits();
+    tqHead = tqCount = tqPending = tqCooldown = 0;
+    tqHold = false;
+    tqLate = tqOverflow = writeAhead = false;
+    for (auto& c : tqRing) c = RowCmd();
+}
+
+uint8_t PPU::framebufferByte(uint16_t address) const {
+    const uint16_t offset = address - 0xE000;
+    if (display == nullptr || offset >= 0x2000) return 0;
+    return reinterpret_cast<const uint8_t*>(display->getFramebuffer16())[offset];
+}
+
+void PPU::advanceBlitsAndQueue(uint32_t cycles) {
+    // `cycles` of advanceBlitChannels(1) + (while cells are pending) stepQueueEngine(), with the stretches where
+    // neither does anything skipped: nothing ran in between, so each of those cycles is a no-op that only counts
+    // down - blitClock moves by one unless a blit completes, the cooldown ticks, and a held cell stays held (its
+    // inputs - the window, the channels - only change on a completion, which is a cycle taken singly below and
+    // looks at the cell again, or outside this call, which clears tqHold).
+    while (cycles > 0) {
+        if (tqPending == 0) { burnBlitCycles(cycles); return; }
+        uint32_t quiet = cycles;
+        if (busyBlitChannelCount != 0) {
+            const uint64_t room = blitNextDone - blitClock;   // the room-th cycle from now completes a blit
+            const uint64_t before = room > 0 ? room - 1 : 0;
+            if (before < quiet) quiet = static_cast<uint32_t>(before);
+        }
+        if (tqCooldown > 0) {
+            if (tqCooldown < quiet) quiet = tqCooldown;
+        } else if (!tqHold) {
+            quiet = 0;   // the engine looks at the cell this cycle
+        }
+        if (quiet > 0) {
+            if (busyBlitChannelCount != 0) blitClock += quiet;
+            if (tqCooldown > 0) tqCooldown -= quiet;
+            cycles -= quiet;
+            continue;
+        }
+        advanceBlitChannels(1);
+        stepQueueEngine();
+        cycles--;
+    }
+}
+
+void PPU::startRowCommand() {
+    settleBlits();
+    // Snapshot the port into the queue. Cells are read from PPU memory when they are dispatched, not now, so the
+    // tilemap must stay put until they have been. A row that would take the pending count past TQ_CAPACITY is
+    // dropped whole and the sticky overflow bit set (a write cannot stall the instruction that made it).
+    const uint16_t count = memory[TQ_COUNT] | (memory[TQ_COUNT + 1] << 8);
+    if (count == 0) return;
+    if (tqPending + count > TQ_CAPACITY) { tqOverflow = true; return; }
+    RowCmd& c = tqRing[(tqHead + tqCount) % TQ_CAPACITY];
+    c = RowCmd();
+    c.src = memory[TQ_SRC] | (memory[TQ_SRC + 1] << 8);
+    c.count = count;
+    c.x = memory[TQ_X] | (memory[TQ_X + 1] << 8);
+    c.flags = memory[TQ_FLAGS] | (memory[TQ_FLAGS + 1] << 8);
+    // Rows are absolute: 256 x the frame the row belongs to + the row within it. The program names the frame ($035E, a
+    // 16-bit frame number that wraps; it is placed relative to the hardware's own frame), so a launch that blocks for a
+    // long time before it is written still lands in the frame it was meant for - the program never has to guess which
+    // frame "now" is in. A frame the beam has already passed is simply late. y and the clip rows are signed: a tile may
+    // start above row 0 (its top rows clipped away) for a fine scroll.
+    const int64_t fro = display != nullptr ? display->getFrameRowOffset() : 0;
+    const int64_t hw = fro / VISIBLE_SCANLINES;
+    const int16_t ahead = static_cast<int16_t>(static_cast<uint16_t>(memory[TQ_FRAME] | (memory[TQ_FRAME + 1] << 8)) - static_cast<uint16_t>(hw & 0xFFFF));
+    const int64_t base = fro + static_cast<int64_t>(ahead) * VISIBLE_SCANLINES;
+    c.absY = base + static_cast<int16_t>(memory[TQ_Y] | (memory[TQ_Y + 1] << 8));
+    c.absClip0 = base + static_cast<int16_t>(memory[TQ_CLIP0] | (memory[TQ_CLIP0 + 1] << 8));
+    c.absClip1 = base + static_cast<int16_t>(memory[TQ_CLIP1] | (memory[TQ_CLIP1 + 1] << 8));
+    c.blendMode = tileBlendMode;
+    c.translucency = tileTranslucency;
+    tqCount++;
+    tqPending += count;
+    tqHold = false;
+}
+
+void PPU::stepQueueEngine() {
+    // One queued cell per TQ_DISPATCH_CYCLES at most: read its two words, decide whether its rows are writable yet
+    // (hold until they are - the point of the queue), and dispatch it onto a free tile channel. Dispatch order is
+    // queue order and the channels retire in issue order, so queue order is z-order, same as TILEDRAW.
+    if (tqCooldown > 0) { tqCooldown--; return; }
+    tqHold = false;
+    RowCmd& cmd = tqRing[tqHead];
+    const uint32_t k = cmd.next;
+    const uint32_t idx = (cmd.flags & TQ_F_FLIPX) ? cmd.count - 1u - k : k;
+    const uint16_t addr = (cmd.flags & TQ_F_WRAP) ? static_cast<uint16_t>((cmd.src & 0xFF00) | ((cmd.src + 4 * idx) & 0x00FF))
+                                                  : static_cast<uint16_t>(cmd.src + 4 * idx);
+    const uint16_t w0 = memory[addr] | (memory[(addr + 1) & 0xFFFF] << 8);
+    const uint16_t w1 = memory[(addr + 2) & 0xFFFF] | (memory[(addr + 3) & 0xFFFF] << 8);
+
+    uint8_t attrs = static_cast<uint8_t>(w1 & TILE_ATTR_MASK & ~TILE_ATTR_CLIP);
+    if (cmd.flags & TQ_F_FLIPX) attrs ^= TILE_ATTR_HFLIP;
+    if (cmd.flags & TQ_F_FLIPY) attrs ^= TILE_ATTR_VFLIP;
+    if (cmd.flags & TQ_F_TRANSPARENT) attrs |= TILE_ATTR_TRANSPARENT;
+    if (cmd.flags & TQ_F_CLIP) attrs |= TILE_ATTR_CLIP;
+
+    // The rows this cell writes, absolute: the tile's eight, cut down to the clip window when there is one.
+    int64_t r0 = cmd.absY, r1 = cmd.absY + 7;
+    if (cmd.flags & TQ_F_CLIP) { r0 = std::max(r0, cmd.absClip0); r1 = std::min(r1, cmd.absClip1 - 1); }
+    const bool empty = r1 < r0;
+    if (!empty) {
+        if (display != nullptr && !display->rowIsClear(r1)) { tqHold = true; return; }   // its slot is not free yet: hold
+        const uint32_t freeMask = ~tileBusyMask & ((1u << NUM_BLIT_CHANNELS) - 1);
+        if (freeMask == 0) { tqHold = true; return; }
+        const int freeChannel = __builtin_ctz(freeMask);
+        const uint32_t rows = static_cast<uint32_t>(r1 - r0 + 1);
+        const uint32_t blitCost = CYC_TILE_BASE + (rows * (TILE_PIXELS / 8)) * (cmd.blendMode != 0 ? CYC_TILE_PX_BLEND : CYC_TILE_PX);
+        BlitChannel& ch = blitChannels[freeChannel];
+        ch = BlitChannel();
+        ch.busy = true;
+        busyBlitChannelCount++;
+        ch.x = static_cast<uint16_t>(static_cast<int16_t>(cmd.x) + 8 * static_cast<int>(k));
+        ch.fromQueue = true;
+        ch.rowLo = r0; ch.rowHi = r1;
+        ch.colLo = static_cast<int16_t>(ch.x); ch.colHi = ch.colLo + 7;
+        // Retire after every older in-flight blit this one overlaps. A blit the queue did not dispatch (TILEDRAW) has no
+        // known extent, so it counts as overlapping everything.
+        uint64_t after = 0;
+        for (size_t i = 0; i < NUM_BLIT_CHANNELS; i++) {   // (this channel is not in the mirrors yet, and is not idle there either)
+            const uint64_t done = blitDoneAt[i];           // UINT64_MAX: idle
+            const bool overlaps = (ovRowLo[i] <= ch.rowHi) & (ch.rowLo <= ovRowHi[i]) & (ovColLo[i] <= ch.colHi) & (ch.colLo <= ovColHi[i]);
+            const uint64_t cand = (overlaps & (done != UINT64_MAX)) ? done : 0;
+            after = cand > after ? cand : after;
+        }
+        ch.completeAt = std::max(blitClock + blitCost, after + 1);
+        blitDoneAt[freeChannel] = ch.completeAt;
+        tileBusyMask |= 1u << freeChannel;
+        ovRowLo[freeChannel] = ch.rowLo; ovRowHi[freeChannel] = ch.rowHi;
+        ovColLo[freeChannel] = ch.colLo; ovColHi[freeChannel] = ch.colHi;
+        if (ch.completeAt > lastTileCompleteAt) lastTileCompleteAt = ch.completeAt;   // a later TILEDRAW still retires after this
+        if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
+        ch.tileBank = static_cast<uint8_t>(w1 & 3);
+        ch.tileId = static_cast<uint8_t>(w0 & 0xFF);
+        ch.tileMode = static_cast<uint8_t>((cmd.flags >> 4) & 3);
+        ch.blendMode = cmd.blendMode;
+        ch.attrs = attrs;
+        ch.translucency = cmd.translucency;
+        ch.absY = cmd.absY; ch.absClip0 = cmd.absClip0; ch.absClip1 = cmd.absClip1;
+        tqCooldown = TQ_DISPATCH_CYCLES;
+    }
+    tqPending--;
+    if (++cmd.next == cmd.count) {
+        tqHead = (tqHead + 1) % TQ_CAPACITY;
+        tqCount--;
+    }
+    if (tqPending == 0) tqCooldown = 0;
 }
 
 void PPU::startLineBlit() {
+    settleBlits();
     // Snapshot the port into a free line channel; the run is written when the channel completes, like a tile blit.
     // All four busy: the launch is dropped and the sticky overrun flag set (a write has no way to stall the
     // instruction that made it, and a program that paces its launches never sees this).
@@ -845,6 +1079,7 @@ void PPU::startLineBlit() {
         ch.busy = true;
         busyBlitChannelCount++;
         ch.completeAt = blitClock + CYC_LINE_BASE + static_cast<uint64_t>(ch.lineCount) * CYC_LINE_PX;
+        blitDoneAt[i] = ch.completeAt;
         if (ch.completeAt < blitNextDone) blitNextDone = ch.completeAt;
         return;
     }
@@ -1012,6 +1247,7 @@ uint8_t PPU::handleVOCRead(uint16_t address) const {
 }
 
 void PPU::applyVOCRenderMode() {
+    settleBlits();
     if (display == nullptr) return;
 
     // Apply color depth setting (bit 7)
@@ -1021,6 +1257,7 @@ void PPU::applyVOCRenderMode() {
     // Apply rolling mode setting (bit 6): 0=block, 1=single.
     bool singleMode = (vocRegisters.renderModeControl & VOC_ROLLING_MODE) != 0;
     display->setRollingMode(!singleMode);
+    tqHold = false;   // ditto: rowIsClear() depends on both modes
 
     // Palette mode (bit 3) is applied at the $0100-$010B pixel-draw port
     // (handleMemoryWrite), which reads vocRegisters.renderModeControl
@@ -1028,6 +1265,7 @@ void PPU::applyVOCRenderMode() {
 }
 
 void PPU::applyVOCReset() {
+    settleBlits();
     // Reset PPU state but preserve VRAM (memory)
     // Don't clear memory - only registers and state
     registers.fill(0);
@@ -1056,11 +1294,13 @@ void PPU::applyVOCReset() {
     for (auto& ch : blitChannels) {
         ch = BlitChannel();
     }
+    resetBlitMirrors();
     busyBlitChannelCount = 0;
     blitClock = 0;
     blitNextDone = UINT64_MAX;
     lastTileCompleteAt = 0;
     lineOverrun = false;
+    resetQueue();
 
     // Don't reset VOC registers themselves (except the reset bit, which is cleared by caller)
 }
@@ -1093,6 +1333,7 @@ const PPU::TileLut& PPU::tileLut(uint8_t tileId) {
         for (int i = 0; i < 16; i++) {
             t.c32[i] = applyTranslucency(palette16Expanded[i], tileId);
             t.c16[i] = Display::color32To16(t.c32[i]);
+            t.opq[i] = (t.c32[i] & 0xFF) != 0;
         }
         tileLutValid |= static_cast<uint8_t>(1u << slot);
     }
@@ -1107,6 +1348,7 @@ const PPU::TileLut256* PPU::tileLut256(uint8_t tileId) {
         for (int i = 0; i < 256; i++) {
             t.c32[i] = applyTranslucency(palette256[i], tileId);
             t.c16[i] = Display::color32To16(t.c32[i]);
+            t.opq[i] = (t.c32[i] & 0xFF) != 0;
         }
         tileLut256Valid |= static_cast<uint8_t>(1u << slot);
     }
@@ -1207,22 +1449,158 @@ void PPU::advanceBlitChannels(uint32_t elapsed) {
 
     // Everything due retires in completion order (channel order would draw a later blit first whenever one batched
     // advance covers several). Tile blits' completion times already follow issue order, see opTILEDRAW.
+    // One pass finds the earliest due blit and the earliest completion among the rest; with exactly one due (nearly
+    // always) that is also the new blitNextDone, so there is no second look.
     for (;;) {
-        BlitChannel* due = nullptr;
-        for (auto& ch : blitChannels) {
-            if (ch.busy && ch.completeAt <= blitClock && (due == nullptr || ch.completeAt < due->completeAt)) due = &ch;
+        // One branch-free pass over the finish times: the earliest due blit (the first channel on a tie), how many are
+        // due, and the earliest completion among the rest. An idle channel is UINT64_MAX: never due, never earlier.
+        uint64_t dueAt = UINT64_MAX, next = UINT64_MAX;
+        unsigned dueIdx = 0, dueCount = 0;
+        for (unsigned i = 0; i < NUM_ALL_CHANNELS; i++) {
+            const uint64_t d = blitDoneAt[i];
+            const bool isDue = d <= blitClock;
+            const bool better = isDue & (d < dueAt);
+            dueAt = better ? d : dueAt;
+            dueIdx = better ? i : dueIdx;
+            dueCount += isDue;
+            const uint64_t pending = isDue ? UINT64_MAX : d;
+            next = pending < next ? pending : next;
         }
-        if (due == nullptr) break;
-        executeBlit(*due);
-        due->busy = false;
+        if (dueCount == 0) { blitNextDone = next; return; }
+        BlitChannel& due = blitChannels[dueIdx];
+        executeBlit(due);
+        due.busy = false;
         busyBlitChannelCount--;
+        blitDoneAt[dueIdx] = UINT64_MAX;
+        if (dueIdx < NUM_BLIT_CHANNELS) tileBusyMask &= ~(1u << dueIdx);
+        if (dueCount == 1) { blitNextDone = next; return; }
     }
-    uint64_t next = UINT64_MAX;
-    for (auto& ch : blitChannels) {
-        if (ch.busy && ch.completeAt < next) next = ch.completeAt;
-    }
-    blitNextDone = next;
 }
+
+namespace {
+
+// Everything a no-blend tile blit needs once its palette has been turned into per-index tables.
+struct BlitRows {
+    Display* display;
+    const uint8_t* tile;                 // 4 bytes per row (4bpp) or 8 (8bpp)
+    const uint16_t* c16;                 // the color of each palette index, as RGBA16 stores it...
+    const uint32_t* c32;                 // ...and as RGBA32 does (translucency already applied)
+    const uint8_t* opq;                  // 1 where the color's alpha is not 0 (what a transparent blit stores)
+    int x, y;                            // destination of the tile's top-left pixel (x signed)
+    int t0, t1;                          // tile rows to draw: [t0, t1) after the row clip
+    int c0, c1;                          // tile columns on the scanline: [c0, c1)
+    bool vflip;
+};
+
+// RGBA16 pixels sit in the framebuffer low byte first. On a little-endian host that is the host's own layout, so a
+// pixel (or a whole row of them) moves as one store instead of a pair of byte stores per pixel.
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr bool kHostLittleEndian = false;
+#else
+constexpr bool kHostLittleEndian = true;
+#endif
+inline void put16(uint8_t* d, uint16_t v) {
+    if (kHostLittleEndian) std::memcpy(d, &v, sizeof v);
+    else { d[0] = v & 0xFF; d[1] = v >> 8; }
+}
+inline uint16_t get16(const uint8_t* d) {
+    if (kHostLittleEndian) { uint16_t v; std::memcpy(&v, d, sizeof v); return v; }
+    return static_cast<uint16_t>(d[0] | (d[1] << 8));
+}
+inline void put32(uint8_t* d, uint32_t v) { d[0] = v >> 24; d[1] = (v >> 16) & 0xFF; d[2] = (v >> 8) & 0xFF; d[3] = v & 0xFF; }
+inline uint32_t get32(const uint8_t* d) { return (uint32_t(d[0]) << 24) | (uint32_t(d[1]) << 16) | (uint32_t(d[2]) << 8) | d[3]; }
+
+// A row at a time: decode the 8 palette indices, look their colors up, work out which columns are stored (all of
+// them, unless the blit is transparent or hangs off an edge) and store. A row that is stored whole is one run of
+// stores; a row that is only partly stored merges with what is already there (stored columns replaced, the rest
+// rewritten with the bytes they hold), which is the same framebuffer as storing the columns one by one but has no
+// branch per pixel for the data to mispredict. The same pixels in the same order as the per-pixel loop in executeBlit.
+template <bool MODE16, bool IS4, bool TRANSP, bool HFLIP>
+void blitRows(const BlitRows& a) {
+    constexpr int BPP = MODE16 ? 2 : 4;
+    using Px = std::conditional_t<MODE16, uint16_t, uint32_t>;
+    const Px* table = nullptr;
+    if constexpr (MODE16) table = a.c16; else table = a.c32;
+    const unsigned colMask = ((1u << a.c1) - 1) & ~((1u << a.c0) - 1);
+    for (int ty = a.t0; ty < a.t1; ty++) {
+        uint8_t* row = a.display->rowBase(a.y + ty);
+        if (row == nullptr) continue;   // this row is outside the window: dropped, like setPixel32 drops it
+        const int sy = a.vflip ? 7 - ty : ty;
+
+        unsigned idx[8];
+        if constexpr (IS4) {
+            const uint8_t* s = a.tile + sy * 4;
+            for (int k = 0; k < 4; k++) {
+                idx[HFLIP ? 7 - 2 * k : 2 * k] = s[k] >> 4;
+                idx[HFLIP ? 6 - 2 * k : 2 * k + 1] = s[k] & 0x0F;
+            }
+        } else {
+            const uint8_t* s = a.tile + sy * 8;
+            for (int k = 0; k < 8; k++) idx[HFLIP ? 7 - k : k] = s[k];
+        }
+
+        unsigned mask = colMask;
+        if constexpr (TRANSP) {
+            unsigned opaque = 0;
+            for (int tx = 0; tx < 8; tx++) opaque |= static_cast<unsigned>(a.opq[idx[tx]]) << tx;
+            mask &= opaque;
+        }
+        if (mask == 0) continue;
+
+        Px px[8];
+        for (int tx = 0; tx < 8; tx++) px[tx] = table[idx[tx]];
+
+        // The address of tile column c0, the first one on the scanline (so it is never before the row).
+        uint8_t* dst = row + static_cast<ptrdiff_t>(a.x + a.c0) * BPP;
+        if (mask == 0xFF) {   // every column, so c0 is 0
+            if constexpr (MODE16 && kHostLittleEndian) {
+                std::memcpy(dst, px, sizeof px);
+            } else {
+                for (int tx = 0; tx < 8; tx++) {
+                    if constexpr (MODE16) put16(dst + 2 * tx, px[tx]); else put32(dst + 4 * tx, px[tx]);
+                }
+            }
+        } else if (a.c0 == 0 && a.c1 == 8) {
+            for (int tx = 0; tx < 8; tx++) {
+                const Px keep = static_cast<Px>(0) - static_cast<Px>((mask >> tx) & 1u);   // all ones where stored
+                if constexpr (MODE16) put16(dst + 2 * tx, (px[tx] & keep) | (get16(dst + 2 * tx) & ~keep));
+                else put32(dst + 4 * tx, (px[tx] & keep) | (get32(dst + 4 * tx) & ~keep));
+            }
+        } else {
+            for (int tx = a.c0; tx < a.c1; tx++) {
+                if (!(mask & (1u << tx))) continue;
+                if constexpr (MODE16) put16(dst + 2 * (tx - a.c0), px[tx]); else put32(dst + 4 * (tx - a.c0), px[tx]);
+            }
+        }
+    }
+}
+
+// Whether every pixel of the tile is the same palette index, and if so which: a blank tile (the usual filler of a
+// transparent layer) is a handful of word compares instead of 64 lookups. Bails out at the first word that differs.
+inline bool uniformTile(const uint8_t* tile, bool is4bpp, unsigned& index) {
+    const uint8_t first = tile[0];
+    if (is4bpp && (first >> 4) != (first & 0x0F)) return false;
+    const uint64_t pattern = 0x0101010101010101ull * first;
+    const size_t bytes = is4bpp ? 32 : 64;
+    for (size_t i = 0; i < bytes; i += 8) {
+        uint64_t w;
+        std::memcpy(&w, tile + i, sizeof w);
+        if (w != pattern) return false;
+    }
+    index = is4bpp ? (first >> 4) : first;
+    return true;
+}
+
+template <bool MODE16, bool IS4>
+void blitRowsFor(const BlitRows& a, bool transparent, bool hflip) {
+    if (transparent) {
+        if (hflip) blitRows<MODE16, IS4, true, true>(a); else blitRows<MODE16, IS4, true, false>(a);
+    } else {
+        if (hflip) blitRows<MODE16, IS4, false, true>(a); else blitRows<MODE16, IS4, false, false>(a);
+    }
+}
+
+} // namespace
 
 void PPU::executeBlit(const BlitChannel& channel) {
     // The pixel loop TILEDRAW used to run inline and synchronously - now
@@ -1233,118 +1611,82 @@ void PPU::executeBlit(const BlitChannel& channel) {
 
     // x is signed (like the line blitter's), so a tile can hang off the left edge; the display clips it per pixel.
     const int x = static_cast<int16_t>(channel.x);
-    uint16_t y = channel.y;
+    // Queued blits keep absolute rows (see BlitChannel::fromQueue); everything below works in local rows.
+    struct AbsoluteRows {   // a queued blit's rows may be in the next frame's space: see Display::setAbsoluteRows
+        Display* d;
+        explicit AbsoluteRows(Display* display, bool on) : d(on ? display : nullptr) { if (d) d->setAbsoluteRows(true); }
+        ~AbsoluteRows() { if (d) d->setAbsoluteRows(false); }
+    } absoluteRowsGuard(display, channel.fromQueue);
+    const int64_t frameOffset = display->getFrameRowOffset();
+    const int y = channel.fromQueue ? static_cast<int>(channel.absY - frameOffset) : channel.y;
+    const int clip0 = channel.fromQueue ? static_cast<int>(channel.absClip0 - frameOffset) : channel.clipY0;
+    const int clip1 = channel.fromQueue ? static_cast<int>(channel.absClip1 - frameOffset) : channel.clipY1;
 
     // Tile mode: 0=16BBGR 4bpp, 1=32RGBA 4bpp, 2=16BBGR 8bpp, 3=32RGBA 8bpp. Bit 0 picks nothing: 4bpp tiles read the
     // 16-entry palette and 8bpp tiles the 256-entry one (palette256, loaded in the render mode's entry format).
-    bool is4bpp = (channel.tileMode & 0x02) == 0;
+    const bool is4bpp = (channel.tileMode & 0x02) == 0;
     const bool transparent = (channel.attrs & TILE_ATTR_TRANSPARENT) != 0;
     const bool hflip = (channel.attrs & TILE_ATTR_HFLIP) != 0;
     const bool vflip = (channel.attrs & TILE_ATTR_VFLIP) != 0;
     const bool clipRows = (channel.attrs & TILE_ATTR_CLIP) != 0;
 
-    // No blending and no attributes (the common case): nothing reads the framebuffer back, so build each 8-pixel row
-    // and hand it to the display in one go - same colors, same order, one rolling-buffer lookup per row instead of
-    // per pixel. Flips, transparency and blending take the per-pixel loop below.
-    if (channel.blendMode == 0 && channel.attrs == 0) {
-        const auto& tile = tileStorage[channel.tileBank][channel.tileId];
-        if (is4bpp) {
-            // 4bpp: both color modes read the 16-entry palette, and translucency depends only on the color, so
-            // the 16 entries are translated once (tileLut() keeps them until the palette or translucency changes)
-            // and each row (4 bytes) decodes straight into 8 colors.
-            const TileLut& tl = tileLut(channel.tileId);
-            const uint32_t* lut = tl.c32;
-            const uint16_t* lut16 = tl.c16;
-            // Whole-row stores straight into the framebuffer when the tile is on screen and the window holds
-            // the row (nearly always); setPixelRow32 below is the clipped / out-of-window path.
-            const bool mode16 = display->getRenderMode() == RenderMode::RGBA16;
-            for (int ty = 0; ty < 8; ty++) {
-                const uint8_t* src = &tile[ty * 4];
-                if (uint8_t* dst = display->rowSpan(x, y + ty, 8)) {
-                    if (mode16) {
-                        for (int k = 0; k < 4; k++) {
-                            const uint16_t a = lut16[src[k] >> 4];
-                            const uint16_t b = lut16[src[k] & 0x0F];
-                            dst[4 * k] = a & 0xFF;
-                            dst[4 * k + 1] = a >> 8;
-                            dst[4 * k + 2] = b & 0xFF;
-                            dst[4 * k + 3] = b >> 8;
-                        }
-                    } else {
-                        for (int k = 0; k < 4; k++) {
-                            const uint32_t a = lut[src[k] >> 4];
-                            const uint32_t b = lut[src[k] & 0x0F];
-                            dst[8 * k] = a >> 24;
-                            dst[8 * k + 1] = (a >> 16) & 0xFF;
-                            dst[8 * k + 2] = (a >> 8) & 0xFF;
-                            dst[8 * k + 3] = a & 0xFF;
-                            dst[8 * k + 4] = b >> 24;
-                            dst[8 * k + 5] = (b >> 16) & 0xFF;
-                            dst[8 * k + 6] = (b >> 8) & 0xFF;
-                            dst[8 * k + 7] = b & 0xFF;
-                        }
-                    }
-                    continue;
-                }
-                uint32_t rowColors[8];
-                for (int k = 0; k < 4; k++) {
-                    rowColors[2 * k] = lut[src[k] >> 4];
-                    rowColors[2 * k + 1] = lut[src[k] & 0x0F];
-                }
-                display->setPixelRow32(x, y + ty, rowColors, 8);
-            }
-            return;
-        }
-        // 8bpp: the same through the 256-entry table, once the palette has settled (tileLut256)
-        if (const TileLut256* t8 = tileLut256(channel.tileId)) {
-            const bool mode16 = display->getRenderMode() == RenderMode::RGBA16;
-            for (int ty = 0; ty < 8; ty++) {
-                const uint8_t* src = &tile[ty * 8];
-                if (uint8_t* dst = display->rowSpan(x, y + ty, 8)) {
-                    if (mode16) {
-                        for (int k = 0; k < 8; k++) {
-                            const uint16_t c = t8->c16[src[k]];
-                            dst[2 * k] = c & 0xFF;
-                            dst[2 * k + 1] = c >> 8;
-                        }
-                    } else {
-                        for (int k = 0; k < 8; k++) {
-                            const uint32_t c = t8->c32[src[k]];
-                            dst[4 * k] = c >> 24;
-                            dst[4 * k + 1] = (c >> 16) & 0xFF;
-                            dst[4 * k + 2] = (c >> 8) & 0xFF;
-                            dst[4 * k + 3] = c & 0xFF;
-                        }
-                    }
-                    continue;
-                }
-                uint32_t rowColors[8];
-                for (int k = 0; k < 8; k++) rowColors[k] = t8->c32[src[k]];
-                display->setPixelRow32(x, y + ty, rowColors, 8);
-            }
-            return;
-        }
-        for (int ty = 0; ty < 8; ty++) {
-            uint32_t rowColors[8];
-            for (int tx = 0; tx < 8; tx++) {
-                uint32_t color = 0;
-                if (is4bpp) {
-                    const uint8_t pixelByte = tile[(ty * 8 + tx) / 2];
-                    const uint8_t paletteIndex = (tx & 1) ? (pixelByte & 0x0F) : ((pixelByte >> 4) & 0x0F);
-                    color = palette16Expanded[paletteIndex];
-                } else {
-                    color = palette256[tile[ty * 8 + tx]];
-                }
-                rowColors[tx] = applyTranslucency(color, channel.tileId);
-            }
-            display->setPixelRow32(x, y + ty, rowColors, 8);
-        }
-        return;
+    // The tile rows that are drawn: all eight, or those inside the row clip.
+    int t0 = 0, t1 = 8;
+    if (clipRows) {
+        t0 = std::clamp(clip0 - y, 0, 8);
+        t1 = std::clamp(clip1 - y, 0, 8);
     }
 
+    // A queued blit whose rows have already left the window (the PPU queued it too late) is lost; remember it in the
+    // sticky late bit instead of drawing a torn frame silently. The window is a run of rows, so when the first and
+    // last drawn rows are both in it (and not negative, where a row's slot goes by its signed remainder) so are all
+    // the rows between; anything else is looked at row by row.
+    if (channel.fromQueue && t0 < t1 &&
+        !(y + t0 >= 0 && display->isRowWritable(y + t0) && display->isRowWritable(y + t1 - 1))) {
+        for (int ty = t0; ty < t1; ty++) {
+            if (!display->isRowWritable(y + ty)) { tqLate = true; break; }
+        }
+    }
+
+    // Without blending nothing reads the framebuffer back, so a blit is a pure function of its tile and palette:
+    // translucency depends only on the color, so the palette is translated once (see tileLut / tileLut256: 16 entries
+    // for 4bpp, 256 for 8bpp once its palette has settled - until then 8bpp translates per pixel, below).
+    if (channel.blendMode == 0) {
+        const TileLut* tl = is4bpp ? &tileLut(channel.tileId) : nullptr;
+        const TileLut256* t8 = is4bpp ? nullptr : tileLut256(channel.tileId);
+        if (tl != nullptr || t8 != nullptr) {
+            if (t0 >= t1) return;
+            // Columns on the scanline: a tile hanging off an edge is clipped per pixel.
+            const int c0 = std::clamp(-x, 0, 8);
+            const int c1 = std::clamp(FB_WIDTH - x, 0, 8);
+            if (c0 >= c1) return;
+            BlitRows args;
+            args.display = display;
+            args.tile = tileStorage[channel.tileBank][channel.tileId].data();
+            args.c16 = tl ? tl->c16 : t8->c16;
+            args.c32 = tl ? tl->c32 : t8->c32;
+            args.opq = tl ? tl->opq : t8->opq;
+            // A transparent blit of a tile whose every pixel is a transparent color stores nothing.
+            unsigned blankIndex;
+            if (transparent && uniformTile(args.tile, is4bpp, blankIndex) && !args.opq[blankIndex]) return;
+            args.x = x; args.y = y;
+            args.t0 = t0; args.t1 = t1;
+            args.c0 = c0; args.c1 = c1;
+            args.vflip = vflip;
+            const bool mode16 = display->getRenderMode() == RenderMode::RGBA16;
+            if (mode16) {
+                if (is4bpp) blitRowsFor<true, true>(args, transparent, hflip); else blitRowsFor<true, false>(args, transparent, hflip);
+            } else {
+                if (is4bpp) blitRowsFor<false, true>(args, transparent, hflip); else blitRowsFor<false, false>(args, transparent, hflip);
+            }
+            return;
+        }
+    }
+
+    // The per-pixel reference: blending (it reads the framebuffer back) and 8bpp while its palette is still settling.
     for (int ty = 0; ty < 8; ty++) {
         const int sy = vflip ? 7 - ty : ty;   // source row: the destination row is always (y + ty)
-        if (clipRows && (y + ty < channel.clipY0 || y + ty >= channel.clipY1)) continue;
+        if (clipRows && (y + ty < clip0 || y + ty >= clip1)) continue;
         for (int tx = 0; tx < 8; tx++) {
             const int sx = hflip ? 7 - tx : tx;
             uint32_t color = 0;
@@ -1372,7 +1714,7 @@ void PPU::executeBlit(const BlitChannel& channel) {
             if (channel.blendMode != 0) {
                 // Calculate framebuffer address for this pixel
                 const int pixelX = x + tx;
-                uint16_t pixelY = y + ty;
+                const int pixelY = y + ty;
                 if (pixelX < 0 || pixelX >= FB_WIDTH) continue;   // off the scanline: setPixel32 would drop it
 
                 // Read existing pixel from framebuffer
@@ -1382,27 +1724,27 @@ void PPU::executeBlit(const BlitChannel& channel) {
                     // 32-bit: 4 bytes/pixel. The rolling buffer only
                     // holds 8 scanlines, so index by (pixelY % 8) to
                     // stay within the $E000-$FFFF window.
-                    uint16_t row = pixelY % FB_SCANLINES_32BIT;
+                    const uint16_t row = static_cast<uint16_t>(pixelY % FB_SCANLINES_32BIT);
                     uint16_t fbAddr = 0xE000 + (row * 1024) + (pixelX * 4);
 
                     // Read 4 bytes (RGBA) from framebuffer
                     if (fbAddr + 3 <= 0xFFFF) {
-                        uint8_t r = handleMemoryRead(fbAddr + 0);
-                        uint8_t g = handleMemoryRead(fbAddr + 1);
-                        uint8_t b = handleMemoryRead(fbAddr + 2);
-                        uint8_t a = handleMemoryRead(fbAddr + 3);
+                        uint8_t r = framebufferByte(fbAddr + 0);
+                        uint8_t g = framebufferByte(fbAddr + 1);
+                        uint8_t b = framebufferByte(fbAddr + 2);
+                        uint8_t a = framebufferByte(fbAddr + 3);
                         dstColor = (r << 24) | (g << 16) | (b << 8) | a;
                     }
                 } else {
                     // 16-bit: 2 bytes/pixel, 16-scanline rolling window;
                     // index by (pixelY % 16) within the 8 KiB buffer.
-                    uint16_t row = pixelY % FB_SCANLINES_16BIT;
+                    const uint16_t row = static_cast<uint16_t>(pixelY % FB_SCANLINES_16BIT);
                     uint16_t fbAddr = 0xE000 + (row * 512) + (pixelX * 2);
 
                     // Read 2 bytes (16-bit BGR) from framebuffer
                     if (fbAddr + 1 <= 0xFFFF) {
-                        uint8_t low = handleMemoryRead(fbAddr);
-                        uint8_t high = handleMemoryRead(fbAddr + 1);
+                        uint8_t low = framebufferByte(fbAddr);
+                        uint8_t high = framebufferByte(fbAddr + 1);
                         uint16_t rgb16 = (high << 8) | low;
 
                         // Convert 16-bit to 32-bit for blending
@@ -1491,6 +1833,16 @@ uint64_t PPU::stateHash() const {
         h = fnvv(h, c.tileBank); h = fnvv(h, c.tileId); h = fnvv(h, c.tileMode); h = fnvv(h, c.blendMode); h = fnvv(h, c.attrs); h = fnvv(h, c.clipY0); h = fnvv(h, c.clipY1);
         h = fnv(h, c.translucency.data(), c.translucency.size());
         h = fnvv(h, c.kind); h = fnvv(h, c.lineSrc); h = fnvv(h, c.lineCount);
+        h = fnvv(h, c.fromQueue); h = fnvv(h, c.absY); h = fnvv(h, c.absClip0); h = fnvv(h, c.absClip1);
+        h = fnvv(h, c.rowLo); h = fnvv(h, c.rowHi); h = fnvv(h, c.colLo); h = fnvv(h, c.colHi);
+    }
+    h = fnvv(h, tqPending); h = fnvv(h, tqCount); h = fnvv(h, tqCooldown);
+    h = fnvv(h, tqLate); h = fnvv(h, tqOverflow); h = fnvv(h, writeAhead);
+    for (uint32_t i = 0; i < tqCount; i++) {
+        const RowCmd& c = tqRing[(tqHead + i) % TQ_CAPACITY];
+        h = fnvv(h, c.src); h = fnvv(h, c.count); h = fnvv(h, c.x); h = fnvv(h, c.flags); h = fnvv(h, c.next);
+        h = fnvv(h, c.absY); h = fnvv(h, c.absClip0); h = fnvv(h, c.absClip1); h = fnvv(h, c.blendMode);
+        h = fnv(h, c.translucency.data(), c.translucency.size());
     }
     h = fnvv(h, lastTileCompleteAt > blitClock ? lastTileCompleteAt - blitClock : 0ull);
     h = fnvv(h, lineOverrun);
