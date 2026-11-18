@@ -32,6 +32,7 @@ CPU::CPU()
     bankFast.fill(nullptr);
     bankData.fill(nullptr);
     bankReadable.fill(0);
+    bankUngated.fill(0);
     bankWriteData.fill(nullptr);
     bankWritable.fill(0);
     bankScan.fill(false);
@@ -99,7 +100,11 @@ uint8_t CPU::readByte(uint32_t address) {
     // cartridge) the gated and ungated results are the same byte, so they take the flat path too.
     const uint8_t bank = (address >> 16) & 0xFF;
     const uint32_t offset = address & 0xFFFF;
-    if (offset < bankReadable[bank] && !(dataGatingActive && bank <= 0x7F && PB != 0xE0) && useMemoryMap) [[likely]] {
+    if (offset < bankUngated[bank] && useMemoryMap) [[likely]] {
+        return bankData[bank][offset];
+    }
+    // The Boot ROM reads everything raw (verify hashing the cartridge): the gated byte would be the same one.
+    if (PB == 0xE0 && offset < bankReadable[bank] && useMemoryMap) {
         return bankData[bank][offset];
     }
     if (bank == apuWindowBank && apuPtr && apuPtr->isFastMode()) cycleCount += 1;   // APU bus contention
@@ -118,7 +123,7 @@ uint8_t CPU::readByteGated(uint32_t address, bool exemptFromGating) {
         {
             const uint8_t flatBank = (address >> 16) & 0xFF;
             const uint32_t flatOffset = address & 0xFFFF;
-            if (flatOffset < bankReadable[flatBank] && !(dataGatingActive && flatBank <= 0x7F)) [[likely]] {
+            if (flatOffset < (exemptFromGating ? bankReadable : bankUngated)[flatBank]) [[likely]] {
                 return bankData[flatBank][flatOffset];
             }
         }
@@ -1652,6 +1657,7 @@ void CPU::rebuildBankTable() {
 
     bankData.fill(nullptr);
     bankReadable.fill(0);
+    bankUngated.fill(0);
     bankWriteData.fill(nullptr);
     bankWritable.fill(0);
 
@@ -1664,6 +1670,13 @@ void CPU::rebuildBankTable() {
                 if (r->dataSize > bankOffset) {
                     bankData[b] = r->data + bankOffset;
                     bankReadable[b] = static_cast<uint32_t>(std::min<size_t>(65536, r->dataSize - bankOffset));
+                    bankUngated[b] = bankReadable[b];
+                    if (dataGatingActive && b <= 0x7F) {
+                        // Only data offsets below gatedCodeSize are never gated (see readByteGated()); this bank's
+                        // offset 0 is data offset bankOffset of its region.
+                        const size_t ungated = gatedCodeSize > bankOffset ? gatedCodeSize - bankOffset : 0;
+                        bankUngated[b] = static_cast<uint32_t>(std::min<size_t>(bankReadable[b], ungated));
+                    }
                     if (r->type == MemoryRegion::RAM) {
                         bankWriteData[b] = r->data + bankOffset;
                         bankWritable[b] = bankReadable[b];
@@ -1948,6 +1961,7 @@ void CPU::configureDataGating(uint32_t codeSize, uint32_t chunkCount) {
                 if (off < chunkVerified.size()) chunkVerified[off] = value;
             });
     }
+    rebuildBankTable();   // the flat limits (bankUngated) depend on gatedCodeSize
 }
 
 void CPU::mapCartridge(const uint8_t* rom, size_t romSize, const uint8_t* meta, size_t metaSize,
@@ -2000,6 +2014,7 @@ void CPU::clearDataGating() {
     chunkVerified.clear();
     gatedBitmapOffset = 0;
     gatedBitmapSize = 0;
+    rebuildBankTable();   // every cartridge bank is flat again (bankUngated)
 }
 
 void CPU::writeByteForDMA(uint32_t address, uint8_t value) {

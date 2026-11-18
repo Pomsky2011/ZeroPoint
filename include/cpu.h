@@ -568,6 +568,14 @@ private:
     // banks, which take the full path.
     std::array<const uint8_t*, 256> bankData{};
     std::array<uint32_t, 256> bankReadable{};
+    // How many of those bytes any reader may take straight from the flat view. The same as bankReadable except in a
+    // cartridge bank (<= $7F) while chunk gating is active: only the signed code region [0, gatedCodeSize) is never
+    // gated, so only that prefix is flat; the rest takes readByteGated() and its chunk-verified check. Derived from
+    // the memory map and the gating configuration, so rebuildBankTable() recomputes it and every change of
+    // dataGatingActive / gatedCodeSize must be followed by one. The Boot ROM (PB == $E0) reads raw through
+    // bankReadable instead (see readByte()). Bank $E0's own entry is equal to bankReadable's, so fetch() can use this
+    // table alone.
+    std::array<uint32_t, 256> bankUngated{};
     // Same for writes: only RAM banks (a write to ROM is dropped by the full path).
     std::array<uint8_t*, 256> bankWriteData{};
     std::array<uint32_t, 256> bankWritable{};
@@ -677,8 +685,9 @@ private:
 // Instruction fetch is the hottest read there is, so it is inline here: the common case (a plain ROM/RAM byte of the
 // executing bank, not subject to chunk gating) is one bounds check and one load.
 inline uint8_t CPU::fetch() {
-    // Same flat-view shortcut as readByte(): the executing bank is PB, so "is PB the Boot ROM" is a plain compare.
-    if (PC < bankReadable[PB] && !(dataGatingActive && PB <= 0x7F && PB != 0xE0) && useMemoryMap) [[likely]] {
+    // Same flat-view shortcut as readByte(): the executing bank is PB, and bankUngated[$E0] is bankReadable[$E0], so the
+    // Boot ROM's own code is flat too while a cartridge's code is flat only inside its ungated code region.
+    if (PC < bankUngated[PB] && useMemoryMap) [[likely]] {
         return bankData[PB][PC++];
     }
     return fetchSlow();
