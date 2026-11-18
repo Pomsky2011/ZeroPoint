@@ -1,4 +1,5 @@
 #include "apu.h"
+#include "mod_nodiv.h"
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>
@@ -1087,7 +1088,7 @@ void APU::updateMMP() {
                 uint32_t loopStart = loopStartSample(ch);
                 uint32_t loopStartPos = loopStart << 12;
                 ch.samplePosition = loopStartPos +
-                    (ch.samplePosition - loopStartPos) % (maxPosition - loopStartPos);
+                    ZeroPoint::modU32(ch.samplePosition - loopStartPos, maxPosition - loopStartPos);
             }
         }
     }
@@ -1098,7 +1099,7 @@ void APU::updateMMP() {
 void APU::writeStreamReg(uint16_t address, uint8_t value) {
     auto syncPtr = [&](uint16_t reg, uint16_t v) { memory[reg] = v & 0xFF; memory[reg + 1] = v >> 8; };
     auto syncStatus = [&]() { memory[0x71] = (stream.underrun ? 1 : 0) | (stream.playing ? 2 : 0); };
-    auto wrap = [&]() { if (stream.size) { stream.rd %= stream.size; stream.wr %= stream.size; } };
+    auto wrap = [&]() { if (stream.size) { stream.rd = static_cast<uint16_t>(ZeroPoint::modU32(stream.rd, stream.size)); stream.wr = static_cast<uint16_t>(ZeroPoint::modU32(stream.wr, stream.size)); } };
 
     switch (address) {
     case 0x70:
@@ -1148,7 +1149,7 @@ void APU::updateStream() {
         return;
     }
 
-    uint32_t avail = (static_cast<uint32_t>(st.wr) + st.size - st.rd) % st.size;
+    uint32_t avail = ZeroPoint::modU32(static_cast<uint32_t>(st.wr) + st.size - st.rd, st.size);
     if (avail < 3) {
         st.underrun = true;
         st.playing = false;
@@ -1160,7 +1161,7 @@ void APU::updateStream() {
     memory[0x71] = (st.underrun ? 1 : 0) | 2;
 
     auto frame = [&](uint32_t idx, int ch) {
-        return static_cast<int8_t>(memory[(st.base + ((st.rd + idx) % st.size) * 2 + ch) & 0xFFFF]);
+        return static_cast<int8_t>(memory[(st.base + ZeroPoint::modU32(st.rd + idx, st.size) * 2 + ch) & 0xFFFF]);
     };
     int8_t cur[2] = {frame(0, 0), frame(0, 1)};
     int8_t prev[2] = {st.havePrev ? st.prevL : cur[0], st.havePrev ? st.prevR : cur[1]};
@@ -1176,7 +1177,7 @@ void APU::updateStream() {
         st.prevL = frame(0, 0);
         st.prevR = frame(0, 1);
         st.havePrev = true;
-        st.rd = (st.rd + 1) % st.size;
+        st.rd = static_cast<uint16_t>(ZeroPoint::modU32(st.rd + 1u, st.size));
         avail--;
     }
     if (st.frac >= 0x1000) st.frac &= 0xFFF;
@@ -1215,7 +1216,7 @@ int16_t APU::mixChannels(bool right) {
             if (i + 1 < cacheSize) return i + 1;
             return ch.oneShot ? cacheSize - 1 : loopStart;
         };
-        size_t idx  = (ch.samplePosition >> 12) % cacheSize;
+        size_t idx  = ZeroPoint::modU32(ch.samplePosition >> 12, static_cast<uint32_t>(cacheSize));
         size_t prev = idx > 0 ? idx - 1 : (ch.oneShot || loopStart > 0 ? 0 : cacheSize - 1);
         size_t next = advance(idx);
         size_t next2 = advance(next);

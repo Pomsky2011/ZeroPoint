@@ -232,6 +232,17 @@ void DMAController::processChannel(uint8_t channel) {
     }
 }
 
+// index % patternSize for a pattern of 1-4 bytes (S + 1, S being two bits) without a divide: masks for 1, 2 and 4, and
+// for 3 the multiply by the reciprocal 0xAAAAAAAB, which is exact for every 32-bit index.
+static inline uint32_t patternIndex(uint32_t index, uint32_t patternSize) {
+    switch (patternSize) {
+        case 1:  return 0;
+        case 2:  return index & 1;
+        case 3:  return index - 3 * static_cast<uint32_t>((static_cast<uint64_t>(index) * 0xAAAAAAABull) >> 33);
+        default: return index & 3;
+    }
+}
+
 void DMAController::executeTransfer(DMATransfer& transfer) {
     DMAMode mode = transfer.config.getMode();
     uint32_t currentByte = transfer.bytesTransferred;
@@ -253,8 +264,8 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
             break;
 
         case DMAMode::ConstCopy:
-            // Write pattern[currentByte % patternSize] to target + offset
-            value = transfer.patternBuffer[currentByte % patternSize];
+            // Write pattern[currentByte % patternSize] (see patternIndex) to target + offset
+            value = transfer.patternBuffer[patternIndex(currentByte, patternSize)];
             if (memoryWrite) {
                 memoryWrite(callbackCtx, targetAddr + currentByte, value);
             }
@@ -263,7 +274,7 @@ void DMAController::executeTransfer(DMATransfer& transfer) {
         case DMAMode::RepeatTransfer:
             // Cycle through the whole S+1-byte pattern, writing it
             // repeatedly to the same (non-incrementing) target address.
-            value = transfer.patternBuffer[currentByte % patternSize];
+            value = transfer.patternBuffer[patternIndex(currentByte, patternSize)];
             if (memoryWrite) {
                 memoryWrite(callbackCtx, targetAddr, value);
             }

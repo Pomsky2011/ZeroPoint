@@ -449,11 +449,11 @@ void System::advanceNonVideo(uint64_t cycles) {
     // advanceQuiet() without the video chips: the budget accruals and audio accumulation of `cycles` skipped
     // cycles, and the clock itself.
     const uint64_t c = masterCycleCount;
-    const uint64_t apuPeriod = apu.isFastMode() ? 8 : 16;
+    const unsigned apuShift = apu.isFastMode() ? 3 : 4;   // the APU period (8 or 16 master cycles) as a shift
     if (cpu.getState() == CPUState::Running)
         cpuCycleBudget += static_cast<int64_t>((c + cycles) / 4 - c / 4);
     if (!apu.isHalted())
-        apuCycleBudget += static_cast<int64_t>((c + cycles) / apuPeriod - c / apuPeriod);
+        apuCycleBudget += static_cast<int64_t>(((c + cycles) >> apuShift) - (c >> apuShift));
     audioSampleAccum += AUDIO_SAMPLE_RATE * cycles;
     masterCycleCount += cycles;
 }
@@ -562,11 +562,11 @@ void System::advanceQuiet(uint64_t cycles, bool foldEventTick) {
     // cycle with c % 4 == 3 (CPU, if running) / c % 16 == 15 (APU, if not halted). By construction none of them
     // makes the budget positive: that cycle is the event cycle after this stretch.
     const uint64_t c = masterCycleCount;
-    const uint64_t apuPeriod = apu.isFastMode() ? 8 : 16;
+    const unsigned apuShift = apu.isFastMode() ? 3 : 4;   // the APU period (8 or 16 master cycles) as a shift
     if (cpu.getState() == CPUState::Running)
         cpuCycleBudget += static_cast<int64_t>((c + cycles) / 4 - c / 4);
     if (!apu.isHalted())
-        apuCycleBudget += static_cast<int64_t>((c + cycles) / apuPeriod - c / apuPeriod);
+        apuCycleBudget += static_cast<int64_t>(((c + cycles) >> apuShift) - (c >> apuShift));
     const uint64_t ticks = cycles + (foldEventTick ? 1 : 0);   // the event cycle's own ppu/display tick
     ppu.tickMany(static_cast<uint32_t>(ticks));
     display.advanceQuiet(static_cast<int>(ticks));
@@ -802,8 +802,8 @@ void System::runCpuBurst(uint64_t target) {
         if (e > c) {                                                   // the quiet cycles before it
             cpuCycleBudget += static_cast<int64_t>(e / 4 - c / 4);
             if (!apuHaltedSnap) {
-                const uint64_t apuPeriod = apu.isFastMode() ? 8 : 16;
-                apuCycleBudget += static_cast<int64_t>(e / apuPeriod - c / apuPeriod);
+                const unsigned apuShift = apu.isFastMode() ? 3 : 4;
+                apuCycleBudget += static_cast<int64_t>((e >> apuShift) - (c >> apuShift));
             }
             audioSampleAccum += AUDIO_SAMPLE_RATE * (e - c);
             masterCycleCount = e;
