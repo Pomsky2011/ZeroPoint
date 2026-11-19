@@ -217,6 +217,7 @@ void EmulatorWidget::emuLoop()
     const auto publishEvery = std::chrono::duration_cast<Clock::duration>(
         std::chrono::duration<double>(TICK_SECONDS));
     system.setVideoThread(ZeroPoint::System::videoThreadDefault());   // PPU/display catch-up beside the CPU
+    system.setIdlePollSkip(ZeroPoint::System::idlePollSkipDefault());
     auto fpsWindowStart = Clock::now();
     auto lastPublish = fpsWindowStart;
     int fpsSystemFrames = 0;   // System frames stepped in the current FPS window

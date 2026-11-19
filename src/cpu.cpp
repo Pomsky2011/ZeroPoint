@@ -90,6 +90,15 @@ void CPU::setMemory(uint8_t* mem, size_t size) {
 
 // Memory access with 24-bit addressing
 uint8_t CPU::readByte(uint32_t address) {
+    if (accessLog) [[unlikely]] {
+        const uint8_t v = readByteUntraced(address);
+        accessLog->addLoad(address, v);
+        return v;
+    }
+    return readByteUntraced(address);
+}
+
+uint8_t CPU::readByteUntraced(uint32_t address) {
     // Direct CPU-instruction reads are synchronous with the current
     // instruction, so checking live PB has no time-of-check/time-of-use gap
     // - unlike the DMA path (see readByteForDMA()), there's no window
@@ -169,6 +178,11 @@ uint8_t CPU::readByteGated(uint32_t address, bool exemptFromGating) {
 }
 
 void CPU::writeByte(uint32_t address, uint8_t value) {
+    if (accessLog) [[unlikely]] accessLog->writes++;
+    writeByteUntraced(address, value);
+}
+
+void CPU::writeByteUntraced(uint32_t address, uint8_t value) {
     // If memory mapping is enabled, use it (optimized flag check)
     if (useMemoryMap) [[likely]] {
         {   // flat per-bank RAM view (see bankWriteData): the same store as the region walk below
@@ -2073,6 +2087,7 @@ void CPU::registerIORegion(uint8_t bank, uint16_t baseOffset, uint16_t size,
 }
 
 void CPU::mapPPUWindow(uint8_t bank) {
+    ppuWindowBank = bank;
     MemoryRegion region;
     region.type = MemoryRegion::PPU_WINDOW;
     region.touchesVideo = true;
@@ -2865,6 +2880,44 @@ uint64_t CPU::stateHash() const {
         if (r.type == MemoryRegion::RAM && r.data) mix(r.data, r.dataSize);
     }
     return h;
+}
+
+} // namespace ZeroPoint
+
+namespace ZeroPoint {
+
+CpuSignature CPU::idleSignature() const {
+    CpuSignature s;
+    s.A = A; s.X = X; s.Y = Y; s.SP = SP; s.D = D; s.PC = PC;
+    s.loopCounter = loopCounter; s.loopStart = loopStart;
+    s.PB = PB; s.DB = DB; s.P = P.toByte();
+    s.state = static_cast<uint8_t>(state);
+    s.flags = static_cast<uint8_t>((irqPending ? 1 : 0) | (nmiPending ? 2 : 0) | (abortPending ? 4 : 0) |
+                                   (bootServiceActive ? 8 : 0));
+    return s;
+}
+
+WatchClass CPU::classifyLoad(uint32_t address) const {
+    const uint8_t bank = (address >> 16) & 0xFF;
+    const uint16_t offset = address & 0xFFFF;
+    if (!useMemoryMap) return WatchClass::Other;
+    if (bank == 0xD8) {
+        if (offset == 0x0051) return WatchClass::Timer;   // $D80058 (IRQ status) also records blank edges: Other for now
+        if ((offset >= 0x0030 && offset <= 0x0032) || (offset >= 0x0038 && offset <= 0x003A)) return WatchClass::Input;
+        return WatchClass::Other;
+    }
+    if (bank == ppuWindowBank) {
+        // The PPU's read-side specials (PPU::handleMemoryRead): scanline, VOC, blit status, queue registers; and the
+        // framebuffer / open-bus range.
+        if (offset == 0x00E0 || offset == 0x00E1 || (offset >= 0x00F0 && offset <= 0x00FF) || offset == 0x034A ||
+            (offset >= 0x0360 && offset <= 0x0367)) return WatchClass::PpuPort;
+        if (offset >= 0xC000) return WatchClass::PpuFb;
+        return WatchClass::PpuMem;
+    }
+    if (bank == apuWindowBank) return WatchClass::ApuRam;
+    if (offset < bankUngated[bank] && bankWritable[bank] == 0) return WatchClass::Rom;   // flat read-only bytes
+    if (offset < bankWritable[bank]) return WatchClass::WorkRam;
+    return WatchClass::Other;
 }
 
 } // namespace ZeroPoint

@@ -103,6 +103,8 @@ void System::reset() {
     videoAccessed = false;
     nextTimerEventCycle = UINT64_MAX;   // no timers enabled -> nothing scheduled
     timersLastUpdateCycle = 0;
+    idleDetect.drop(cpu);
+    lastTimerFireCycle = UINT64_MAX;
     cpuCycleBudget = 0;
     apuCycleBudget = 0;
     audioSampleAccum = 0;
@@ -245,11 +247,13 @@ bool System::insertCartridge(const std::vector<uint8_t>& image) {
         return false;
     }
     cacheROM(rom);   // also what is on the bus from now on: no reset, no boot, no verify
+    idleDetect.drop(cpu);
     mapCartridgeNow();
     return true;
 }
 
 void System::ejectCartridge() {
+    idleDetect.drop(cpu);
     cpu.ejectCartridge();
     pendingRomData.clear();
     pendingSignedMetadata.clear();
@@ -501,6 +505,11 @@ bool System::videoThreadDefault() {
     return !(env && env[0] == '0');
 }
 
+bool System::idlePollSkipDefault() {
+    const char* env = std::getenv("ZEROPOINT_IDLE_SKIP");
+    return !(env && env[0] == '0');
+}
+
 bool System::verifySignaturesDefault() {
     const char* env = std::getenv("ZEROPOINT_NO_VERIFY");
     return !(env && env[0] == '1');
@@ -576,6 +585,7 @@ void System::advanceQuiet(uint64_t cycles, bool foldEventTick) {
 
 void System::runCycles(uint64_t cycles) {
     const uint64_t target = masterCycleCount + cycles;
+    if (idlePollSkip) idleDetect.drop(cpu);   // the host may have touched anything since the last call: re-learn the loop
     while (masterCycleCount < target && !cpu.isHalted()) {
         if (!vblankIRQEnabled && !hblankIRQEnabled && dma.tickIsNoOp()) {
             // Nothing can make the CPU need the video chips except its own accesses to them (which sync them
@@ -711,9 +721,15 @@ ZP_ALWAYS_INLINE void System::cpuApuAudioCycle(int cyclePhase) {
         cpuCycleBudget++;
     }
     while (cpuCycleBudget > 0 && cpu.getState() == CPUState::Running) {
+        if (idleSkipOK && idleDetect.atSkipPoint(cpu)) [[unlikely]] {
+            if (trySkipIdle()) continue;
+        }
         uint64_t before = cpu.cycleCount;
+        const uint32_t pcBefore = idlePollSkip ? (static_cast<uint32_t>(cpu.PB) << 16) | cpu.PC : 0;
         cpu.step();
-        cpuCycleBudget -= static_cast<int64_t>(cpu.cycleCount - before);
+        const uint64_t spent = cpu.cycleCount - before;
+        cpuCycleBudget -= static_cast<int64_t>(spent);
+        if (idlePollSkip) [[unlikely]] idleDetect.observe(cpu, pcBefore, spent, masterCycleCount);
     }
 
     // APU runs at master/16 (~4.25 MHz), or master/8 (~8.5 MHz) in fast mode. Same cycle-debited pacing; each APU
@@ -756,6 +772,35 @@ void System::tickRest(int cyclePhase, bool& outVBlank, bool& outHBlank, bool sam
         outHBlank = display.isHBlank();
         ppu.setBlankStatus(outVBlank, outHBlank);
     }
+}
+
+// Idle-poll skip (docs/idle-poll-skip.md, phase 2). The CPU is at the first instruction of a fresh iteration of a loop
+// that is closed, read-only and stable, and everything it loads is a constant or changes only at an instant we know.
+// Run k whole iterations as one instruction of k*T CPU cycles at this very cycle: every other component runs as it
+// would have, and the CPU is next due exactly when the k-th iteration would have ended (4 master cycles per CPU cycle).
+// Exact because (a) the CPU starts an instruction on an accrual cycle (c % 4 == 3) with a budget of exactly 1, and an
+// instruction of n cycles then makes the next one due n accruals = 4n cycles later, so iteration j starts at
+// c + (j-1) * 4T; (b) nothing the loop loads can change before the first cycle at which a timer fires: only the CPU
+// writes RAM/timer registers (the loop has no store) and only the host, between runCycles() calls (which drop the
+// detector), changes controller ports; DMA is idle in run-ahead. The timer status is set at the *end* of its event
+// cycle, so loads at cycles before it read the old value; we skip only iterations that end at or before it. A timer
+// event is also the only thing that can latch an IRQ, so no interrupt can be due inside the skipped stretch.
+bool System::trySkipIdle() {
+    const uint64_t c = masterCycleCount;
+    if ((c & 3) != 3 || cpuCycleBudget != 1 || cpu.interruptDeliverable() || !dma.tickIsNoOp()) return false;
+    // The reference loads must postdate every timer event so far: one that fired during the last real iteration, after
+    // the loop's load, would have changed what the next iteration reads.
+    if (lastTimerFireCycle != UINT64_MAX && lastTimerFireCycle >= idleDetect.validSince()) return false;
+    uint64_t limit = idleSkipTarget;                     // never past the end of this run: a stop inside would see the CPU ahead
+    if (nextTimerEventCycle < limit) limit = nextTimerEventCycle;
+    if (limit <= c) return false;
+    const uint64_t T = idleDetect.iterationCycles();
+    const uint64_t k = (limit - c) / (4 * T);
+    if (k == 0) return false;
+    cpu.idleAdvance(k * T, k * idleDetect.iterationInstructions());
+    cpuCycleBudget -= static_cast<int64_t>(k * T);
+    idleDetect.noteSkipped(k);
+    return true;
 }
 
 void System::runCpuBurst(uint64_t target) {
@@ -809,7 +854,10 @@ void System::runCpuBurst(uint64_t target) {
             masterCycleCount = e;
         }
         videoAccessed = false;
+        idleSkipOK = idlePollSkip;
+        idleSkipTarget = target;
         cpuApuAudioCycle(static_cast<int>(e & 15));
+        idleSkipOK = false;
         if (videoAccessed) {
             // as runAhead(): the video chips are exactly at this cycle now, and step() would have handed the PPU the
             // display's blank lines after the CPU ran
@@ -932,6 +980,7 @@ void System::rescheduleTimers() {
 }
 
 void System::fireDueTimers() {
+    lastTimerFireCycle = masterCycleCount;
     uint64_t* counters[8];
     collectTimerCounters(timers, counters);
 

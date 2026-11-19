@@ -130,6 +130,7 @@ set(CORE_SOURCES
     src/apu.cpp
     src/apu_hle.cpp
     src/cpu.cpp
+    src/idle_detect.cpp
     src/cpu_instructions.cpp
     src/system.cpp
     src/default_boot_rom.cpp
@@ -368,6 +369,10 @@ target_link_libraries(test_determinism zeropoint_core)
 add_executable(fuzz_determinism tools/fuzz_determinism.cpp)
 target_link_libraries(fuzz_determinism zeropoint_core)
 
+# The idle-poll skip (docs/idle-poll-skip.md) must be invisible: polling-loop guests, skip on vs off vs per-cycle
+add_executable(fuzz_idle_skip tools/fuzz_idle_skip.cpp)
+target_link_libraries(fuzz_idle_skip zeropoint_core)
+
 # The native (HLE) Boot ROM against the real one: signature verification, COP #$FF, COP #$F7 (tools/test_hle_cop.sh)
 add_executable(test_hle_cop tools/test_hle_cop.cpp)
 target_link_libraries(test_hle_cop zeropoint_core)
@@ -580,6 +585,10 @@ set_target_properties(test_determinism PROPERTIES
 )
 
 set_target_properties(fuzz_determinism PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+set_target_properties(fuzz_idle_skip PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

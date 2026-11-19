@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include "idle_detect.h"
 
 // Forward declaration (APU is in global namespace)
 class APU;
@@ -143,6 +144,16 @@ public:
     void writeWord(uint32_t address, uint16_t value);
     uint32_t readLong(uint32_t address);
     void writeLong(uint32_t address, uint32_t value);
+
+    // Idle-poll detector support (docs/idle-poll-skip.md): while a log is attached every readByte()/writeByte() is
+    // recorded in it (one predictable branch per access when none is). Host-side, not machine state.
+    void setAccessLog(AccessLog* log) { accessLog = log; }
+    CpuSignature idleSignature() const;
+    // Idle-poll skip: the CPU "executes" a whole number of identical loop iterations that change nothing but its counters.
+    void idleAdvance(uint64_t cycles, uint64_t instructions) { cycleCount += cycles; instructionCount += instructions; }
+    // serviceInterrupts() would vector at the next instruction boundary
+    bool interruptDeliverable() const { return abortPending || nmiPending || (irqPending && !P.I); }
+    WatchClass classifyLoad(uint32_t address) const;
 
     // Memory mapping
     void setPPU(PPU* ppu) { ppuPtr = ppu; }
@@ -591,6 +602,12 @@ private:
     Display* displayPtr;
     DMAController* dmaPtr;
     class System* systemPtr;
+    AccessLog* accessLog = nullptr;   // see setAccessLog()
+    int ppuWindowBank = -1;           // bank of the PPU window (-1: none), for classifyLoad()
+
+    // readByte()/writeByte() without the access log
+    uint8_t readByteUntraced(uint32_t address);
+    void writeByteUntraced(uint32_t address, uint8_t value);
 
     // Player 1 controller state (see PlayerInput:: and setPlayerInput()).
     // Defaults to connected, no input held.

@@ -66,7 +66,7 @@ static int runTestPattern(Window& window) {
 int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
-    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify]\n";
+    std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify] [--no-idle-skip]\n";
     std::cout << "       [--two-players] [--swap-rom rom.zpb]... [--record out.zpm [--author NAME]] [--play in.zpm [--roms PATH]...] [--frames N]\n";
     std::cout << "Keys: arrows/z x c v/a s d f/shift/enter = player 1 (i j k l/7 8 9 0/u o n m = player 2 with --two-players)\n";
     std::cout << "      F1 soft reset, F2 hard reset (power cycle), F3 yank the cartridge, F4 Stop 'n' Swop (next --swap-rom)\n";
@@ -77,6 +77,7 @@ int main(int argc, char** argv) {
     std::string apuBiosPath;
     bool devMode = false;
     bool noVerify = false;
+    bool idleSkip = System::idlePollSkipDefault();   // --no-idle-skip turns the poll fast-forward off (docs/idle-poll-skip.md)
     bool twoPlayers = false;
     std::string recordPath, playPath, author;
     long maxTicks = -1;   // --frames N: stop by itself after N 60 Hz ticks (headless runs, CI)
@@ -87,6 +88,8 @@ int main(int argc, char** argv) {
             devMode = true;
         } else if (std::strcmp(argv[i], "--no-verify") == 0) {
             noVerify = true;   // run unsigned/badly signed ROMs (HLE boot only; a real --boot ROM decides for itself)
+        } else if (std::strcmp(argv[i], "--no-idle-skip") == 0) {
+            idleSkip = false;
         } else if (std::strcmp(argv[i], "--two-players") == 0) {
             twoPlayers = true;
         } else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
@@ -130,6 +133,7 @@ int main(int argc, char** argv) {
     // Full-system mode: drive CPU, PPU, APU, DMA, and display through System.
     System system;
     system.setVideoThread(System::videoThreadDefault());   // PPU/display catch-up beside the CPU (2+ cores)
+    system.setIdlePollSkip(idleSkip);
     if (devMode) {
         system.setDevMode(true);
     }

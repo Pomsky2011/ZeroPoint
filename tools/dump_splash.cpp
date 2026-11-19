@@ -22,6 +22,7 @@ int main(int argc, char** argv) {
     System sys;
     if (!sys.loadBootROM(argv[1]) || !sys.loadROM(argv[2])) { std::fprintf(stderr, "cannot load\n"); return 1; }
     sys.powerOn();
+    if (std::getenv("ZP_IDLE_STATS")) sys.setIdlePollSkip(true);   // run the idle-poll detector (see the report at the end)
 
     std::vector<Color32> row(FB_WIDTH);
     for (int f = 0; f <= last; f++) {
@@ -45,6 +46,19 @@ int main(int argc, char** argv) {
                     ppu.getRegister(44), ppu.getRegister(51), ppu.getRegister(63), sys.getCPU().getPB());
         std::printf("   CPU PC=$%04X  PPU $9300(req)=%u $9301(ack)=%u R28(tiles left)=%u SP=$%04X\n",
                     sys.getCPU().getPC(), ppu.readMemory(0x9300), ppu.readMemory(0x9301), ppu.getRegister(28), ppu.getRegister(61));
+    }
+    if (std::getenv("ZP_IDLE_STATS")) {
+        const IdleStats& st = sys.idleStats();
+        std::printf("idle detector: %llu loops confirmed, %llu iterations = %llu CPU cycles (%llu unwatchable, %llu of %llu total CPU cycles)\n",
+                    (unsigned long long)st.loopsConfirmed, (unsigned long long)st.iterations, (unsigned long long)st.cpuCycles,
+                    (unsigned long long)st.cpuCyclesUnwatchable, (unsigned long long)st.cpuCycles, (unsigned long long)sys.getCPU().getCycleCount());
+        std::printf("  skipped: %llu skips, %llu iterations = %llu CPU cycles\n", (unsigned long long)st.skips,
+                    (unsigned long long)st.skippedIterations, (unsigned long long)st.skippedCpuCycles);
+        static const char* const names[] = {"rom", "workram", "apuram", "ppumem", "timer", "input", "ppuport", "ppufb", "other"};
+        for (int i = 0; i < static_cast<int>(WatchClass::COUNT); i++)
+            std::printf("  %-8s %llu\n", names[i], (unsigned long long)st.cpuCyclesByClass[i]);
+        std::printf("  ended by: %llu changed byte, %llu interrupt, %llu cycle drift, %llu unexplained\n", (unsigned long long)st.woke,
+                    (unsigned long long)st.interrupted, (unsigned long long)st.cycleDrift, (unsigned long long)st.unexplained);
     }
     return 0;
 }

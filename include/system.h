@@ -75,6 +75,17 @@ public:
     // What a frontend should pass to setVideoThread(): on, unless ZEROPOINT_VIDEO_THREAD=0 is set.
     static bool videoThreadDefault();
 
+    // Idle-poll skip (design: docs/idle-poll-skip.md): fast-forward a guest loop that does nothing but poll a value that
+    // cannot change, to the first cycle it can. Bit-exact by contract: the machine at every cycle must equal the one
+    // without it (tools/fuzz_idle_skip checks that).
+    // On: loops that only poll a timer status, work RAM, a controller port or ROM are fast-forwarded (phase 2); PPU polls
+    // are still run (phase 3). idleStats() counts what was found and skipped.
+    void setIdlePollSkip(bool on) { if (!on) idleDetect.drop(cpu); idlePollSkip = on; }
+    // What a frontend should pass to setIdlePollSkip(): on, unless ZEROPOINT_IDLE_SKIP=0 is set (or it passes --no-idle-skip).
+    static bool idlePollSkipDefault();
+    const IdleStats& idleStats() const { return idleDetect.stats(); }
+    bool idlePollSkipEnabled() const { return idlePollSkip; }
+
     // Called by the CPU on every access to something that reads or changes PPU/display state (the PPU window and
     // the PPU/display I/O blocks). While runCycles() is running the CPU ahead of the video chips (the catch-up
     // scheduler, see docs/batched-clock.md) this brings them up to date through the current cycle first, exactly
@@ -396,6 +407,12 @@ private:
     // vtRequest (always <= the cycle it is at, so the worker never passes a cycle the CPU may still touch) and
     // takes the chips back by waiting for vtDone == vtRequest; both directions are release/acquire.
     bool videoThreadWanted = false;
+    bool idlePollSkip = false;           // host setting (not machine state, so not hashed): see setIdlePollSkip()
+    bool idleSkipOK = false;             // set only around the CPU's turn inside runCpuBurst(): the one place a skip is exact
+    uint64_t idleSkipTarget = 0;         // ... and the cycle that run stops at
+    bool trySkipIdle();
+    uint64_t lastTimerFireCycle = UINT64_MAX;   // host-side (gates the skip, never read by the machine): the last cycle a timer fired
+    IdleDetector idleDetect;             // derived, host-side bookkeeping: dropped whenever the machine is reset or swapped
     std::thread videoThread;
     std::mutex vtMutex;
     std::condition_variable vtWake;      // runner -> worker: vtRequest raised, or quit
