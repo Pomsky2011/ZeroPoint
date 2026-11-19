@@ -255,6 +255,64 @@ launch and the channel state are in `stateHash()`.
 The boot ROM splash uses it for the ZEROPOINT logo: one launch per scanline from the hblank handler, one row ahead
 (`ZPbootROM/ppu/code/gen_mosaic.py`, `emit_logo_section`). `test_line_blit` covers the unit.
 
+### Tile-Row Queue (write-ahead)
+
+`TILEDRAW` makes the program issue every tile itself (~33 cycles of PPU time each, and each must land inside its
+rows' ~9-scanline window). The tile-row queue moves that to hardware: a program queues a whole *row of tilemap cells*
+at a port, any time before the beam needs it, and the hardware reads the cells, holds each row until its screen rows
+are safe to write, and dispatches the tiles onto the same eight blit channels. It exists for scrolling layers: a map
+row is one launch (~40 PPU cycles) instead of 33+ tile issues. Test: `bin/test_row_queue`; the microcode built on it is
+`ZPdevtools/ucode/layers` (`ZPdevtools/docs/ppu/layers.md`, test `bin/test_layers`).
+
+**Cells** are read from PPU memory *when dispatched* (not at launch), 4 bytes each: word0 = tile ID in the low byte
+(the high byte is ignored), word1 = `bank | attrs | $1000` with the bank in bits 0-1 and the tile attributes (T/H/V) in
+bits 2-4, the same word `MOVDP`s to `$00FC` (so one register can feed `SETTILEBANK` and the attribute push). Keep a
+queued row's cells stable until it has been dispatched.
+
+**Port** (plain PPU memory the launch snapshots; words, little-endian; `MOVDP` to successive words, then `$0360`):
+
+| Address | Meaning |
+|---------|---------|
+| `$0350` | SRC: PPU address of the first cell |
+| `$0352` | COUNT: cells (1-128) |
+| `$0354` | X: screen x of the first cell, signed (cell k is drawn at X + 8k) |
+| `$0356` | Y: row of the tile tops within the frame, signed (a tile may start above row 0) |
+| `$0358`, `$035A` | CLIP0, CLIP1: with FLAGS bit 0, only rows `[CLIP0, CLIP1)` are written (signed frame rows) |
+| `$035C` | FLAGS: bit 0 CLIP, bit 1 FLIPX (cells walked in reverse and each mirrored), bit 2 FLIPY (each cell's V toggled), bit 3 WRAP (the cell index wraps inside a 64-cell, 256-byte-aligned row), bits 4-5 tile mode, bit 6 TRANSPARENT (every cell) |
+| `$035E` | FRAME: the 16-bit frame number the rows belong to (see below) |
+| `$0360` | write = launch (low byte); read = cells still pending |
+| `$0362` | MODE: bit 0 = write-ahead mode (below) |
+| `$0364` | STATUS: bit 0 = *late*, bit 1 = *overflow* (sticky); any write clears them |
+| `$0366` | read: the hardware's own frame number (bumped at scanline 257) |
+
+**Rows are absolute.** A row is `256 x frame + y`, and the launch names its frame at `$035E` (16-bit, placed relative to
+the hardware's frame). A program counts its own frames, so a launch that blocks for queue space for a long time still
+lands in the frame it was written for; it never has to guess where the beam is. A frame the beam has already passed is
+simply late. Blend mode and translucency are snapshotted at launch like `TILEDRAW`'s.
+
+**Dispatch.** One cell per 8 cycles at most, in queue order, onto a free tile channel, once the cell's last row is safe
+to write: its slot must have been cleared of the row one window earlier (`Display::rowIsClear`). That is stricter than
+"inside the window": in RGBA16 block mode slots clear in bank *pairs*, so an even row that has only just entered the
+window shares a slot whose clear is still deferred, and a write there is wiped a scanline later. The queue is in order,
+so a held entry holds everything behind it: queue rows in increasing order. Capacity is 128 *cells* across all queued
+rows; a launch that would exceed it is dropped whole and sets *overflow* (poll `$0360` before launching).
+
+**Retire order.** A queued blit only retires after the older in-flight blits it *overlaps* (rows and columns). Blits that
+touch other pixels cannot change what each other draw, and strictly in-order retire cost ~25% of the channel capacity on
+a fine scroll (a short clipped half stuck behind a long one). A `TILEDRAW` blit counts as overlapping everything and a
+later `TILEDRAW` still retires after any queued blit, so mixing the two keeps `TILEDRAW`'s issue-order guarantee. A tile
+costs `8 + rows x 8 x 4` channel-cycles (rows = the rows it writes), so a tile row split into two clipped halves costs one
+tile plus 8. Eight channels retire one full tile per ~33 cycles: about 82 per 8-scanline band, whatever feeds them.
+
+**Late.** A queued blit whose rows have left the window by the time it completes sets the sticky *late* bit instead of
+tearing the frame silently. A program that must never lag keeps it clear (`test_layers` asserts that under saturation).
+
+**Write-ahead mode** (`$0362` bit 0): the framebuffer window `$E000-$FFFF` and the queue's backing store `$C000-$DFFF` are
+off the PPU's bus and read open bus (`$FF`), writes ignored. Blits still read the rolling buffer for blending. Off by
+default, so existing programs are unaffected. The queue state is in `stateHash()` and reset clears it (`CORE_REVISION` 9).
+While cells are pending the queue steps one PPU cycle at a time, so the batched executor falls back to per-cycle for that
+stretch, state-identical (`test_row_queue` checks it).
+
 ### GBLS - Get Blank Status
 
 Returns blank status in specified register:
@@ -348,7 +406,7 @@ all implemented — the doc previously listed these as placeholders, which is
 stale.
 
 ### Future Enhancements
-- Sprite rendering
-- Background layers
-- Hardware scrolling
 - Alpha blending (32-bit mode)
+
+Background layers, sprites and scrolling exist as microcode on the tile-row queue (see above and
+`ZPdevtools/docs/ppu/layers.md`); there is no scroll register, the program feeds the queue.
