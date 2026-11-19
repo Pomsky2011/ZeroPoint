@@ -112,6 +112,13 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
   - **SDL**: Standalone emulator with simple display
   - **Qt**: Full GUI with ROM loading and configuration
 
+## Minimum Requirements
+
+To run the emulator at full speed you need a host with:
+
+- **2 CPU cores**
+- **PassMark single-thread rating of 1500** (see [cpubenchmark.net](https://www.cpubenchmark.net/) to look up your CPU)
+
 ## Building
 
 ### Quick Start
