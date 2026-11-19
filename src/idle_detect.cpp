@@ -17,14 +17,14 @@ IdleDetector::IdleDetector() {
 }
 
 bool IdleDetector::atSkipPoint(const CPU& cpu) const {
-    return phase == Phase::Confirmed && skippable && iterCycles == 0 && cpu.PC == static_cast<uint16_t>(head) &&
+    return phase == Phase::Confirmed && skippable && !stale && iterCycles == 0 && cpu.PC == static_cast<uint16_t>(head) &&
            cpu.PB == (head >> 16);
 }
 
 bool IdleDetector::sameLoads() const {
     if (accessLog.overflow || accessLog.loads != refLoads) return false;
     for (int i = 0; i < refLoads; i++)
-        if (accessLog.addr[i] != refAddr[i] || accessLog.value[i] != refValue[i]) return false;
+        if (accessLog.addr[i] != refAddr[i] || accessLog.value[i] != refValue[i] || accessLog.cycle[i] != refCycle[i]) return false;
     return true;
 }
 
@@ -69,6 +69,7 @@ void IdleDetector::observe(CPU& cpu, uint32_t pcBefore, uint64_t cycles, uint64_
             iterInstr = 0;
             iterBegin = now;
             accessLog.clear();
+            accessLog.cycleBase = 0;
             phase = Phase::First;
             cpu.setAccessLog(&accessLog);
         }
@@ -77,6 +78,7 @@ void IdleDetector::observe(CPU& cpu, uint32_t pcBefore, uint64_t cycles, uint64_
 
     iterCycles += cycles;
     iterInstr++;
+    accessLog.cycleBase = static_cast<uint32_t>(iterCycles);   // the next instruction starts this far into the iteration
     const bool interrupted = accessLog.writes != 0;
     const bool inRange = (pcAfter >> 16) == (head >> 16) && pcAfter >= head && pcAfter <= tail;
 
@@ -112,29 +114,40 @@ void IdleDetector::observe(CPU& cpu, uint32_t pcBefore, uint64_t cycles, uint64_
             refCycles = iterCycles;
             refInstr = iterInstr;
             refLoads = accessLog.loads;
-            for (int i = 0; i < refLoads; i++) { refAddr[i] = accessLog.addr[i]; refValue[i] = accessLog.value[i]; }
+            for (int i = 0; i < refLoads; i++) { refAddr[i] = accessLog.addr[i]; refValue[i] = accessLog.value[i]; refCycle[i] = accessLog.cycle[i]; }
             phase = Phase::Second;
             break;
         case Phase::Second:
             if (iterCycles == refCycles && iterInstr == refInstr && sameLoads()) {
                 phase = Phase::Confirmed;
+                stale = false;
                 st.loopsConfirmed++;
                 worst = WatchClass::Rom;
                 skippable = true;
+                ppuCount = 0;
                 for (int i = 0; i < refLoads; i++) {
                     const WatchClass c = cpu.classifyLoad(refAddr[i]);
                     if (static_cast<uint8_t>(c) > static_cast<uint8_t>(worst)) worst = c;
-                    if (c != WatchClass::Rom && c != WatchClass::WorkRam && c != WatchClass::Input && c != WatchClass::Timer) skippable = false;
+                    if (c == WatchClass::PpuMem) {
+                        // Skippable only if every PPU read is at one cycle: the PPU is then run ahead to the watched byte's
+                        // change and the CPU resumes at the first read at or after it, so no read before it sees the future.
+                        if (ppuCount > 0 && refCycle[i] != ppuOffset) skippable = false;
+                        ppuOffset = refCycle[i];
+                        ppuAddr[ppuCount++] = static_cast<uint16_t>(refAddr[i] & 0xFFFF);
+                    } else if (c != WatchClass::Rom && c != WatchClass::WorkRam && c != WatchClass::Input && c != WatchClass::Timer) {
+                        skippable = false;
+                    }
                 }
             } else {   // the first one was not the steady state: this one becomes the reference
                 refCycles = iterCycles;
                 refInstr = iterInstr;
                 refLoads = accessLog.loads;
-                for (int i = 0; i < refLoads; i++) { refAddr[i] = accessLog.addr[i]; refValue[i] = accessLog.value[i]; }
+                for (int i = 0; i < refLoads; i++) { refAddr[i] = accessLog.addr[i]; refValue[i] = accessLog.value[i]; refCycle[i] = accessLog.cycle[i]; }
             }
             break;
         case Phase::Confirmed:
             if (iterCycles == refCycles && iterInstr == refInstr && sameLoads()) {
+                stale = false;   // a real iteration read the same bytes as the reference: it is current again
                 st.iterations++;
                 st.cpuCycles += iterCycles;
                 st.cpuCyclesByClass[static_cast<int>(worst)] += iterCycles;
@@ -154,6 +167,7 @@ void IdleDetector::observe(CPU& cpu, uint32_t pcBefore, uint64_t cycles, uint64_
     iterCycles = 0;
     iterInstr = 0;
     accessLog.clear();
+    accessLog.cycleBase = 0;
 }
 
 } // namespace ZeroPoint

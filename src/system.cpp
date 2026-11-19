@@ -475,9 +475,9 @@ void System::tickVideoTo(uint64_t targetCycle) {
             if (q > targetCycle - vc) q = targetCycle - vc;
         }
         if (q > 0) {
-            ppu.tickMany(static_cast<uint32_t>(q));
-            display.advanceQuiet(static_cast<int>(q));
-            vc += q;
+            const uint32_t done = ppu.tickMany(static_cast<uint32_t>(q));   // fewer than q only when a watch fired
+            display.advanceQuiet(static_cast<int>(done));
+            vc += done;
         } else {
             ppu.tick();
             display.tick();
@@ -485,6 +485,7 @@ void System::tickVideoTo(uint64_t targetCycle) {
             vc++;
         }
         videoCycle.store(vc, std::memory_order_relaxed);
+        if (ppu.watchFired()) [[unlikely]] break;   // idle-poll skip: stopped right after the cycle that changed a watched byte
     }
 }
 
@@ -647,7 +648,7 @@ void System::runAhead(uint64_t target) {
         }
         updateTimers();
         masterCycleCount++;
-        if (videoThread.joinable() && masterCycleCount - videoPublished >= VIDEO_CHUNK) {
+        if (videoThread.joinable() && masterCycleCount > videoPublished && masterCycleCount - videoPublished >= VIDEO_CHUNK) {
             publishVideo(masterCycleCount);   // video may now run through cycle master-1; the CPU's next access needs master
         }
     }
@@ -795,7 +796,37 @@ bool System::trySkipIdle() {
     if (nextTimerEventCycle < limit) limit = nextTimerEventCycle;
     if (limit <= c) return false;
     const uint64_t T = idleDetect.iterationCycles();
-    const uint64_t k = (limit - c) / (4 * T);
+    uint64_t k;
+    if (!idleDetect.hasPpuLoads()) {
+        k = (limit - c) / (4 * T);
+    } else {
+        // Phase 3: the loop polls PPU memory, always with one instruction (so at one cycle, `firstRead` in the first
+        // iteration and 4T later in each next one). Nothing the CPU does can change that memory, so run the video chips
+        // ahead *now* with a watch on the polled bytes: they stop right after the cycle whose instruction changes one
+        // (H), or at `lppu` if none does. Iterations whose read is before H (or before lppu) see the old bytes and are
+        // skipped; the next one is run for real, its read at or after H, where the PPU is exactly in step (a read at
+        // cycle r wants the PPU ticked through r, and it is ticked through H, r >= H). lppu leaves one iteration before
+        // `limit`, so every skipped iteration also ends by the timer/run bound. A PPU that stopped short of the first
+        // read just means no iteration is skipped this time: the video chips being ahead of the CPU is harmless while
+        // the CPU's next PPU access is at or after the cycle they reached, or its bytes cannot have changed.
+        const uint64_t period = 4 * T;
+        if (!videoLazy || limit < period) return false;
+        const uint64_t lppu = limit - period;
+        const uint64_t firstRead = c + 4 * idleDetect.ppuReadCycles();
+        if (lppu <= firstRead) return false;
+        if (videoThread.joinable()) waitVideoIdle();
+        ppu.armWatch(idleDetect.ppuAddrs(), idleDetect.ppuAddrCount());
+        tickVideoTo(lppu);
+        const bool hit = ppu.watchFired();
+        ppu.disarmWatch();
+        if (hit) idleDetect.markStale();   // the polled byte changed: the loop's reference loads are out of date from here
+        const uint64_t vc = videoCycle.load(std::memory_order_relaxed);
+        if (vc > videoPublished) videoPublished = vc;
+        const uint64_t bound = hit ? vc - 1 : lppu;   // the first cycle whose read may see a new byte (H = vc - 1 on a hit)
+        idleDetect.notePpuRun(hit, hit && bound > firstRead && (bound - firstRead) % period == 0);
+        if (bound <= firstRead) return false;
+        k = (bound - firstRead + period - 1) / period;
+    }
     if (k == 0) return false;
     cpu.idleAdvance(k * T, k * idleDetect.iterationInstructions());
     cpuCycleBudget -= static_cast<int64_t>(k * T);
@@ -865,7 +896,7 @@ void System::runCpuBurst(uint64_t target) {
         }
         updateTimers();
         masterCycleCount++;
-        if (videoThread.joinable() && masterCycleCount - videoPublished >= VIDEO_CHUNK) {
+        if (videoThread.joinable() && masterCycleCount > videoPublished && masterCycleCount - videoPublished >= VIDEO_CHUNK) {
             publishVideo(masterCycleCount);
         }
 

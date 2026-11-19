@@ -14,15 +14,17 @@ namespace ZeroPoint {
 // or interrupt entry all show up as writes, a load is kept (up to MAX of them) with the byte it returned.
 struct AccessLog {
     static constexpr int MAX = 8;
-    uint32_t addr[MAX];
-    uint8_t value[MAX];
+    uint32_t addr[MAX] = {};
+    uint8_t value[MAX] = {};
+    uint32_t cycle[MAX] = {};        // CPU cycles into the iteration at which the load's instruction ran (cycleBase when it was logged)
+    uint32_t cycleBase = 0;     // set by the detector before each instruction
     int loads = 0;
     bool overflow = false;      // more loads than fit
     uint32_t writes = 0;
 
     void clear() { loads = 0; overflow = false; writes = 0; }
     void addLoad(uint32_t a, uint8_t v) {
-        if (loads < MAX) { addr[loads] = a; value[loads] = v; loads++; }
+        if (loads < MAX) { addr[loads] = a; value[loads] = v; cycle[loads] = cycleBase; loads++; }
         else overflow = true;
     }
 };
@@ -62,6 +64,9 @@ struct IdleStats {
     uint64_t cpuCyclesUnwatchable = 0;  // cycles in loops that read PpuPort/PpuFb/Other (not skippable yet)
     uint64_t skips = 0;                 // times a skip was applied (phase 2)
     uint64_t skippedIterations = 0;
+    uint64_t ppuRuns = 0;               // phase 3: times the video chips were run ahead under a watch
+    uint64_t ppuAlignedHits = 0;        // ... of which the change landed exactly on a poll read's cycle (the boundary case)
+    uint64_t ppuHits = 0;               // ... and the watch fired (a polled PPU byte changed)
     uint64_t skippedCpuCycles = 0;      // CPU cycles those iterations stood for (x4 for master cycles)
     uint64_t woke = 0;                  // a confirmed loop ended because a loaded byte changed (the expected exit)
     uint64_t interrupted = 0;           // ... or because an interrupt was taken (also expected)
@@ -87,11 +92,21 @@ public:
     // Phase 2. True when the CPU is exactly at the start of a fresh iteration of a confirmed loop whose loads are all
     // of a class phase 2 can wake exactly (ROM, work RAM, controller ports, timer status).
     bool atSkipPoint(const CPU& cpu) const;
+    // The video chips were run past a change of a polled PPU byte: the reference loads are out of date until a real
+    // iteration has been executed and compared with them (that clears it).
+    void markStale() { stale = true; }
     // A lower bound on the cycle of the first load of the last iteration that was actually executed and compared. Any
     // event before it is already reflected in what that iteration read.
     uint64_t validSince() const { return validSinceCycle; }
     uint64_t iterationCycles() const { return refCycles; }
+    // Phase 3: the PPU-memory bytes the loop reads (they are all read by one instruction, so at one cycle: `ppuReadCycles()` CPU
+    // cycles into each iteration). hasPpuLoads() is false for loops that read no PPU memory.
+    bool hasPpuLoads() const { return ppuCount > 0; }
+    int ppuAddrCount() const { return ppuCount; }
+    const uint16_t* ppuAddrs() const { return ppuAddr; }
+    uint64_t ppuReadCycles() const { return ppuOffset; }
     uint64_t iterationInstructions() const { return refInstr; }
+    void notePpuRun(bool hit, bool aligned) { st.ppuRuns++; if (hit) st.ppuHits++; if (aligned) st.ppuAlignedHits++; }
     void noteSkipped(uint64_t iterations) {
         st.skips++; st.skippedIterations += iterations; st.skippedCpuCycles += iterations * refCycles;
     }
@@ -116,6 +131,11 @@ private:
     // The reference iteration (the first complete one, then confirmed by the second)
     uint64_t refCycles = 0;
     uint64_t refInstr = 0;
+    uint32_t refCycle[AccessLog::MAX] = {};
+    int ppuCount = 0;                // distinct-or-not PPU-memory loads of the confirmed loop (phase 3)
+    uint16_t ppuAddr[AccessLog::MAX] = {};
+    uint64_t ppuOffset = 0;
+    bool stale = false;
     bool skippable = false;          // every load of the confirmed loop is of a class phase 2 can wake exactly
     int refLoads = 0;
     uint32_t refAddr[AccessLog::MAX];

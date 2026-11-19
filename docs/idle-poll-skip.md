@@ -2,7 +2,7 @@
 
 Status: design + determinism harness + phases 1-2 (`include/idle_detect.h`, `src/idle_detect.cpp`, `System::trySkipIdle`). `System::setIdlePollSkip(true)`
 (frontends: on by default, `--no-idle-skip` / `ZEROPOINT_IDLE_SKIP=0` turn it off) fast-forwards loops that only poll ROM, work RAM, controller
-ports or `$D80051`; PPU/APU-memory polls are still run (phase 3). `System::idleStats()` reports what was found and skipped.
+ports, `$D80051`, or PPU memory read by one instruction (phase 3a); APU-memory polls and PPU ports are still run. `System::idleStats()` reports what was found and skipped.
 Harness: `bin/fuzz_idle_skip` (`tools/fuzz_idle_skip.cpp`).
 
 ## Why
@@ -138,6 +138,30 @@ rather than assumed. k is the most iterations that end by `min(nextTimerEventCyc
 Result on the layers demo (6000 frames): 127M of 133M guest CPU cycles skipped (95%), same frame md5, single-thread user time 16.6s -> 13.9s (-16%).
 With the video thread on (powersave) the frontend gains only ~4% (25 -> 26 fps): the worker, not the CPU, is the limit, which is phase 3 and the PPU scheduler.
 A planted mutant (k one too high) fails on seed 1 within 5 stops.
+
+## Phase 3a (2026-11-18): PPU-memory polls, inline
+
+Every PPU memory store goes through `PPU::storeByte()`; `armWatch()` (up to 8 bytes) makes a store that *changes* one set `watchFired()`, and `tickMany()`
+(returns the cycles it ran) / `System::tickVideoTo` stop right after that cycle (`finishTickMany` pays the owed blit cycles). `loadMicrocode` and `reset`
+fire it unconditionally. The detector records the CPU-cycle offset of each load; a loop is skippable only if all its PPU-memory loads are at one
+offset (one instruction, so one cycle: `lda $B01E04` qualifies).
+`trySkipIdle` for such a loop runs the video chips ahead *now* to `lppu = limit - 4T` under the watch, stopping at H (the hit cycle, `vc - 1`) or `lppu`.
+Iterations whose read is before H see the old bytes and are skipped; the next real one reads at or after H, where the PPU is exactly in step. A PPU that
+is ahead of the CPU is harmless while the CPU's next PPU access is at or after the cycle it reached, or the bytes cannot have changed. After a hit the
+reference loads are stale (`IdleDetector::markStale`): no further skip until a real iteration has been compared (found by the fuzz harness: a second skip
+right after the first used the pre-change values).
+Checking: `fuzz_idle_skip` has a `PpuWriter` event (a PPU program that waits, then rewrites a polled byte in a loop) and `--sweep`: one `lda/beq` loop and
+that writer loaded at 96 consecutive cycles so the change lands on every alignment against the loop's reads, 12 of them exactly on a read. Planted mutants,
+all caught by the sweep: the PPU stopping a cycle late (`bound = vc`; the random fuzz alone missed it: it needs a store exactly on a read), MOVDP stores
+invisible to the watch, and the staleness guard removed.
+Layers demo (6000 frames): 132.3M of 133.1M guest CPU cycles skipped (99.4%), same frame md5. Frontend on powersave, video thread on: 36 -> 41 fps
+(5 interleaved pairs). The PPU is run on the main thread while the CPU is parked.
+
+### Why there is no 3b (video worker for the parked case)
+
+Measured on the layers demo, single thread, skip on (15.3 s wall for 6000 frames): `ppu.tickMany` 13.8 s (~90%), the per-scanline edge ticks
+1.1 s (~7%), `display.advanceQuiet` 0.1 s, everything else (CPU, APU, timers, audio) ~3%. A worker that overlaps the main thread's work with the
+PPU can recover at most that 3%, so it was dropped. What matters is the cost of `PPU::tickMany` itself (a PPU-side track, not part of the idle skip).
 
 ## Decisions (2026-11-18)
 

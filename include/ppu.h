@@ -92,7 +92,9 @@ public:
     // Exactly n calls to tick(), assuming the blank lines (setBlankStatus) don't change meanwhile: whole stretches
     // of a multi-cycle stall with no blit completing in them are collapsed into one step, and every other
     // cycle just calls tick(), so the result is state-identical to ticking n times.
-    void tickMany(uint32_t n);
+    // Returns how many of the n cycles it ran: all of them, unless a watch (armWatch) fired, in which case it stops right
+    // after the cycle whose instruction changed a watched byte.
+    uint32_t tickMany(uint32_t n);
 
     // Run up to `cycles` PPU cycles in one call and return how many were
     // actually consumed. Semantically identical to calling tick() `cycles`
@@ -157,10 +159,21 @@ public:
     }
 
     void writeMemory(uint16_t address, uint8_t value) {
-        memory[address] = value;
-        codeWritten(address);
+        storeByte(address, value);
         handleMemoryWrite(address, value);
     }
+
+    // Idle-poll skip (docs/idle-poll-skip.md, phase 3): watch up to 8 PPU memory bytes. While armed, a store that
+    // *changes* one of them (the instruction stores, the CPU window, DMA, a reset or a program load all go through
+    // storeByte() or say so) sets watchFired(), and tickMany()/System::tickVideoTo() stop right after that cycle.
+    // Host-side bookkeeping: not machine state, not hashed.
+    void armWatch(const uint16_t* addrs, int n) {
+        watchCount = static_cast<uint8_t>(n > 8 ? 8 : n);
+        for (int i = 0; i < watchCount; i++) watchAddr[i] = addrs[i];
+        watchHit = false;
+    }
+    void disarmWatch() { watchCount = 0; watchHit = false; }
+    bool watchFired() const { return watchHit; }
 
     // Register access for CPU I/O
     void setRegister(uint8_t reg, uint16_t value) {
@@ -375,6 +388,7 @@ private:
     // them changes. Both are zero outside tickMany.
     uint32_t blitOwed = 0, blitHorizon = 0;
     uint32_t blitQuietHorizon() const;
+    uint32_t finishTickMany(uint32_t total, uint32_t left, uint32_t stall);
     void settleBlits();
     void advanceBlitsAndQueue(uint32_t cycles);           // advanceBlitChannels(1) + stepQueueEngine() per cycle
     uint8_t framebufferByte(uint16_t address) const;      // the raw rolling buffer, unaffected by writeAhead (blits read it back)
@@ -469,6 +483,20 @@ private:
     static void opTrampoline(PPU& ppu, const DecodedOp& d) { (ppu.*Handler)(d); }
     std::vector<DecodedOp> decoded;
     DecodedOp decodeOp(uint16_t ep) const;
+    // The one place an instruction or the bus writes a byte of PPU memory: the decoded-instruction cache, and the watch.
+    uint8_t watchCount = 0;
+    bool watchHit = false;
+    uint16_t watchAddr[8] = {};
+    void noteStore(uint16_t address, uint8_t value) {
+        if (memory[address] == value) return;
+        for (int i = 0; i < watchCount; i++)
+            if (watchAddr[i] == address) { watchHit = true; return; }
+    }
+    void storeByte(uint16_t address, uint8_t value) {
+        if (watchCount) [[unlikely]] noteStore(address, value);
+        memory[address] = value;
+        codeWritten(address);
+    }
     void codeWritten(uint16_t address) {
         decoded[address].fn = nullptr;
         decoded[(address - 1) & 0xFFFF].fn = nullptr;
@@ -519,10 +547,8 @@ private:
     // the end of `memory` when SP is 0xFFFF.
     void pushReturnAddress(uint16_t returnAddr) {
         registers[REG_SP] += 2;
-        memory[registers[REG_SP]] = returnAddr & 0xFF;
-        memory[(registers[REG_SP] + 1) & 0xFFFF] = (returnAddr >> 8) & 0xFF;
-        codeWritten(registers[REG_SP]);
-        codeWritten(registers[REG_SP] + 1);
+        storeByte(registers[REG_SP], returnAddr & 0xFF);
+        storeByte((registers[REG_SP] + 1) & 0xFFFF, (returnAddr >> 8) & 0xFF);
     }
 
     // Helper methods

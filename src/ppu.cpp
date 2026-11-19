@@ -89,6 +89,7 @@ void PPU::reset() {
     // Clear memory
     memory.fill(0);
     for (auto& d : decoded) d.fn = nullptr;
+    if (watchCount) watchHit = true;
 
     // Reset state
     executionPointer = 0;
@@ -170,6 +171,7 @@ void PPU::loadMicrocode(const uint8_t* code, size_t length, uint16_t offset) {
     size_t copyLength = (length + offset > 65536) ? (65536 - offset) : length;
     std::memcpy(&memory[offset], code, copyLength);
     codeWrittenRange(offset, static_cast<uint32_t>(copyLength));
+    if (watchCount) watchHit = true;   // a bulk write: no per-byte compare, just say a watched byte may have changed
 }
 
 void PPU::start() {
@@ -305,14 +307,15 @@ void PPU::burnBlitCycles(uint32_t k) {
     }
 }
 
-void PPU::tickMany(uint32_t n) {
+uint32_t PPU::tickMany(uint32_t n) {
     // tick() n times, assuming the blank lines don't change meanwhile, one instruction at a time instead of one
     // cycle at a time. Per cycle tick() does, in this order: advance the blit channels, latch the blank edges,
     // then burn a stall cycle / take an interrupt / issue an instruction. The blank lines are constant, so the
     // edge latch is the same on every cycle and can come first; a stall is just that many blit-advancing cycles
     // with nothing else happening; and interrupts can only be pending from that latch or from before the call, so
     // whether any is pending is a local that only a serviced interrupt can change.
-    if (n == 0 || state != PPUState::Running) [[unlikely]] return;
+    const uint32_t total = n;
+    if (n == 0 || state != PPUState::Running) [[unlikely]] return total;
     latchInterruptEdges();
     tqHold = false;   // the display may have moved since the last call: look at the queue again
     blitOwed = 0;
@@ -348,6 +351,7 @@ void PPU::tickMany(uint32_t n) {
             if (taken) {
                 stall = stallCycles;
                 if (n == 0) break;
+                if (watchHit) [[unlikely]] return finishTickMany(total, n, stall);   // the return address landed on a watched byte
                 continue;
             }
         }
@@ -355,6 +359,7 @@ void PPU::tickMany(uint32_t n) {
         stall = instrCycles - 1;
         if (state != PPUState::Running) [[unlikely]] break;   // an instruction (a write to the VOC halt bit) stopped it
         if (n == 0) break;
+        if (watchHit) [[unlikely]] return finishTickMany(total, n, stall);   // a watched byte changed: stop after this cycle
     }
     if (blitOwed != 0) {
         const uint32_t due = blitOwed;
@@ -362,6 +367,18 @@ void PPU::tickMany(uint32_t n) {
         advanceBlitsAndQueue(due);
     }
     stallCycles = stall;
+    return total;
+}
+
+// The tail of tickMany() when it stops early (watchHit): pay the cycles still owed to the blits, keep the stall.
+uint32_t PPU::finishTickMany(uint32_t total, uint32_t left, uint32_t stall) {
+    if (blitOwed != 0) {
+        const uint32_t due = blitOwed;
+        blitOwed = 0;
+        advanceBlitsAndQueue(due);
+    }
+    stallCycles = stall;
+    return total - left;
 }
 
 uint32_t PPU::blitQuietHorizon() const {
@@ -522,11 +539,10 @@ void PPU::opSETPOS(const DecodedOp& d) {
     const uint8_t regY = d.b | (regBankY << 4);
     const uint16_t x = registers[regX];
     const uint16_t y = registers[regY];
-    memory[0x0200] = x & 0xFF;
-    memory[0x0201] = (x >> 8) & 0xFF;
-    memory[0x0202] = y & 0xFF;
-    memory[0x0203] = (y >> 8) & 0xFF;
-    codeWrittenRange(0x0200, 4);
+    storeByte(0x0200, x & 0xFF);
+    storeByte(0x0201, (x >> 8) & 0xFF);
+    storeByte(0x0202, y & 0xFF);
+    storeByte(0x0203, (y >> 8) & 0xFF);
 }
 void PPU::opSETTILE(const DecodedOp& d) {
     currentTileId = registers[d.a] & 0xFF;
@@ -537,10 +553,8 @@ void PPU::opMOVDP(const DecodedOp& d) {
     // mov(dp) X: move register X to the address DP points at
     const uint16_t addr = registers[REG_DP];
     if (addr < 65535) {
-        memory[addr] = registers[d.a] & 0xFF;
-        memory[addr + 1] = (registers[d.a] >> 8) & 0xFF;
-        codeWritten(addr);
-        codeWritten(addr + 1);
+        storeByte(addr, registers[d.a] & 0xFF);
+        storeByte(addr + 1, (registers[d.a] >> 8) & 0xFF);
 
         // Check for memory-mapped I/O
         handleMemoryWrite(addr, memory[addr]);

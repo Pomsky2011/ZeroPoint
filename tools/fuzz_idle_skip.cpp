@@ -65,7 +65,7 @@ struct Code {
 
 struct Range { uint32_t lo, hi; };
 
-enum class Kind { Poke, Input, LoadPPU, LoadAPU, Dma, Yank, Insert, SoftReset, HardReset };
+enum class Kind { Poke, Input, LoadPPU, PpuWriter, LoadAPU, Dma, Yank, Insert, SoftReset, HardReset };
 
 struct Event {
     uint64_t cycle;
@@ -104,6 +104,7 @@ std::vector<uint8_t> makeImage(const std::vector<uint8_t>& payload, uint32_t ent
 }
 
 uint32_t pollTarget(Rng& r) {
+    if (r.below(3) == 0) return 0xB00000 + 0x0400 + r.below(0x1C00);   // a third of the polls are PPU memory a program writes
     switch (r.below(8)) {
         case 0: case 1: return 0xB00000 + 0x0400 + r.below(0x1C00);                       // PPU memory a program or the host writes
         case 2: { static const uint16_t sp[] = {0x00E0, 0x00E1, 0x034A, 0x0360, 0x0364, 0x00F0};   // derived PPU state
@@ -148,6 +149,7 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
         }
         sc.loops.push_back({lo, c.here()});
         // The action after a loop: count the exit, and sometimes touch something another loop (or the machine) sees.
+        c.sta(0x800060 + p);                                     // the last value polled: a late exit shows as a different one
         c.lda(0x800030 + p); c.inc(); c.sta(0x800030 + p);
         if (r.below(2)) {
             static const uint32_t out[] = {0xD80051, 0x800100, 0x800101, 0xB00500, 0xA00010, 0xD80058};
@@ -180,7 +182,15 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
     for (int i = 0; i < n; i++) {
         Event e;
         e.cycle = r.next() % sc.endCycle;
-        switch (r.below(16)) {
+        switch (r.below(26)) {
+            case 16: case 17: case 18: case 19: case 20: case 21: case 22: case 23: case 24: case 25: {   // a PPU program that keeps rewriting a byte a loop polls
+                e.kind = Kind::PpuWriter;
+                uint32_t target = 0xB00400 + r.below(0x1C00);
+                for (uint32_t a : sc.polled) if ((a >> 16) == 0xB0 && (a & 0xFFFF) < 0xC000 && r.below(2)) target = a;
+                e.addr = target & 0xFFFF;
+                e.blob = {(uint8_t)0, (uint8_t)0, (uint8_t)r.below(60)};   // [0..1] delay before the first store, [2] padding between stores
+                { const uint32_t d = 1 + r.below(r.below(4) == 0 ? 600 : 6000); e.blob[0] = (uint8_t)d; e.blob[1] = (uint8_t)(d >> 8); }
+                break; }
             case 0: case 1: case 2: case 3: case 4: {            // change something a loop polls
                 e.kind = Kind::Poke;
                 e.addr = sc.polled[r.below((uint32_t)sc.polled.size())];
@@ -228,6 +238,29 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
     return sc;
 }
 
+// A PPU program: R63 (DP) = addr, R2 = delay; count R2 down (so the byte stays still while a CPU loop settles and starts being
+// skipped), then forever: R1++, store R1 (a word) at (DP), `pad` INCs, jump. R62 (PC) is the jump target both times.
+// Words are big-endian: opcode in the top nibble (see PPU::decodeOp).
+std::vector<uint8_t> ppuWriterProgram(uint16_t addr, uint16_t delay, unsigned pad) {
+    std::vector<uint16_t> w;
+    w.push_back(0xE03F); w.push_back(0xE400 | (addr & 0xFF));            // 0: tarreg t0 low -> R63; setbyte t0 lo
+    w.push_back(0xE0BF); w.push_back(0xE400 | (addr >> 8));              // 2: tarreg t0 high -> R63; setbyte t0 hi
+    w.push_back(0xE102); w.push_back(0xE500 | (delay & 0xFF));           // 4: tarreg t1 low -> R2; setbyte t1 lo
+    w.push_back(0xE182); w.push_back(0xE500 | (delay >> 8));             // 6: tarreg t1 high -> R2; setbyte t1 hi
+    w.push_back(0xE23E); w.push_back(0xE600 | 20);                       // 8: tarreg t2 low -> R62; setbyte t2 = the delay loop (byte 20)
+    w.push_back(0x9002);                                                 // 10: delay: dec R2
+    w.push_back(0x4083);                                                 // 11: cmp R2, R3 (R3 stays 0)
+    w.push_back(0x7000);                                                 // 12: jnz -> R62
+    w.push_back(0xE600 | 28);                                            // 13: setbyte t2 = the store loop (byte 28)
+    w.push_back(0x8001);                                                 // 14: loop: inc R1
+    w.push_back(0xF304);                                                 // 15: movdp R1
+    for (unsigned i = 0; i < pad; i++) w.push_back(0x8002);              // inc R2
+    w.push_back(0xF700);                                                 // jmr
+    std::vector<uint8_t> out;
+    for (uint16_t x : w) { out.push_back((uint8_t)(x >> 8)); out.push_back((uint8_t)x); }
+    return out;
+}
+
 void apply(System& sys, const Event& e, const std::vector<std::vector<uint8_t>>& spare) {
     switch (e.kind) {
         case Kind::Poke: sys.getCPU().writeByte(e.addr, e.value); break;
@@ -237,6 +270,7 @@ void apply(System& sys, const Event& e, const std::vector<std::vector<uint8_t>>&
         case Kind::SoftReset: sys.softReset(); break;
         case Kind::HardReset: sys.hardReset(); break;
         case Kind::LoadPPU: sys.loadPPUProgram(e.blob.data(), e.blob.size(), 0, 0); break;
+        case Kind::PpuWriter: { const std::vector<uint8_t> p = ppuWriterProgram((uint16_t)e.addr, (uint16_t)(e.blob[0] | (e.blob[1] << 8)), e.blob[2]); sys.loadPPUProgram(p.data(), p.size(), 0, 0); break; }
         case Kind::LoadAPU: sys.loadAPUProgram(e.blob.data(), e.blob.size(), 0); break;
         case Kind::Dma:
             sys.getCPU().writeByte(0xD80020, 0);
@@ -289,7 +323,7 @@ IdleStats g_idle;   // the phase 1 detector's counters, summed over the skip-mod
 void addIdle(const IdleStats& s) {
     g_idle.loopsConfirmed += s.loopsConfirmed; g_idle.iterations += s.iterations; g_idle.cpuCycles += s.cpuCycles;
     g_idle.cpuCyclesUnwatchable += s.cpuCyclesUnwatchable; g_idle.woke += s.woke; g_idle.interrupted += s.interrupted;
-    g_idle.unexplained += s.unexplained; g_idle.cycleDrift += s.cycleDrift;
+    g_idle.unexplained += s.unexplained; g_idle.ppuRuns += s.ppuRuns; g_idle.ppuHits += s.ppuHits; g_idle.ppuAlignedHits += s.ppuAlignedHits; g_idle.skips += s.skips; g_idle.skippedIterations += s.skippedIterations; g_idle.cycleDrift += s.cycleDrift;
     for (int i = 0; i < static_cast<int>(WatchClass::COUNT); i++) g_idle.cpuCyclesByClass[i] += s.cpuCyclesByClass[i];
 }
 
@@ -331,10 +365,8 @@ std::vector<Parts> run(const Scenario& sc, const std::vector<Stop>& stops, const
 std::string g_romFile;
 void removeRomFile() { if (!g_romFile.empty()) std::remove(g_romFile.c_str()); }
 
-bool fuzzOne(uint64_t seed, int maxFrames, const std::string& work, bool verbose, Coverage& total) {
-    const Scenario sc = makeScenario(seed, maxFrames);
-    Rng sr(seed ^ 0x5709);
-    const std::vector<Stop> stops = makeStops(sc, sr);
+// Run one scenario four ways and compare the machine at every stop.
+bool checkScenario(const Scenario& sc, const std::vector<Stop>& stops, uint64_t seed, const std::string& work, bool verbose, Coverage& total) {
     if (g_romFile.empty()) { g_romFile = work + "/idleskip_" + std::to_string((long)ZP_GETPID()) + ".zpb"; std::atexit(removeRomFile); }
     const std::vector<uint8_t> image = makeImage(sc.rom, 0);
     FILE* f = std::fopen(g_romFile.c_str(), "wb");
@@ -369,6 +401,57 @@ bool fuzzOne(uint64_t seed, int maxFrames, const std::string& work, bool verbose
     return ok;
 }
 
+bool fuzzOne(uint64_t seed, int maxFrames, const std::string& work, bool verbose, Coverage& total) {
+    const Scenario sc = makeScenario(seed, maxFrames);
+    Rng sr(seed ^ 0x5709);
+    const std::vector<Stop> stops = makeStops(sc, sr);
+    return checkScenario(sc, stops, seed, work, verbose, total);
+}
+
+// The boundary case, on purpose: one loop polling PPU memory, one PPU program that changes that byte after a delay, and the
+// program loaded at 96 consecutive cycles so the change lands on every alignment against the loop's reads (period 48 master
+// cycles), including exactly on one. Two stops per run: the load, and well after the change, so the whole stretch between
+// is one slice in which the loop is learned, skipped under the PPU watch and left.
+bool sweepOne(unsigned i, unsigned delay, unsigned pad, const std::string& work, Coverage& total) {
+    Scenario sc;
+    Code c;
+    const uint32_t a = 0xB00800;
+    const uint32_t lo = c.here();
+    c.lda(a); c.beq(lo);
+    sc.loops.push_back({lo, c.here()});
+    c.sta(0x800060);
+    c.lda(0x800030); c.inc(); c.sta(0x800030);
+    const uint32_t spin = c.here();
+    c.bra((uint16_t)spin);
+    sc.rom.assign(65536, 0x00);
+    std::memcpy(sc.rom.data(), c.b.data(), c.b.size());
+    sc.spare.push_back(makeImage(sc.rom, 0));
+    sc.spare.push_back(makeImage(sc.rom, 0));
+    sc.spare.push_back(makeImage(sc.rom, 0));
+    sc.polled.push_back(a);
+    const uint64_t load = 20000 + i;
+    Event e;
+    e.cycle = load; e.kind = Kind::PpuWriter; e.addr = a & 0xFFFF;
+    e.blob = {(uint8_t)delay, (uint8_t)(delay >> 8), (uint8_t)pad};
+    sc.events.push_back(e);
+    sc.endCycle = load + 12000 + 4 * delay;
+    const std::vector<Stop> stops = {{load, 0}, {sc.endCycle - 2, -1}};
+    return checkScenario(sc, stops, 1000 + i, work, false, total);
+}
+
+void printSummary() {
+    static const char* const classNames[] = {"rom", "workram", "apuram", "ppumem", "timer", "input", "ppuport", "ppufb", "other"};
+    std::printf("detector (skip runs): %llu loops confirmed, %llu identical iterations after that = %llu CPU cycles (%llu in loops reading an unwatchable address); ended by: %llu changed byte, %llu interrupt, %llu cycle drift, %llu unexplained\n",
+                (unsigned long long)g_idle.loopsConfirmed, (unsigned long long)g_idle.iterations, (unsigned long long)g_idle.cpuCycles,
+                (unsigned long long)g_idle.cpuCyclesUnwatchable, (unsigned long long)g_idle.woke, (unsigned long long)g_idle.interrupted,
+                (unsigned long long)g_idle.cycleDrift, (unsigned long long)g_idle.unexplained);
+    std::printf("  skips: %llu (%llu iterations); PPU watch runs: %llu, watch hits: %llu (%llu exactly on a poll read)\n", (unsigned long long)g_idle.skips,
+                (unsigned long long)g_idle.skippedIterations, (unsigned long long)g_idle.ppuRuns, (unsigned long long)g_idle.ppuHits, (unsigned long long)g_idle.ppuAlignedHits);
+    std::printf("  cycles by worst class read:");
+    for (int i = 0; i < static_cast<int>(WatchClass::COUNT); i++) std::printf(" %s=%llu", classNames[i], (unsigned long long)g_idle.cpuCyclesByClass[i]);
+    std::printf("\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -377,6 +460,15 @@ int main(int argc, char** argv) {
     uint64_t first = 1, count = 20;
     int maxFrames = 4;
     bool verbose = false;
+    if (argc >= 3 && !std::strcmp(argv[2], "--sweep")) {
+        Coverage tot;
+        uint64_t bad = 0;
+        for (unsigned delay : {1500u, 2203u}) for (unsigned pad : {0u, 7u})
+            for (unsigned i = 0; i < 96; i++) if (!sweepOne(i, delay, pad, work, tot)) { bad++; break; }
+        std::printf("boundary sweep (96 load cycles x 2 delays x 2 paddings): %s\n", bad ? "FAILED" : "all identical");
+        printSummary();
+        return bad ? 1 : 0;
+    }
     if (argc >= 4 && !std::strcmp(argv[2], "--seed")) { first = std::strtoull(argv[3], nullptr, 0); count = 1; verbose = true; }
     else {
         if (argc > 2) first = std::strtoull(argv[2], nullptr, 0);
@@ -392,14 +484,7 @@ int main(int argc, char** argv) {
                 (unsigned long long)count, (unsigned long long)total.cpuInstr, (unsigned long long)total.inLoop, (unsigned long long)total.looks,
                 total.looks ? 100.0 * total.inLoop / total.looks : 0.0, (unsigned long long)total.exits, (unsigned long long)total.isr,
                 total.halted ? " (some guests HALTED)" : "", failed ? "FAILED" : "all identical");
-    static const char* const classNames[] = {"rom", "workram", "apuram", "ppumem", "timer", "input", "ppuport", "ppufb", "other"};
-    std::printf("detector (skip runs): %llu loops confirmed, %llu identical iterations after that = %llu CPU cycles (%llu in loops reading an unwatchable address); ended by: %llu changed byte, %llu interrupt, %llu cycle drift, %llu unexplained\n",
-                (unsigned long long)g_idle.loopsConfirmed, (unsigned long long)g_idle.iterations, (unsigned long long)g_idle.cpuCycles,
-                (unsigned long long)g_idle.cpuCyclesUnwatchable, (unsigned long long)g_idle.woke, (unsigned long long)g_idle.interrupted,
-                (unsigned long long)g_idle.cycleDrift, (unsigned long long)g_idle.unexplained);
-    std::printf("  cycles by worst class read:");
-    for (int i = 0; i < static_cast<int>(WatchClass::COUNT); i++) std::printf(" %s=%llu", classNames[i], (unsigned long long)g_idle.cpuCyclesByClass[i]);
-    std::printf("\n");
+    printSummary();
     if (g_idle.unexplained) { std::printf("detector self-check FAILED: loops ended with every loaded byte unchanged\n"); failed++; }
     return failed ? 1 : 0;
 }
