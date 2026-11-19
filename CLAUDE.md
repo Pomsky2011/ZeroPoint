@@ -8,7 +8,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 ROMs, movies and goldens that run on rev 10 must keep running identically. Don't change emulation
 behavior; if a change truly can't avoid it, ask first.
 
-**Minimum requirements** (host running the emulator): 2 cores, single-thread performance of 1500.
+**Minimum requirements** (host running the emulator): 2 cores, PassMark single-thread rating of 1500.
 
 ## Architecture
 
