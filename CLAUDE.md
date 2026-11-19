@@ -27,6 +27,10 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   so program order is z-order — see `docs/ppu.md`
   Per-blit attributes in VOC `$00FC` bits 2-5 (transparent/hflip/vflip/row clip, pushed with `$00FD` bit 4), signed x clips at the left edge, 8bpp
   tiles use the real 256-entry palette in either render mode — see `docs/ppu.md` "Tile attributes"
+- **PPU time**: blits and the tile-row queue run on the PPU's absolute cycle count (`clk`, next event `evAt`, `PPU::runEvents`), so an instruction always sees
+  them as they are on its own cycle: no catch-up call before touching a channel or the queue. A cell held on its rows is released when the display moves
+  (`revalidateHold`) or by `releaseHold()` on a render-mode change (call it from any new path that changes the window). Dispatch is every 9 cycles. See
+  `docs/ppu.md` "PPU time"; exact dispatch/retire cycles are checked by `bin/test_queue_timing`.
 
 - **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in
   from the right and even from the left (slide-out at handoff). A display frame is ~1.3 ms of console time (~766/s), not
