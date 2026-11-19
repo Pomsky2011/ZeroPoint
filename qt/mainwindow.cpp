@@ -11,6 +11,7 @@
 #include <QSettings>
 #include <QVBoxLayout>
 #include <QActionGroup>
+#include <QDir>
 #include <QShortcut>
 #include <QKeySequence>
 
@@ -45,6 +46,8 @@ MainWindow::MainWindow(QWidget *parent)
     addAction(ui->actionScale4x);
     addAction(ui->actionFullscreen);
     addAction(ui->actionShowMenuBar);
+
+    buildRecentMenu();
 
     // Connect menu actions
     connect(ui->actionLoadROM, &QAction::triggered, this, &MainWindow::onLoadROM);
@@ -139,6 +142,7 @@ void MainWindow::openROMFile(const QString &filename, bool announce)
             return;
         }
 
+        addRecentRom(filename, QString::fromStdString(rom.getTitle()));
         switchToEmulatorView();
         updateEmulationControls(true);
         onStart();
@@ -153,6 +157,78 @@ void MainWindow::openROMFile(const QString &filename, bool announce)
             QString::fromStdString(rom.getError())
         );
     }
+}
+
+void MainWindow::buildRecentMenu()
+{
+    // Sits right after File. The entries are rebuilt each time it opens so a file that went away (or came back, e.g. a
+    // removable drive) shows up greyed out (or live) without a restart.
+    menuRecent = new QMenu(tr("&Recent"), this);
+    ui->menubar->insertMenu(ui->menuEmulation->menuAction(), menuRecent);
+    connect(menuRecent, &QMenu::aboutToShow, this, &MainWindow::rebuildRecentMenu);
+    rebuildRecentMenu();
+}
+
+void MainWindow::rebuildRecentMenu()
+{
+    menuRecent->clear();
+    for (const RecentRom &r : recentRoms) {
+        const QString label = r.title.isEmpty() ? QFileInfo(r.path).fileName() : r.title;
+        QAction *a = menuRecent->addAction(label);
+        a->setToolTip(r.path);
+        a->setStatusTip(r.path);
+        a->setEnabled(QFileInfo::exists(r.path));
+        const QString path = r.path;
+        connect(a, &QAction::triggered, this, [this, path]() { openROMFile(path, false); });
+    }
+    if (recentRoms.isEmpty()) {
+        menuRecent->addAction(tr("(no recent ROMs)"))->setEnabled(false);
+    } else {
+        menuRecent->addSeparator();
+        QAction *clear = menuRecent->addAction(tr("&Clear Recent ROMs"));
+        connect(clear, &QAction::triggered, this, [this]() {
+            recentRoms.clear();
+            saveRecentRoms();
+            rebuildRecentMenu();
+        });
+    }
+}
+
+void MainWindow::addRecentRom(const QString &path, const QString &title)
+{
+    const QString abs = QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+    for (int i = 0; i < recentRoms.size(); ++i)
+        if (recentRoms[i].path == abs) recentRoms.removeAt(i--);
+    recentRoms.prepend({abs, title});
+    while (recentRoms.size() > MAX_RECENT) recentRoms.removeLast();
+    saveRecentRoms();   // now, not at exit, so a crash doesn't lose it
+    rebuildRecentMenu();
+}
+
+void MainWindow::loadRecentRoms()
+{
+    QSettings settings("ZeroPoint", "Emulator");
+    recentRoms.clear();
+    const int n = qMin(settings.beginReadArray("recent"), int(MAX_RECENT));
+    for (int i = 0; i < n; ++i) {
+        settings.setArrayIndex(i);
+        const QString path = settings.value("path").toString();
+        if (!path.isEmpty()) recentRoms.append({path, settings.value("title").toString()});
+    }
+    settings.endArray();
+}
+
+void MainWindow::saveRecentRoms()
+{
+    QSettings settings("ZeroPoint", "Emulator");
+    settings.remove("recent");
+    settings.beginWriteArray("recent", recentRoms.size());
+    for (int i = 0; i < recentRoms.size(); ++i) {
+        settings.setArrayIndex(i);
+        settings.setValue("path", recentRoms[i].path);
+        settings.setValue("title", recentRoms[i].title);
+    }
+    settings.endArray();
 }
 
 void MainWindow::buildMovieMenu()
@@ -482,6 +558,8 @@ void MainWindow::loadConfiguration()
     volume = settings.value("audio/volume", 80).toInt();
     biosPath = settings.value("system/biosPath", QString()).toString();
     apuBiosPath = settings.value("system/apuBiosPath", QString()).toString();
+    loadRecentRoms();
+    rebuildRecentMenu();
 
     KeyBindings defaults;
     keyBindings.up = settings.value("input/up", defaults.up).toInt();

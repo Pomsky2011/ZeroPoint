@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QString>
+#include <QList>
 #include "rom.h"
 #include "keybindings.h"
 
@@ -13,6 +14,7 @@ QT_END_NAMESPACE
 class EmulatorWidget;
 class QAction;
 class QLabel;
+class QMenu;
 
 class MainWindow : public QMainWindow
 {
@@ -69,6 +71,17 @@ private:
     QString lastRomPath;   // where Play Movie looks for the ROMs a movie pins, besides the movie's own folder
     void buildMovieMenu();
     void updateMovieActions();
+
+    // Recent ROMs: a top-level menu, most recent first, kept in QSettings ("recent/").
+    struct RecentRom { QString path, title; };
+    static constexpr int MAX_RECENT = 10;
+    QMenu *menuRecent = nullptr;
+    QList<RecentRom> recentRoms;
+    void buildRecentMenu();
+    void rebuildRecentMenu();      // also re-checks which files still exist
+    void addRecentRom(const QString &path, const QString &title);
+    void loadRecentRoms();
+    void saveRecentRoms();
 
     void switchToEmulatorView();
     // The welcome page's label dies with the page (switchToEmulatorView() deletes it), so only touch it before then.
