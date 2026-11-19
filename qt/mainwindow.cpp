@@ -115,6 +115,11 @@ void MainWindow::onLoadROM()
         return;
     }
 
+    openROMFile(filename, true);
+}
+
+void MainWindow::openROMFile(const QString &filename, bool announce)
+{
     if (rom.load(filename.toStdString())) {
         // ROM loaded successfully
         QString info = QString("Loaded: %1\nDeveloper: %2\nEntry Point: 0x%3")
@@ -122,13 +127,14 @@ void MainWindow::onLoadROM()
             .arg(QString::fromStdString(rom.getDeveloper()))
             .arg(rom.getEntryPoint(), 8, 16, QChar('0'));
 
-        ui->statusLabel->setText(info);
+        setWelcomeText(info);
         ui->statusbar->showMessage(QString::fromStdString(rom.getTitle()), 3000);
 
         // Load ROM into the emulator widget's System - this actually drives
         // CPU/PPU/APU execution, not just ROM metadata.
         lastRomPath = filename;
         if (!emulatorWidget->loadROM(filename)) {
+            updateEmulationControls(false);   // the failed load tore the old machine down too
             QMessageBox::critical(this, tr("Load Error"), tr("Failed to load ROM into emulator"));
             return;
         }
@@ -137,7 +143,9 @@ void MainWindow::onLoadROM()
         updateEmulationControls(true);
         onStart();
 
-        QMessageBox::information(this, tr("ROM Loaded"), info);
+        if (announce) {
+            QMessageBox::information(this, tr("ROM Loaded"), info);
+        }
     } else {
         QMessageBox::critical(
             this,
@@ -234,6 +242,7 @@ void MainWindow::onRecordMovie()
     if (filename.isEmpty()) return;
     QString error;
     if (!emulatorWidget->startRecording(filename, QString(), &error)) {
+        updateEmulationControls(false);
         QMessageBox::critical(this, tr("Record Error"), error);
         return;
     }
@@ -252,6 +261,7 @@ void MainWindow::onPlayMovie()
     if (!lastRomPath.isEmpty()) roms << QFileInfo(lastRomPath).absolutePath();
     QString error;
     if (!emulatorWidget->startPlayback(filename, roms, &error)) {
+        updateEmulationControls(emulatorWidget->isActive());
         QMessageBox::critical(this, tr("Play Error"), error);
         return;
     }
@@ -265,7 +275,7 @@ void MainWindow::onPlayMovie()
 void MainWindow::onStopMovie()
 {
     const QString summary = emulatorWidget->finishMovie();
-    updateEmulationControls(true);
+    updateEmulationControls(false);   // the machine is gone
     updateMovieActions();
     if (!summary.isEmpty()) ui->statusbar->showMessage(summary, 8000);
 }
@@ -273,7 +283,7 @@ void MainWindow::onStopMovie()
 void MainWindow::onMovieEnded(const QString &summary, bool ok)
 {
     emulatorWidget->finishMovie();
-    updateEmulationControls(true);
+    updateEmulationControls(false);
     updateMovieActions();
     ui->statusbar->showMessage(summary, 8000);
     if (!ok) QMessageBox::warning(this, tr("Movie"), summary);
@@ -297,10 +307,15 @@ void MainWindow::onStart()
 void MainWindow::onStop()
 {
     if (emulatorWidget) {
-        emulatorWidget->stop();
-        ui->actionStart->setEnabled(true);
-        ui->actionStop->setEnabled(false);
-        ui->statusbar->showMessage(tr("Emulation stopped"));
+        // Stopping tears the System down. A movie in progress is finished (a recording saved) first.
+        QString summary;
+        if (emulatorWidget->isRecording() || emulatorWidget->isPlayingMovie()) {
+            summary = emulatorWidget->finishMovie();
+        } else {
+            emulatorWidget->stop();
+        }
+        updateEmulationControls(false);   // nothing to start again: load a ROM for a new machine
+        ui->statusbar->showMessage(summary.isEmpty() ? tr("Emulation stopped") : summary);
     }
 }
 
@@ -315,12 +330,13 @@ void MainWindow::onReset()
 void MainWindow::onBootBios()
 {
     if (!emulatorWidget->bootBIOS()) {
+        updateEmulationControls(false);
         QMessageBox::critical(this, tr("Boot Error"),
             tr("Failed to boot BIOS from:\n%1").arg(biosPath));
         return;
     }
 
-    ui->statusLabel->setText(tr("BIOS booted (no cartridge)"));
+    setWelcomeText(tr("BIOS booted (no cartridge)"));
     ui->statusbar->showMessage(tr("BIOS booted"), 3000);
 
     switchToEmulatorView();
@@ -416,6 +432,13 @@ void MainWindow::switchToEmulatorView()
         emulatorWidget->show();
         delete oldWidget;
         applyWindowScale(windowScale);
+    }
+}
+
+void MainWindow::setWelcomeText(const QString &text)
+{
+    if (centralWidget() != emulatorWidget) {
+        ui->statusLabel->setText(text);
     }
 }
 

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-zeropoint-rom">
+    <comment>ZeroPoint ROM</comment>
+    <icon name="applications-games"/>
+    <magic priority="60">
+      <match type="string" offset="0" value="ZPB"/>
+    </magic>
+    <glob pattern="*.zpb" weight="60"/>
+  </mime-type>
+</mime-info>

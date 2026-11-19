@@ -23,7 +23,6 @@ EmulatorWidget::EmulatorWidget(QWidget *parent)
     , poweredOn(false)
     , smoothFiltering(false)
 {
-    system.setVerifySignatures(ZeroPoint::System::verifySignaturesDefault());   // ZEROPOINT_NO_VERIFY=1 to run unsigned ROMs
     // Free to resize/scale - paintEvent letterboxes to the display's 1:1
     // aspect ratio inside whatever size the window (or fullscreen) gives us,
     // rather than pinning the widget to one fixed pixel size.
@@ -31,13 +30,12 @@ EmulatorWidget::EmulatorWidget(QWidget *parent)
     setMinimumSize(ZeroPoint::FB_WIDTH, ZeroPoint::FULL_HEIGHT);
     setFocusPolicy(Qt::StrongFocus);
 
-    fillTestPattern();
-    updateFrameBuffer();
+    frameBuffer.fill(Qt::black);   // no System yet: the widget stays black until a cartridge is loaded
 }
 
 EmulatorWidget::~EmulatorWidget()
 {
-    joinEmuThread();
+    joinEmuThread();   // `system` (declared first, so destroyed last) outlives nothing that touches it
     if (timerId != -1) {
         killTimer(timerId);
     }
@@ -48,15 +46,30 @@ QSize EmulatorWidget::sizeHint() const
     return QSize(ZeroPoint::FB_WIDTH * 2, ZeroPoint::FULL_HEIGHT * 2);
 }
 
+void EmulatorWidget::createSystem()
+{
+    destroySystem();
+    system = std::make_unique<ZeroPoint::System>();
+    system->setVerifySignatures(ZeroPoint::System::verifySignaturesDefault());   // ZEROPOINT_NO_VERIFY=1 to run unsigned ROMs
+}
+
+void EmulatorWidget::destroySystem()
+{
+    halt();
+    session = ZeroPoint::MovieSession();   // its System* would dangle
+    system.reset();
+    poweredOn = false;
+}
+
 bool EmulatorWidget::applyBootROM()
 {
     // Empty path: leave System's native (HLE) boot alone - loadBootROM() has
     // replace semantics, so there's nothing to do.
     if (bootRomPath.isEmpty()) {
-        system.useHLEBootROM();   // a movie may have left a real one mapped
+        system->useHLEBootROM();   // a movie may have left a real one mapped
         return true;
     }
-    return system.loadBootROM(bootRomPath.toStdString());
+    return system->loadBootROM(bootRomPath.toStdString());
 }
 
 bool EmulatorWidget::applyApuBios()
@@ -65,27 +78,22 @@ bool EmulatorWidget::applyApuBios()
     // built-in default to fall back to, so this just leaves APU memory
     // zero-filled (an idle NOP loop at $8000) if nothing was ever loaded.
     if (apuBiosPath.isEmpty()) {
-        system.useHLEApuBios();
+        system->useHLEApuBios();
         return true;
     }
-    return system.loadAPUBios(apuBiosPath.toStdString());
+    return system->loadAPUBios(apuBiosPath.toStdString());
 }
 
 bool EmulatorWidget::loadROM(const QString &path)
 {
-    stop();
+    createSystem();   // old machine (and its emulation thread) goes first, THEN the new one exists
     movieKind = 0;   // loading a cartridge abandons any movie (finishMovie() is the way to keep a recording)
     currentRomPath = path;
-    if (!system.loadROM(path.toStdString())) {
+    if (!system->loadROM(path.toStdString()) || !applyBootROM() || !applyApuBios()) {
+        destroySystem();
         return false;
     }
-    if (!applyBootROM()) {
-        return false;
-    }
-    if (!applyApuBios()) {
-        return false;
-    }
-    system.powerOn();
+    system->powerOn();
     poweredOn = true;
     updateFrameBuffer();
     update();
@@ -94,16 +102,14 @@ bool EmulatorWidget::loadROM(const QString &path)
 
 bool EmulatorWidget::bootBIOS()
 {
-    stop();
+    createSystem();
     movieKind = 0;
     currentRomPath.clear();
-    if (!applyBootROM()) {
+    if (!applyBootROM() || !applyApuBios()) {
+        destroySystem();
         return false;
     }
-    if (!applyApuBios()) {
-        return false;
-    }
-    system.powerOn();
+    system->powerOn();
     poweredOn = true;
     updateFrameBuffer();
     update();
@@ -125,6 +131,11 @@ void EmulatorWidget::start()
 }
 
 void EmulatorWidget::stop()
+{
+    destroySystem();
+}
+
+void EmulatorWidget::halt()
 {
     if (running) {
         running = false;
@@ -152,11 +163,10 @@ void EmulatorWidget::reset()
         resetRequested = true;   // emuThread owns `system`; it resets between frames
         return;
     }
-    if (poweredOn) {
-        system.softReset();
-    } else {
-        fillTestPattern();
+    if (!poweredOn) {
+        return;
     }
+    system->softReset();
     audio.flush();
     updateFrameBuffer();
     update();
@@ -216,8 +226,8 @@ void EmulatorWidget::emuLoop()
     constexpr int MAX_BATCH = 16;   // ~21 ms of console time: keeps audio and frames flowing while catching up
     const auto publishEvery = std::chrono::duration_cast<Clock::duration>(
         std::chrono::duration<double>(TICK_SECONDS));
-    system.setVideoThread(ZeroPoint::System::videoThreadDefault());   // PPU/display catch-up beside the CPU
-    system.setIdlePollSkip(ZeroPoint::System::idlePollSkipDefault());
+    system->setVideoThread(ZeroPoint::System::videoThreadDefault());   // PPU/display catch-up beside the CPU
+    system->setIdlePollSkip(ZeroPoint::System::idlePollSkipDefault());
     auto fpsWindowStart = Clock::now();
     auto lastPublish = fpsWindowStart;
     int fpsSystemFrames = 0;   // System frames stepped in the current FPS window
@@ -248,12 +258,12 @@ void EmulatorWidget::emuLoop()
                 if (actions & ACT_YANK) session.yank();
                 if (!swapped.empty()) session.insert(swapped, swappedTitle);
             } else {
-                system.getCPU().setPlayerInput(d1, c1, b1);
-                system.getCPU().setPlayer2Input(d2, c2, b2);
-                if (actions & ACT_SOFT_RESET) system.softReset();
-                if (actions & ACT_HARD_RESET) system.hardReset();
-                if (actions & ACT_YANK) system.ejectCartridge();
-                if (!swapped.empty()) system.insertCartridge(swapped);
+                system->getCPU().setPlayerInput(d1, c1, b1);
+                system->getCPU().setPlayer2Input(d2, c2, b2);
+                if (actions & ACT_SOFT_RESET) system->softReset();
+                if (actions & ACT_HARD_RESET) system->hardReset();
+                if (actions & ACT_YANK) system->ejectCartridge();
+                if (!swapped.empty()) system->insertCartridge(swapped);
             }
             if (actions & (ACT_SOFT_RESET | ACT_HARD_RESET)) audio.flush();
         }
@@ -262,11 +272,11 @@ void EmulatorWidget::emuLoop()
         int due = pacer.framesDue(std::chrono::duration<double>(now.time_since_epoch()).count());
         if (due > MAX_BATCH) due = MAX_BATCH;
         for (int i = 0; i < due; i++) {
-            system.getDisplay().setLatchEnabled(i + 1 == due);   // only the last raster is published below
+            system->getDisplay().setLatchEnabled(i + 1 == due);   // only the last raster is published below
             if (kind != 0) {
                 if (session.run(ZeroPoint::System::CYCLES_PER_FRAME) == 0 && kind == 2) break;   // playback is over
             } else {
-                system.stepFrame();
+                system->stepFrame();
             }
         }
         if (kind == 2 && !playbackReported &&
@@ -280,9 +290,9 @@ void EmulatorWidget::emuLoop()
         fpsSystemFrames += due;
 
         if (due > 0) {
-            const auto &samples = system.getAudioBuffer();
+            const auto &samples = system->getAudioBuffer();
             audio.queue(samples.data(), static_cast<int>(samples.size() / 2));
-            system.clearAudioBuffer();
+            system->clearAudioBuffer();
         }
 
         const auto after = Clock::now();
@@ -505,7 +515,7 @@ void EmulatorWidget::hardReset()
         return;
     }
     if (poweredOn) {
-        system.hardReset();
+        system->hardReset();
         audio.flush();
         updateFrameBuffer();
         update();
@@ -518,7 +528,7 @@ void EmulatorWidget::yankCartridge()
         pendingActions |= ACT_YANK;
         return;
     }
-    if (poweredOn) system.ejectCartridge();
+    if (poweredOn) system->ejectCartridge();
 }
 
 bool EmulatorWidget::swapCartridge(const QString &romPath, QString *error)
@@ -544,13 +554,13 @@ bool EmulatorWidget::swapCartridge(const QString &romPath, QString *error)
         pendingActions |= ACT_SWAP;
         return true;
     }
-    if (poweredOn) system.insertCartridge(image);
+    if (poweredOn) system->insertCartridge(image);
     return true;
 }
 
 bool EmulatorWidget::startRecording(const QString &moviePath, const QString &author, QString *error)
 {
-    stop();
+    createSystem();   // a movie starts from a freshly constructed System
     ZeroPoint::MovieSession::RecordSetup setup;
     setup.bootRomPath = bootRomPath.toStdString();
     setup.apuBiosPath = apuBiosPath.toStdString();
@@ -558,8 +568,9 @@ bool EmulatorWidget::startRecording(const QString &moviePath, const QString &aut
     setup.verifySignatures = ZeroPoint::System::verifySignaturesDefault();
     setup.author = author.toStdString();
     std::string err;
-    if (!session.beginRecording(system, setup, err)) {
+    if (!session.beginRecording(*system, setup, err)) {
         if (error) *error = QString::fromStdString(err);
+        destroySystem();
         return false;
     }
     recordPath = moviePath.toStdString();
@@ -573,17 +584,19 @@ bool EmulatorWidget::startRecording(const QString &moviePath, const QString &aut
 
 bool EmulatorWidget::startPlayback(const QString &moviePath, const QStringList &romPaths, QString *error)
 {
-    stop();
+    halt();   // `playingMovie` is the emulation thread's too while it runs
     std::string err;
     if (!ZeroPoint::Movie::load(moviePath.toStdString(), playingMovie, err)) {
         if (error) *error = QString::fromStdString(err);
         return false;
     }
+    createSystem();
     library = ZeroPoint::RomLibrary();
     library.add(QFileInfo(moviePath).absolutePath().toStdString());
     for (const QString &p : romPaths) library.add(p.toStdString());
-    if (!session.beginPlayback(system, playingMovie, library, err)) {
+    if (!session.beginPlayback(*system, playingMovie, library, err)) {
         if (error) *error = QString::fromStdString(err);
+        destroySystem();
         return false;
     }
     movieKind = 2;
@@ -597,38 +610,30 @@ bool EmulatorWidget::startPlayback(const QString &moviePath, const QStringList &
 
 QString EmulatorWidget::finishMovie()
 {
-    stop();   // joins the emulation thread: `session` is ours again
+    halt();   // joins the emulation thread: `session` and `system` are ours again
     const int kind = movieKind.exchange(0);
+    QString summary;
     if (kind == 1) {
-        const ZeroPoint::Movie recorded = session.finishRecording();
+        const ZeroPoint::Movie recorded = session.finishRecording();   // takes a last checkpoint: needs the System
         std::string err;
-        if (!recorded.save(recordPath, err)) return QString::fromStdString(err);
-        return tr("Saved %1: %2 events over %3 s").arg(QString::fromStdString(recordPath)).arg(recorded.events.size())
+        if (!recorded.save(recordPath, err)) summary = QString::fromStdString(err);
+        else summary = tr("Saved %1: %2 events over %3 s").arg(QString::fromStdString(recordPath)).arg(recorded.events.size())
             .arg(static_cast<double>(recorded.lengthCycles) / 68011355.0, 0, 'f', 2);
+    } else if (kind == 2) {
+        if (!session.failure().empty()) summary = QString::fromStdString(session.failure());
+        else if (session.desynced()) summary = QString::fromStdString(session.desyncReport());
+        else summary = session.finished() ? tr("Movie finished: %1 checkpoints verified").arg(session.checkpointsVerified())
+                                          : tr("Playback stopped");
     }
-    if (kind == 2) {
-        if (!session.failure().empty()) return QString::fromStdString(session.failure());
-        if (session.desynced()) return QString::fromStdString(session.desyncReport());
-        return session.finished() ? tr("Movie finished: %1 checkpoints verified").arg(session.checkpointsVerified())
-                                  : tr("Playback stopped");
-    }
-    return QString();
-}
-
-void EmulatorWidget::fillTestPattern()
-{
-    ZeroPoint::Display &display = system.getDisplay();
-    for (int y = 0; y < ZeroPoint::FULL_HEIGHT; y++) {
-        for (int x = 0; x < ZeroPoint::FB_WIDTH; x++) {
-            uint16_t red = (x * 31 / 255) << 1;
-            uint16_t blue = (y * 31 / 255) << 11;
-            display.setPixel(x, y, red | blue);
-        }
-    }
+    destroySystem();   // stopping tears the machine down, movie or not
+    return summary;
 }
 
 void EmulatorWidget::updateFrameBuffer()
 {
+    if (!system) {
+        return;
+    }
     convertFrame(frameBuffer);
 }
 
@@ -638,7 +643,7 @@ void EmulatorWidget::convertFrame(QImage &dst) const
     // whatever few scanlines are currently in its window. getScanline() reads
     // the latched, complete output frame instead (same one the SDL frontend's
     // getScanlineSDL() uses), which is what a full-frame blit needs.
-    const ZeroPoint::Display &display = system.getDisplay();
+    const ZeroPoint::Display &display = system->getDisplay();
     ZeroPoint::Color32 row[ZeroPoint::FB_WIDTH];
     for (int y = 0; y < ZeroPoint::FULL_HEIGHT; y++) {
         display.getScanline(y, row);

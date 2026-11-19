@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 using namespace ZeroPoint;
@@ -20,7 +21,9 @@ int main(int argc, char** argv) {
     const int last = *std::max_element(frames.begin(), frames.end());
 
     System sys;
-    if (!sys.loadBootROM(argv[1]) || !sys.loadROM(argv[2])) { std::fprintf(stderr, "cannot load\n"); return 1; }
+    // "none" boots through the native HLE boot ROM (no splash), which verifies and runs the cartridge directly
+    const bool hle = std::string(argv[1]) == "none";
+    if ((!hle && !sys.loadBootROM(argv[1])) || !sys.loadROM(argv[2])) { std::fprintf(stderr, "cannot load\n"); return 1; }
     sys.powerOn();
     if (std::getenv("ZP_IDLE_STATS")) sys.setIdlePollSkip(true);   // run the idle-poll detector (see the report at the end)
 
@@ -44,6 +47,13 @@ int main(int argc, char** argv) {
         std::printf("wrote %s  (PPU %s EP=$%04X R44=%u R51=%u R63=$%04X, CPU PB=$%02X)\n", path,
                     ppu.getState() == PPUState::Running ? "running" : "NOT running", ppu.getExecutionPointer(),
                     ppu.getRegister(44), ppu.getRegister(51), ppu.getRegister(63), sys.getCPU().getPB());
+        if (const char* spec = std::getenv("ZP_DUMP_PPU")) {   // ZP_DUMP_PPU=<hex addr>:<count>: print that PPU memory
+            unsigned addr = 0, n = 16;
+            std::sscanf(spec, "%x:%u", &addr, &n);
+            std::printf("   PPU[%04X..]:", addr);
+            for (unsigned i = 0; i < n; i++) std::printf(" %02X", sys.getPPU().readMemory(static_cast<uint16_t>(addr + i)));
+            std::printf("\n");
+        }
         std::printf("   CPU PC=$%04X  PPU $9300(req)=%u $9301(ack)=%u R28(tiles left)=%u SP=$%04X\n",
                     sys.getCPU().getPC(), ppu.readMemory(0x9300), ppu.readMemory(0x9301), ppu.getRegister(28), ppu.getRegister(61));
     }

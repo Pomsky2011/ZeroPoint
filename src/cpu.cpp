@@ -9,6 +9,8 @@
 #include <cstring>
 #include <stdexcept>
 
+#include "boot_hle/zpblake2s.h"
+
 namespace ZeroPoint {
 
 CPU::CPU()
@@ -73,6 +75,7 @@ void CPU::reset() {
     std::memset(dmaConfigBuffer, 0, sizeof dmaConfigBuffer);
     std::memset(p2TxBuffer, 0, sizeof p2TxBuffer);
     std::memset(p2RxBuffer, 0, sizeof p2RxBuffer);
+    blake2sReset();
     p2TxHead = p2TxTail = p2RxHead = p2RxTail = 0;
 
     // Fresh boot ⇒ nothing verified yet, even if a chunk was verified before
@@ -2000,6 +2003,7 @@ void CPU::ejectCartridge() {
             ++it;
         }
     }
+    blake2sReset();   // a job in flight was hashing the cartridge that just left
     clearDataGating();
     rebuildBankTable();
     cartridgeInserted = false;
@@ -2653,6 +2657,83 @@ void CPU::setupIORegisters() {
             }
         }
     );
+
+    // ========================================================================
+    // 9. BLAKE2s ENGINE ($D80060-$D8009F)
+    // ========================================================================
+    //   $D80060-62 SRC  cartridge address (lo, mid, bank $00-$7F)     $D80064-67 LEN  bytes (32-bit)
+    //   $D80068 CMD     write 1 = hash [SRC, SRC+LEN), write $80 = reset
+    //   $D80069 STATUS  bit0 BUSY, bit1 DONE (digest valid), bit2 ERR (last start rejected)
+    //   $D80080-9F DIGEST  the 32 bytes of BLAKE2s, reads 0 until DONE
+    // Reads the cartridge through the raw ROM path, not the gated one: it only ever hands back a hash, never bytes.
+    registerIORegion(IO_BANK, 0x0060, 0x40,
+        [this](uint16_t offset) -> uint8_t {
+            switch (offset) {
+                case 0x00: return b2Src & 0xFF;
+                case 0x01: return (b2Src >> 8) & 0xFF;
+                case 0x02: return (b2Src >> 16) & 0xFF;
+                case 0x04: return b2Len & 0xFF;
+                case 0x05: return (b2Len >> 8) & 0xFF;
+                case 0x06: return (b2Len >> 16) & 0xFF;
+                case 0x07: return (b2Len >> 24) & 0xFF;
+                case 0x09: {
+                    const bool busy = blake2sBusy();
+                    const bool done = (b2Flags & 1) && !busy;
+                    return static_cast<uint8_t>((busy ? 1 : 0) | (done ? 2 : 0) | ((b2Flags & 2) ? 4 : 0));
+                }
+                default:
+                    if (offset >= 0x20 && offset < 0x40) {
+                        return ((b2Flags & 1) && !blake2sBusy()) ? b2Digest[offset - 0x20] : 0x00;
+                    }
+                    return 0x00;
+            }
+        },
+        [this](uint16_t offset, uint8_t value) {
+            if (blake2sBusy() && offset != 0x08) return;   // the job owns its registers until it finishes
+            switch (offset) {
+                case 0x00: b2Src = (b2Src & ~0xFFu) | value; break;
+                case 0x01: b2Src = (b2Src & ~0xFF00u) | (static_cast<uint32_t>(value) << 8); break;
+                case 0x02: b2Src = (b2Src & ~0xFF0000u) | (static_cast<uint32_t>(value) << 16); break;
+                case 0x04: b2Len = (b2Len & ~0xFFu) | value; break;
+                case 0x05: b2Len = (b2Len & ~0xFF00u) | (static_cast<uint32_t>(value) << 8); break;
+                case 0x06: b2Len = (b2Len & ~0xFF0000u) | (static_cast<uint32_t>(value) << 16); break;
+                case 0x07: b2Len = (b2Len & 0x00FFFFFFu) | (static_cast<uint32_t>(value) << 24); break;
+                case 0x08:
+                    if (value == 0x01) blake2sStart();
+                    else if (value == 0x80) blake2sReset();
+                    break;
+                default: break;
+            }
+        }
+    );
+}
+
+void CPU::blake2sReset() {
+    b2Src = 0; b2Len = 0; b2DoneAt = 0; b2Flags = 0;
+    std::memset(b2Digest, 0, sizeof b2Digest);
+}
+
+void CPU::blake2sStart() {
+    if (blake2sBusy()) return;
+    const uint64_t end = static_cast<uint64_t>(b2Src) + b2Len;
+    if (!cartridgeInserted || ((b2Src >> 16) & 0xFF) > 0x7F || end > 0x800000u) {
+        b2Flags = 2;   // rejected: not a cartridge range
+        std::memset(b2Digest, 0, sizeof b2Digest);
+        return;
+    }
+    zp_blake2s h;
+    zp_blake2s_init(&h);
+    unsigned char chunk[4096];
+    for (uint32_t done = 0; done < b2Len;) {
+        const uint32_t n = std::min<uint32_t>(sizeof chunk, b2Len - done);
+        for (uint32_t i = 0; i < n; i++) chunk[i] = readMapped(b2Src + done + i);
+        zp_blake2s_update(&h, chunk, n);
+        done += n;
+    }
+    zp_blake2s_final(&h, b2Digest);
+    const uint64_t blocks = std::max<uint64_t>(1, (static_cast<uint64_t>(b2Len) + 63) / 64);
+    b2DoneAt = cycleCount + blocks * BLAKE2S_CYCLES_PER_BLOCK;
+    b2Flags = 1;
 }
 
 // === INTERRUPT HANDLING ===
@@ -2875,6 +2956,7 @@ uint64_t CPU::stateHash() const {
     mix(p2TxBuffer, sizeof p2TxBuffer); mix(p2RxBuffer, sizeof p2RxBuffer);
     mixv(p2TxHead); mixv(p2TxTail); mixv(p2RxHead); mixv(p2RxTail);
     mixv(bootServiceActive); mixv(dataGatingActive); mixv(gatedCodeSize);
+    mixv(b2Src); mixv(b2Len); mixv(b2DoneAt); mixv(b2Flags); mix(b2Digest, sizeof b2Digest);
     mix(chunkVerified.data(), chunkVerified.size());
     for (const MemoryRegion& r : memoryMap) {
         if (r.type == MemoryRegion::RAM && r.data) mix(r.data, r.dataSize);

@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
     std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify] [--no-idle-skip]\n";
-    std::cout << "       [--two-players] [--swap-rom rom.zpb]... [--record out.zpm [--author NAME]] [--play in.zpm [--roms PATH]...] [--frames N]\n";
+    std::cout << "       [--two-players] [--speed] [--swap-rom rom.zpb]... [--record out.zpm [--author NAME]] [--play in.zpm [--roms PATH]...] [--frames N]\n";
     std::cout << "Keys: arrows/z x c v/a s d f/shift/enter = player 1 (i j k l/7 8 9 0/u o n m = player 2 with --two-players)\n";
     std::cout << "      F1 soft reset, F2 hard reset (power cycle), F3 yank the cartridge, F4 Stop 'n' Swop (next --swap-rom)\n";
     std::cout << "Press ESC to exit\n\n";
@@ -79,6 +79,7 @@ int main(int argc, char** argv) {
     bool noVerify = false;
     bool idleSkip = System::idlePollSkipDefault();   // --no-idle-skip turns the poll fast-forward off (docs/idle-poll-skip.md)
     bool twoPlayers = false;
+    bool showSpeed = false;
     std::string recordPath, playPath, author;
     long maxTicks = -1;   // --frames N: stop by itself after N 60 Hz ticks (headless runs, CI)
     std::vector<std::string> romDirs, swapRoms;
@@ -90,6 +91,8 @@ int main(int argc, char** argv) {
             noVerify = true;   // run unsigned/badly signed ROMs (HLE boot only; a real --boot ROM decides for itself)
         } else if (std::strcmp(argv[i], "--no-idle-skip") == 0) {
             idleSkip = false;
+        } else if (std::strcmp(argv[i], "--speed") == 0) {
+            showSpeed = true;
         } else if (std::strcmp(argv[i], "--two-players") == 0) {
             twoPlayers = true;
         } else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
@@ -252,6 +255,10 @@ int main(int argc, char** argv) {
     FramePacer pacer(FramePacer::AUDIO_LEAD);
     bool playbackEnded = false;
     long ticks = 0;
+    // Speed readout, same maths as the Qt status bar: console seconds stepped per wall second, as "fps" out of 60.
+    // Only printed with --speed (a plain run stays quiet).
+    auto speedWindowStart = std::chrono::steady_clock::now();
+    long speedFrames = 0;
     while (!window.shouldClose() && (movieMode || !system.getCPU().isHalted()) && !playbackEnded &&
            (maxTicks < 0 || ticks++ < maxTicks)) {
         auto frameStart = std::chrono::steady_clock::now();
@@ -306,6 +313,17 @@ int main(int argc, char** argv) {
                 FramePacer::STEP_BUDGET_SECONDS) break;   // a slow frame must not starve the window
         }
         pacer.stepped(done);
+        speedFrames += done;
+        if (showSpeed) {
+            const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - speedWindowStart).count();
+            if (wall >= 1.0) {
+                const double speed = speedFrames * FramePacer::FRAME_SECONDS / wall;
+                std::cout << "speed: " << static_cast<int>(speed * 100.0 + 0.5) << "% (" << static_cast<int>(speed * 60.0 + 0.5)
+                          << " fps)\n" << std::flush;
+                speedWindowStart = std::chrono::steady_clock::now();
+                speedFrames = 0;
+            }
+        }
 
         if (moviePlaying && (movieSession.finished() || movieSession.desynced() || !movieSession.failure().empty())) playbackEnded = true;
 

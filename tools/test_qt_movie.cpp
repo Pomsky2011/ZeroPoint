@@ -1,6 +1,7 @@
 // test_qt_movie: the Qt frontend's movie plumbing on the offscreen platform (QT_QPA_PLATFORM=offscreen), with the
 // emulation thread running for real: record with key presses and every host action issued from the GUI thread, save,
-// then play the file back and check it finishes with every checkpoint verified.
+// then play the file back and check it finishes with every checkpoint verified. Also the System's lifetime: it exists
+// only between a load and stop(), and a load tears the old one down before building the next.
 //
 //   test_qt_movie <workdir> <rom.zpb> <other.zpb>
 #include "emulatorwidget.h"
@@ -39,6 +40,37 @@ int main(int argc, char** argv) {
     const QString work = argv[1], rom = argv[2], other = argv[3];
     const QString moviePath = work + "/qt.zpm";
     QString error;
+
+    std::printf("lifecycle\n");
+    {
+        EmulatorWidget w;
+        check(!w.isActive(), "no System before a cartridge is loaded");
+        check(w.loadROM(rom), "cartridge loads");
+        check(w.isActive(), "System exists after the load");
+        w.start();
+        pump(150);
+        w.stop();
+        check(!w.isActive(), "stop() tears the System down");
+        w.start();   // nothing to run
+        w.reset();
+        w.hardReset();
+        w.yankCartridge();
+        check(!w.swapCartridge(other, &error) || !w.isActive(), "actions on a torn-down machine are no-ops");
+        check(w.loadROM(rom), "a new cartridge loads after stop()");
+        w.start();
+        pump(150);
+        check(w.loadROM(other), "loading while running replaces the System");
+        check(w.isActive(), "the replacement exists");
+        w.start();
+        pump(150);
+        check(!w.loadROM(work + "/does-not-exist.zpb"), "a bad cartridge fails to load");
+        check(!w.isActive(), "and leaves no System behind");
+        check(w.bootBIOS(), "the BIOS alone boots");
+        w.start();
+        pump(150);
+        w.stop();
+        check(!w.isActive(), "stop() after bootBIOS() tears it down");
+    }
 
     std::printf("record\n");
     {

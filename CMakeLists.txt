@@ -265,6 +265,10 @@ add_executable(fuzz_ppu tools/fuzz_ppu.cpp)
 target_link_libraries(fuzz_ppu zeropoint_core)
 set_target_properties(fuzz_ppu PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+add_executable(fuzz_queue tools/fuzz_queue.cpp)
+target_link_libraries(fuzz_queue zeropoint_core)
+set_target_properties(fuzz_queue PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 # Test ROM creation tools
 add_executable(make_test_rom tools/make_test_rom.cpp)
 
@@ -361,6 +365,11 @@ target_link_libraries(test_movie zeropoint_core)
 add_executable(test_cart_slot tools/test_cart_slot.cpp)
 target_link_libraries(test_cart_slot zeropoint_core)
 
+# BLAKE2s engine ($D80060): digests, timing, rejects, determinism
+add_executable(test_blake2s_engine tools/test_blake2s_engine.cpp)
+target_include_directories(test_blake2s_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_blake2s_engine zeropoint_core)
+
 # Whole-system determinism: same cartridge, differently-initialised/threaded/stepped Systems, identical state hashes
 add_executable(test_determinism tools/test_determinism.cpp)
 target_link_libraries(test_determinism zeropoint_core)
@@ -405,6 +414,15 @@ set_target_properties(test_tile_lut PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_
 add_executable(test_tile_rowclip tools/test_tile_rowclip.cpp)
 target_link_libraries(test_tile_rowclip zeropoint_core)
 set_target_properties(test_tile_rowclip PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+add_executable(test_row_queue tools/test_row_queue.cpp)
+target_link_libraries(test_row_queue zeropoint_core)
+set_target_properties(test_row_queue PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+add_executable(test_layers tools/test_layers.cpp)
+target_link_libraries(test_layers zeropoint_core)
+target_include_directories(test_layers PRIVATE ${CMAKE_SOURCE_DIR}/../ZPdevtools/ucode/layers)
+set_target_properties(test_layers PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_executable(test_blit_order tools/test_blit_order.cpp)
 target_link_libraries(test_blit_order zeropoint_core)
@@ -581,6 +599,9 @@ set_target_properties(test_movie PROPERTIES
 )
 
 set_target_properties(test_cart_slot PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+set_target_properties(test_blake2s_engine PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 

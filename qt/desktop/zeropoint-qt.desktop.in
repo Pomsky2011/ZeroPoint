@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ZeroPoint
+GenericName=Fantasy Console Emulator
+Comment=Run ZeroPoint ROMs
+Exec=@EXEC@ %f
+Icon=applications-games
+Terminal=false
+Categories=Game;Emulator;
+MimeType=application/x-zeropoint-rom;

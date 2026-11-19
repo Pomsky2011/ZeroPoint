@@ -683,6 +683,20 @@ private:
     bool devModeFlag = false;          // DEV_MODE ($D80048)
     uint8_t p2Direction = 0, p2Control = 0, p2Buttons = 0;   // port 2 controller; set by setPlayer2Input()
     bool cartridgeInserted = false;
+
+    // BLAKE2s engine ($D80060-$D8009F, docs/blake2s-engine.md): hashes cartridge ROM in the background so the Boot ROM
+    // never has to hash in software. The digest is computed when the job starts (ROM is immutable while inserted) but
+    // only becomes readable once the job's cycle cost has elapsed on the CPU's own clock, so it is deterministic.
+    uint32_t b2Src = 0, b2Len = 0;
+    uint64_t b2DoneAt = 0;       // cycleCount at which the job finishes
+    uint8_t b2Flags = 0;         // 1 = a job was started (done once cycleCount >= b2DoneAt), 2 = last start was rejected
+    uint8_t b2Digest[32] = {};
+    void blake2sStart();
+    void blake2sReset();
+    bool blake2sBusy() const { return (b2Flags & 1) && cycleCount < b2DoneAt; }
+public:
+    static constexpr uint32_t BLAKE2S_CYCLES_PER_BLOCK = 64;   // CPU cycles per 64-byte block: the 8-bit ROM bus feeds 1 byte/cycle (~17 MB/s, 8 MB in ~0.5 s)
+private:
     uint8_t p2TxBuffer[256] = {};      // debug serial queues ($D8003C-$D8003E); TX has no consumer yet
     uint8_t p2RxBuffer[256] = {};
     uint8_t p2TxHead = 0, p2TxTail = 0, p2RxHead = 0, p2RxTail = 0;

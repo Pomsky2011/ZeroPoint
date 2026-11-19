@@ -22,6 +22,10 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    // Load a .zpb and start it, as File > Load ROM does. `announce` = also show the "ROM Loaded" box (the menu does,
+    // a ROM handed to us on the command line / by the desktop does not).
+    void openROMFile(const QString &filename, bool announce);
+
 private slots:
     void onLoadROM();
     void onExit();
@@ -67,6 +71,8 @@ private:
     void updateMovieActions();
 
     void switchToEmulatorView();
+    // The welcome page's label dies with the page (switchToEmulatorView() deletes it), so only touch it before then.
+    void setWelcomeText(const QString &text);
     void applyWindowScale(int scale);
     void applySettingsToEmulator();
     void updateEmulationControls(bool active);

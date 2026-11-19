@@ -2,6 +2,14 @@
 
 Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
+## Status: emulator + boot ROM done (dev-unit boot ROM); only ZPdevtools work remains
+
+**All new revisions must be backwards compatible with revision 10** (`System::CORE_REVISION`).
+ROMs, movies and goldens that run on rev 10 must keep running identically. Don't change emulation
+behavior; if a change truly can't avoid it, ask first.
+
+**Minimum requirements** (host running the emulator): 2 cores, single-thread performance of 1500.
+
 ## Architecture
 
 ### Display
@@ -27,15 +35,22 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   so program order is z-order — see `docs/ppu.md`
   Per-blit attributes in VOC `$00FC` bits 2-5 (transparent/hflip/vflip/row clip, pushed with `$00FD` bit 4), signed x clips at the left edge, 8bpp
   tiles use the real 256-entry palette in either render mode — see `docs/ppu.md` "Tile attributes"
-- **PPU time**: blits and the tile-row queue run on the PPU's absolute cycle count (`clk`, next event `evAt`, `PPU::runEvents`), so an instruction always sees
-  them as they are on its own cycle: no catch-up call before touching a channel or the queue. A cell held on its rows is released when the display moves
-  (`revalidateHold`) or by `releaseHold()` on a render-mode change (call it from any new path that changes the window). Dispatch is every 9 cycles. See
-  `docs/ppu.md` "PPU time"; exact dispatch/retire cycles are checked by `bin/test_queue_timing`.
+- **Tile-row queue** (write-ahead, port `$0350-$0366`): queues whole tilemap rows (128 cells) ahead of the beam; the hardware holds each until
+  its rows are safe to write and retires queued blits only after overlapping ones. Rows are absolute (frame field `$035E`); a too-late row sets a
+  sticky bit instead of tearing. `$0362` bit 0 makes `$C000-$FFFF` open bus. `docs/ppu.md`, tests `bin/test_row_queue`, `bin/test_layers`, `bin/fuzz_queue <seed0> <seed1>` (stepped vs batched, random programs + launches).
+  Blits and the queue run on PPU time (`clk`, absolute cycles; `evAt` = cycle of the next event, `runEvents`): `tickMany` only advances them when an event falls
+  inside a stretch, so an instruction always sees them as they are on its own cycle with nothing to settle first. A cell held on its rows (`tqHeld`) is
+  released when the display moves (`revalidateHold`, each call) or on a render-mode change (`releaseHold()`: call it from any new path that changes the window).
+  Tests: `bin/test_queue_timing` (exact dispatch/retire cycles, incl. the tie where a blit would finish with an older overlapping one), `bin/fuzz_queue`.
+- **Layers + sprites microcode** (`ZPdevtools/ucode/layers`, `docs/ppu/layers.md`): two scrolling 64x64 BG layers, per-band sprite lists and
+  one standstill window layer above all (textbox/HUD spans; solid ones cull the BG under them) on that queue; `bin/test_layers <layers.bin>` checks whole frames against a reference and that no band goes late, even saturated.
+  Demo cart: `ZPdevtools/ucode/layers/demo/build_demo.py` -> `build/demo.zpb`, run with `zeropoint_sdl` (or `dump_splash none <cart> ...` headless).
 
 - **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in
   from the right and even from the left (slide-out at handoff). A display frame is ~1.3 ms of console time (~766/s), not
   1/60 s. Interrupts nest at any instruction boundary and share `DP`, so each splash handler saves/restores it; the
   hblank handler must stay under 340 cycles. Check with `bin/dump_splash` + `tools/splash_frames.py`.
+  `zeropoint_sdl --speed` prints console speed (% of real time) each second; use `perf stat` instruction counts to A/B, wall time is noisy.
 
 ### APU (Audio Processing Unit)
 - **4.250710 MHz** (master/16, CPI 2, ~2.1 MIPS), 8-bit RISC. **Fast mode** (CPU writes `APUCLK` $D8001A bit 0; reset clears it):
@@ -77,6 +92,8 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
   `setVerifySignatures(false)`, `zeropoint_sdl --no-verify`, `ZEROPOINT_NO_VERIFY=1`), jumps to the entry, and answers
   `COP #$F0-$FF` (math, `$F7` PPU load, `$FF` chunk verify) itself at the real ROM's cycle cost. `--boot` = real ROM, HLE off.
   `docs/boot-hle.md`; tests `bin/test_boot_trig --hle`, `tools/test_hle_cop.sh`.
+- **BLAKE2s engine** (`$D80060-$D8009F`, `docs/blake2s-engine.md`, test `bin/test_blake2s_engine`): hardware cartridge hash; the real Boot ROM
+  verifies **trailer v2** (`zpbuild --codesize N --trailer 2`) through it, so a whole ROM verifies at boot with no per-chunk `COP #$FF`.
 - **Determinism** is a requirement: same ROM + input = same state/audio/video on any host/thread count. No hidden state
   (no function-level `static`s, no process-wide "current system", no `float` in the core, init every member). Check with
   `bin/test_determinism <bootrom|none> <rom> <secs>`, `bin/fuzz_determinism <dir> [seed] [n]` (random guests/event schedules,

@@ -8,6 +8,7 @@
 #include <QStringList>
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include "system.h"
@@ -24,6 +25,7 @@ public:
     explicit EmulatorWidget(QWidget *parent = nullptr);
     ~EmulatorWidget();
 
+    // Tears down any live System, builds a fresh one and powers it on with this cartridge.
     bool loadROM(const QString &path);
 
     // Power on with just the Boot ROM mapped and no cartridge - e.g. to watch
@@ -32,6 +34,8 @@ public:
     bool bootBIOS();
 
     void start();
+    // Stops emulation AND tears the System down: there is no machine afterwards (isActive() is false) until the next
+    // loadROM()/bootBIOS()/startRecording()/startPlayback() builds a new one. The last frame stays on screen.
     void stop();
     void reset();
     bool isActive() const { return poweredOn; }
@@ -90,7 +94,9 @@ private:
     // Threading: while running, `system`, `pacer` and `audio.queue()` belong to emuThread alone (emuLoop). The
     // GUI thread only paints `frameBuffer`, swaps in the newest frame emuThread published, and talks to the
     // emulator through the atomics below. Everything else touches `system` only while the thread is joined.
-    ZeroPoint::System system;
+    // Lifetime: null until a cartridge (or the BIOS alone) is loaded, destroyed by stop() / the next load. `poweredOn`
+    // is true exactly while it exists.
+    std::unique_ptr<ZeroPoint::System> system;
     QImage frameBuffer;         // GUI thread: what paintEvent draws
     QImage publishedFrame;      // newest finished frame; guarded by frameMutex
     QImage workFrame;           // emuThread's scratch frame, swapped into publishedFrame
@@ -143,6 +149,9 @@ private:
     bool setPlayer2Key(int key, bool down);
     void updatePlayer2Input();
 
+    void createSystem();                 // tear down any current System, construct a fresh one
+    void destroySystem();                // halt() + free it; the session's pointer into it dies with it
+    void halt();                         // stop the emulation thread and timer, keep the System
     bool applyBootROM();
     bool applyApuBios();
     void scheduleTick(std::chrono::steady_clock::time_point now);
@@ -151,7 +160,6 @@ private:
     void convertFrame(QImage &dst) const;   // latched display frame -> dst (system must be idle or the caller's)
     void updateFrameBuffer();
     void updatePlayerInput();
-    void fillTestPattern();
 };
 
 #endif // EMULATORWIDGET_H
