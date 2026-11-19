@@ -295,10 +295,10 @@ private:
     // state inside dma.cpp for no benefit over keeping it where the state
     // already lives. If every channel is busy when TILEDRAW issues, it waits
     // (re-executes each cycle) until one frees, and blits retire in issue
-    // order - see opTILEDRAW and advanceBlitChannels().
+    // order - see opTILEDRAW and retireFront().
     struct BlitChannel {
         bool busy = false;
-        uint64_t completeAt = 0;     // blitClock value at which this blit finishes (see advanceBlitChannels)
+        uint64_t completeAt = 0;     // `clk` value at which this blit finishes (see runEvents)
         uint16_t x = 0, y = 0;
         uint8_t tileBank = 0, tileId = 0, tileMode = 0;
         uint8_t blendMode = 0;
@@ -334,17 +334,20 @@ private:
     static constexpr size_t NUM_LINE_CHANNELS = 4;
     static constexpr size_t NUM_ALL_CHANNELS = NUM_BLIT_CHANNELS + NUM_LINE_CHANNELS;
     std::array<BlitChannel, NUM_ALL_CHANNELS> blitChannels;
-    // Compact copies of the few fields the per-event bookkeeping scans (a completion looks at every channel's finish
-    // time, a queue dispatch at every tile channel's busy flag and rectangle): a scan reads a cache line or two instead
-    // of a dozen 112-byte structs, and with no data-dependent branches it does not mispredict. Derived state, not hashed:
-    // set where a channel is dispatched or retired and in resetBlitMirrors(), never read for anything the struct has.
-    std::array<uint64_t, NUM_ALL_CHANNELS> blitDoneAt{};   // completeAt while busy, UINT64_MAX while idle
+    // Derived state, not hashed: set where a channel is dispatched or retired and in resetBlitMirrors(), never read for
+    // anything the struct has. The busy channels, sorted by (completeAt, channel index): the order they retire in. Each
+    // entry is `completeAt << 4 | channel`; flight[0] is the next blit to finish and flight[nFlight - 1] the last, so a
+    // completion is a pop from the front and "when is the last of them done" costs nothing.
+    std::array<uint64_t, NUM_ALL_CHANNELS> flight{};
+    uint32_t nFlight = 0;
     uint32_t tileBusyMask = 0;                             // bit i: tile channel i is busy
     // The rectangle a tile channel's blit writes, as the queue's overlap test wants it; a TILEDRAW blit (no known extent)
     // is the whole plane, so it overlaps everything, like `!fromQueue` used to.
     std::array<int64_t, NUM_BLIT_CHANNELS> ovRowLo{}, ovRowHi{};
     std::array<int32_t, NUM_BLIT_CHANNELS> ovColLo{}, ovColHi{};
     void resetBlitMirrors();
+    void flightInsert(uint64_t completeAt, unsigned channel);
+    void retireFront();
     // Line-blit port ($0340-$034F, plain PPU memory the launch reads): src, x, y, count (words), $0348 launches.
     // $034A reads back busy/overrun status. The splash's gen_mosaic.py and docs/ppu.md describe the contract.
     static constexpr uint16_t LINE_PORT_SRC = 0x0340, LINE_PORT_X = 0x0342, LINE_PORT_Y = 0x0344,
@@ -369,44 +372,49 @@ private:
         int64_t absY = 0, absClip0 = 0, absClip1 = 0;
         uint8_t blendMode = 0;
         std::array<uint8_t, 4> translucency{};
+        // What every cell of the row shares, worked out once when it is launched (derived, not hashed): the rows a cell
+        // writes (the tile's eight cut down to the clip window - none at all makes the cell empty), what its blit costs,
+        // and how the flags turn a cell's attribute word into the blit's attributes: (w1 & mask) ^ xorAttrs | orAttrs.
+        int64_t r0 = 0, r1 = 0;
+        uint32_t blitCost = 0;
+        uint8_t xorAttrs = 0, orAttrs = 0, tileMode = 0;
+        bool empty = false;
     };
     std::array<RowCmd, TQ_CAPACITY> tqRing;
     uint32_t tqHead = 0, tqCount = 0;                     // queued rows (ring), and how many
     uint32_t tqPending = 0;                               // cells not yet dispatched, across them
-    uint32_t tqCooldown = 0;
-    // The last look at the head cell held it (its rows not free yet, or no free channel). Derived, not state: it only
-    // lets advanceBlitsAndQueue() skip cycles in which looking again would change nothing, and is cleared by every
-    // event that could change the answer (a render-mode change, a new row, a reset, a new call).
-    bool tqHold = false;
+    // The engine looks at the head cell on the first cycle >= tqAt in which it could dispatch it (a tile channel is free,
+    // or the cell is empty and needs none): tqAt is one past a dispatch plus TQ_DISPATCH_CYCLES, one past an empty cell,
+    // one past the launch that found the queue empty. A cell whose rows are not writable yet is held (tqHeld) until the
+    // display moves on (revalidateHold()) or a render-mode change; the row it waits on is tqHeldRow.
+    uint64_t tqAt = 0;
+    bool tqHeld = false;
+    int64_t tqHeldRow = 0;
     bool tqLate = false, tqOverflow = false;              // sticky status bits ($0364)
     bool writeAhead = false;                              // $0362 bit 0: the $C000-$FFFF windows read open bus
     void resetQueue();
     void startRowCommand();                               // the $035E write
-    void stepQueueEngine();                               // once per PPU cycle while cells are pending, after the blit channels advance
-    // tickMany runs instructions back to back while nothing can happen to a blit or the queue (blitHorizon cycles, see
-    // blitQuietHorizon()), only counting the cycles in blitOwed; settleBlits() pays them before anything that depends on
-    // them changes. Both are zero outside tickMany.
-    uint32_t blitOwed = 0, blitHorizon = 0;
-    uint32_t blitQuietHorizon() const;
-    uint32_t finishTickMany(uint32_t total, uint32_t left, uint32_t stall);
-    void settleBlits();
-    void advanceBlitsAndQueue(uint32_t cycles);           // advanceBlitChannels(1) + stepQueueEngine() per cycle
+    void stepQueueEngine();                               // the head cell, at cycle `clk`: hold it or dispatch it onto a free tile channel
+    void releaseHold();                                   // look at a held cell again from the next cycle on (a mode change may free it)
+    // PPU time. Blits and the queue run on the cycle count `clk` (cycles taken, only while Running): every event at or
+    // before it has happened, and evAt is the cycle of the next one (a blit completing, the queue's next look), so an
+    // instruction sees the blits and the queue exactly as they are on its cycle with nothing to catch up on, and a
+    // stretch of cycles with no event costs one compare. Nothing here moves while the PPU is not Running.
+    uint64_t clk = 0;
+    uint64_t evAt = UINT64_MAX;
+    void runEvents(uint64_t upTo);                        // everything that happens on cycles clk+1 .. upTo, in order; clk = upTo
+    void refreshEvent();                                  // evAt after anything changed
+    void revalidateHold();                                // the display may have moved since the last call: free a held cell it unblocked
+    uint32_t finishTickMany(uint32_t total, uint32_t left, uint32_t stall, uint64_t now);
     uint8_t framebufferByte(uint16_t address) const;      // the raw rolling buffer, unaffected by writeAhead (blits read it back)
     void startLineBlit();                       // the $0348 write: snapshot the port into a free line channel
     void executeLineBlit(const BlitChannel& channel);
-    // Count of currently-busy blitChannels entries, kept in lockstep with
-    // each ch.busy flip (TILEDRAW dispatch sets it, advanceBlitChannels()
-    // clears it on completion). advanceBlitChannels() runs every single PPU
-    // cycle regardless of whether anything is in flight - most cycles have
-    // zero busy channels, so this lets it skip the 8-entry scan entirely
-    // instead of paying 8 dead loads/branches every tick.
+    // Count of currently-busy blitChannels entries, kept in lockstep with each ch.busy flip (a dispatch sets it,
+    // retireFront() clears it on completion).
     int busyBlitChannelCount = 0;
-    // Blit timing is by absolute time, not per-channel countdowns: blitClock advances by the cycles elapsed
-    // while any channel is busy, each channel finishes at its own completeAt, and blitNextDone caches the
-    // earliest (UINT64_MAX when none is busy). advanceBlitChannels() therefore costs one compare per cycle
-    // instead of an 8-entry scan; the order blits complete in (channel index order within a cycle) is unchanged.
-    uint64_t blitClock = 0;
-    uint64_t blitNextDone = UINT64_MAX;
+    // Blit timing is by absolute time (clk, below), not per-channel countdowns: each channel finishes at its own
+    // completeAt, and the sorted `flight` list says which is next. Blits finish in completeAt order, channel index order
+    // within a cycle.
     uint64_t lastTileCompleteAt = 0;   // completeAt of the newest tile blit: the next one retires strictly after it (issue order)
 
     // Palette system
@@ -526,14 +534,11 @@ private:
     // and runBatch() so their boundary behavior can never drift apart.
     bool serviceInterrupts();
 
-    // Advance every busy blit channel by `elapsed` cycles, executing (and
-    // freeing) any that complete. Must be called with the exact number of
-    // cycles that just passed from every place tick()/runBatch() advances
-    // time, including inside runBatch()'s collapsed-stall fast path, so a
-    // blit's completion timing is identical however the PPU's own
-    // instruction stream happens to be interleaved around it.
-    void advanceBlitChannels(uint32_t elapsed);
-    void burnBlitCycles(uint32_t k);   // k single-cycle advanceBlitChannels(1)s, collapsed where no blit completes
+    // Move PPU time to cycle `to` (see runEvents()): called from every place tick()/runBatch() advances time, so a
+    // blit's completion timing is identical however the PPU's own instruction stream is interleaved around it.
+    void advanceTo(uint64_t to) {
+        if (to >= evAt) runEvents(to); else clk = to;
+    }
 
     // Perform one channel's blit (the pixel loop TILEDRAW used to run
     // synchronously), reading only the snapshotted state captured at

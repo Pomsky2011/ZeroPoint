@@ -13,8 +13,8 @@ a timer due, an audio sample due, or a display edge (H-blank at pixel 256, end o
 `Display::advanceQuiet(n)` (pixel counter only) and the audio accumulator. The PPU only reads the display's
 scanline, render mode and framebuffer, never the pixel counter, which is why a bulk-advanced display is safe.
 
-PPU blits are timed by absolute completion time (`blitClock`/`completeAt`/`blitNextDone`) instead of per-channel
-countdowns, so a cycle costs one compare; completion order (channel index order within a cycle) is unchanged.
+PPU blits are timed by absolute completion time (`completeAt` against the PPU's cycle count `clk`) instead of per-channel
+countdowns; completion order (channel index order within a cycle) is unchanged. See "PPU time" in `docs/ppu.md`.
 
 ## Checking it
 
@@ -81,8 +81,8 @@ does, so `tick()`, `tickMany()` and `runBatch()` share them. Every path that wri
 decodes covering the byte (`codeWritten()`: `writeMemory`, `pushReturnAddress`, SETPOS, MOVDP, `loadMicrocode`,
 `reset`), so self-modifying code behaves as before.
 
-`tickMany` runs one instruction at a time instead of one cycle: a stall is burned in one step
-(`burnBlitCycles`, which still lets a blit complete in exactly its own cycle), pending interrupts are a local flag
+`tickMany` runs one instruction at a time instead of one cycle: a stall is just a bump of the PPU's cycle count (blits
+that finish inside it still do so in exactly their own cycle, see `PPU::runEvents`), pending interrupts are a local flag
 (they can only come from the single edge latch at the start of the call or from before it), and the state is
 rechecked after each instruction (a write to the VOC halt bit stops the PPU).
 

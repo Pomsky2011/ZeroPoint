@@ -386,6 +386,10 @@ add_executable(test_line_blit tools/test_line_blit.cpp)
 target_link_libraries(test_line_blit zeropoint_core)
 set_target_properties(test_line_blit PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+add_executable(test_queue_timing tools/test_queue_timing.cpp)
+target_link_libraries(test_queue_timing zeropoint_core)
+set_target_properties(test_queue_timing PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 add_executable(test_tiledraw_clip tools/test_tiledraw_clip.cpp)
 target_link_libraries(test_tiledraw_clip zeropoint_core)
 set_target_properties(test_tiledraw_clip PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

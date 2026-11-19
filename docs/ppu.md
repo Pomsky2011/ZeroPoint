@@ -290,7 +290,8 @@ the hardware's frame). A program counts its own frames, so a launch that blocks 
 lands in the frame it was written for; it never has to guess where the beam is. A frame the beam has already passed is
 simply late. Blend mode and translucency are snapshotted at launch like `TILEDRAW`'s.
 
-**Dispatch.** One cell per 8 cycles at most, in queue order, onto a free tile channel, once the cell's last row is safe
+**Dispatch.** One cell per 9 cycles at most (the cycle that reads it, then `TQ_DISPATCH_CYCLES` = 8 more; the cycle after a
+launch that finds the queue empty), in queue order, onto a free tile channel, once the cell's last row is safe
 to write: its slot must have been cleared of the row one window earlier (`Display::rowIsClear`). That is stricter than
 "inside the window": in RGBA16 block mode slots clear in bank *pairs*, so an even row that has only just entered the
 window shares a slot whose clear is still deferred, and a write there is wiped a scanline later. The queue is in order,
@@ -310,8 +311,17 @@ tearing the frame silently. A program that must never lag keeps it clear (`test_
 **Write-ahead mode** (`$0362` bit 0): the framebuffer window `$E000-$FFFF` and the queue's backing store `$C000-$DFFF` are
 off the PPU's bus and read open bus (`$FF`), writes ignored. Blits still read the rolling buffer for blending. Off by
 default, so existing programs are unaffected. The queue state is in `stateHash()` and reset clears it (`CORE_REVISION` 9).
-While cells are pending the queue steps one PPU cycle at a time, so the batched executor falls back to per-cycle for that
-stretch, state-identical (`test_row_queue` checks it).
+
+**PPU time.** Blits and the queue run on the PPU's cycle count `clk` (absolute, counted only while the PPU is Running):
+every blit has a `completeAt` on it, and the queue has the cycle it next looks at its head cell (`tqAt`: one past a
+dispatch + 8, one past an empty cell, one past a launch that found the queue empty; a cell held on its rows waits for the
+display to move, `tqHeld`). `evAt` is the cycle of the next event of either kind. On a cycle the blits that finish do so
+first (`completeAt` order, channel order on a tie), then the queue looks, then the PPU's instruction (if it is at a
+boundary) runs, so a dispatch sees the channels a completion just freed and an instruction sees both. `tick()`,
+`tickMany()` and `runBatch()` all advance the same state through `advanceTo()`: a stretch with no event inside is one
+compare, and nothing needs to be settled before an instruction touches a blit channel or the queue. Exact cycles are
+checked by `bin/test_queue_timing`; stepped-vs-batched identity by `bin/fuzz_queue` and `bin/test_row_queue`. Emulation is
+unchanged by this scheduling (it replaced a per-cycle one bit for bit: same `stateHash()`, same goldens).
 
 ### GBLS - Get Blank Status
 
