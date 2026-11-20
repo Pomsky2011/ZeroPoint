@@ -55,22 +55,6 @@ test_arm64_jit_debug
 run_demo_vulkan
 tools/test_arm64_alloc
 
-# ZPdevtools compiled binaries
-ZPdevtools/cpuasm
-ZPdevtools/ppuasm
-ZPdevtools/apuasm
-ZPdevtools/cpudisasm
-ZPdevtools/ppudisasm
-ZPdevtools/apudisasm
-ZPdevtools/rombuilder
-ZPdevtools/rominspect
-ZPdevtools/hexview
-ZPdevtools/wav2mmp
-ZPdevtools/c_compiler/def88186cc
-ZPdevtools/c_compiler/lex.yy.c
-ZPdevtools/c_compiler/parser.tab.c
-ZPdevtools/c_compiler/parser.tab.h
-
 # Compiled assembly/ROM files
 *.bin
 *.rom
@@ -80,7 +64,6 @@ ZPdevtools/c_compiler/parser.tab.h
 !CMakeLists.txt
 !README.md
 *.asm
-!ZPdevtools/examples/**/*.asm
 !examples/stream-player/*.asm
 
 # IDE

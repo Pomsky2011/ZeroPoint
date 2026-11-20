@@ -77,7 +77,7 @@ sudo pacman -S base-devel cmake sdl2 qt6-base vulkan-headers vulkan-icd-loader
 - `build/bin/zeropoint_qt` - Qt frontend
 - `build/bin/zeropoint_sdl` - SDL frontend
 - `build/bin/test_*` - Test suites
-- `../ZPdevtools/ppuasm`, `apuasm`, `cpuasm`, etc.
+- `../ZPdevtools/executables/ppuasm`, `apuasm`, `cpuasm`, etc.
 
 ### Windows (x64 & ARM64)
 
@@ -213,10 +213,10 @@ cd build/bin
 
 ### Dev Tools
 ```bash
-cd ZPdevtools
-./ppuasm examples/ppu/simple_pixel_test.asm test.bin
-./cpuasm examples/cpu/hello.asm test.bin
-./rombuilder -cpu cpu.bin -ppu ppu.bin -o test.rom
+cd ../ZPdevtools
+executables/ppuasm examples/ppu/simple_white_pixel.asm -o test.bin
+executables/cpuasm examples/cpu/test.asm test.bin
+executables/rombuilder -cpu cpu.bin -ppu ppu.bin -apu apu.bin -o test.rom
 ```
 
 ## See Also

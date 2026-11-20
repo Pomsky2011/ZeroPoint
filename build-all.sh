@@ -86,7 +86,7 @@ else
 
     # Show what was built
     echo "Built tools:"
-    ls -1 ppuasm apuasm cpuasm rombuilder rominspect cpudisasm ppudisasm apudisasm wav2mmp hexview 2>/dev/null | sed 's/^/  - /' || echo "  (some tools may not have built)"
+    ls -1 executables/ppuasm executables/apuasm executables/cpuasm executables/rombuilder executables/rominspect executables/cpudisasm executables/ppudisasm executables/apudisasm executables/wav2mmp executables/hexview 2>/dev/null | sed 's/^/  - /' || echo "  (some tools may not have built)"
     echo ""
 
     cd "$SCRIPT_DIR"
@@ -118,7 +118,7 @@ echo "  cd build/bin"
 echo "  ./zeropoint_qt              - Launch Qt frontend"
 echo ""
 echo "  cd ../ZPdevtools"
-echo "  ./ppuasm examples/ppu/simple_pixel_test.asm output.bin"
+echo "  executables/ppuasm examples/ppu/simple_white_pixel.asm -o output.bin"
 echo "  cd ../ZeroPoint/build/bin"
-echo "  ./run_demo ../../ZPdevtools/output.bin"
+echo "  ./run_demo ../../../ZPdevtools/output.bin"
 echo ""

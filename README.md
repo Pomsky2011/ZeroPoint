@@ -188,17 +188,17 @@ Assemblers live in the sibling `ZPdevtools` repo.
 
 ```bash
 cd ../ZPdevtools && make
-./ppuasm examples/ppu/simple_pixel_test.asm output.bin
+executables/ppuasm examples/ppu/simple_white_pixel.asm -o output.bin
 cd ../ZeroPoint/build
-./bin/run_demo ../ZPdevtools/output.bin
+./bin/run_demo ../../ZPdevtools/output.bin
 ```
 
 ### APU Assembly
 ```bash
 cd ../ZPdevtools && make
-./apuasm examples/apu/hello.asm
+executables/apuasm examples/apu/hello.asm
 cd ../ZeroPoint/build
-./bin/test_apu ../ZPdevtools/examples/apu/hello.bin 10000
+./bin/test_apu ../../ZPdevtools/examples/apu/hello.bin 10000
 ```
 
 ## Documentation

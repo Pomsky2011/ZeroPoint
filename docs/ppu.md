@@ -348,7 +348,7 @@ For SETPOS and CPREG's 4-bit register IDs:
 ## Example Programs
 
 These are conceptual sketches in assembler mnemonics, not raw hex — use
-`ZPdevtools/ppuasm` to assemble real programs, and see
+`ZPdevtools/executables/ppuasm` to assemble real programs, and see
 `ZPdevtools/examples/ppu/*.asm` for working examples.
 
 ### Simple Counter

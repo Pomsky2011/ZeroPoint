@@ -8,11 +8,11 @@
 
 using namespace ZeroPoint;
 
-int main() {
+int main(int argc, char** argv) {
     std::cout << "=== Simple White Pixel Test ===\n\n";
 
     // Load simple_white_pixel.bin
-    const char* filename = "/Users/alexanderwhite/Documents/Code/ZPdevtools/examples/ppu/simple_white_pixel.bin";
+    const char* filename = argc > 1 ? argv[1] : "../ZPdevtools/examples/ppu/simple_white_pixel.bin";  // build it with `make examples` in ZPdevtools
     std::ifstream file(filename, std::ios::binary);
     if (!file) {
         std::cerr << "Error: Cannot open " << filename << std::endl;

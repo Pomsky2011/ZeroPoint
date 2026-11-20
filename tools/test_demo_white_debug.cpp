@@ -8,11 +8,11 @@
 
 using namespace ZeroPoint;
 
-int main() {
+int main(int argc, char** argv) {
     std::cout << "=== PPU White Fill Demo Debug Test ===\n\n";
 
     // Load white_fill.bin
-    const char* filename = "/Users/alexanderwhite/Documents/Code/ZPdevtools/examples/ppu/white_fill.bin";
+    const char* filename = argc > 1 ? argv[1] : "../ZPdevtools/examples/ppu/white_fill.bin";  // build it with `make examples` in ZPdevtools
     std::ifstream file(filename, std::ios::binary);
     if (!file) {
         std::cerr << "Error: Cannot open " << filename << std::endl;

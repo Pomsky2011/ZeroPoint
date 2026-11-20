@@ -288,8 +288,8 @@ build-windows.bat           # Windows (x64 & ARM64)
 **Build Dev Tools Only:**
 ```bash
 cd ../ZPdevtools
-./build-native.sh           # Native build (Linux)
-build-dos.bat               # MS-DOS build (Turbo C/MS C)
+make                        # Native build (Linux)
+scripts\build-dos.bat       # MS-DOS build (Turbo C/MS C)
 ```
 
 ### Manual Build
