@@ -108,7 +108,7 @@ behavior; if a change truly can't avoid it, ask first.
   `test_movie_cli.sh`, `test_qt_movie` (offscreen).
 - **C compilers** (`zpcc`, `def88186cc`; 16-bit `int`, 32-bit `long` via `ZPdevtools/lib/zp_long.asm`): regression suite
   `ZPdevtools/tests/cc/run.sh` runs C in the emulator through `bin/zp_run_c` (`ZP_TRACE=1` traces a hang); runtime test
-  `bin/test_zp_long`. `def88186cc` refuses arrays, `&`, `*p`, struct members and globals (they would hit bank $00, not the stack).
+  `bin/test_zp_long`. `def88186cc` pointers are 16-bit offsets into bank $80 (stack/data); it refuses globals, string-literal pointers, struct values.
 - **Sequencer / boot jingle**: ZPA score engine in the APU BIOS (`ZPbootROM/apu/internalBIOS/engine.uas`);
   `System` plays it through a native HLE BIOS (`src/apu_hle.cpp`) unless `--apu-bios` loads the real
   image. Tests: `bin/test_zpa_engine`, `bin/test_boot_jingle`; spec `ZPdevtools/docs/apu/zpa.txt`.
@@ -324,9 +324,10 @@ cmake --build . -j
 ### C Compiler (def88186cc)
 Flex/Bison compiler for a **subset** of C89 (DOS-hostable): anything outside it is refused (error, non-zero exit, no output),
 anything accepted is tested against gcc. Accepted/refused list: `ZPdevtools/c_compiler/README.md` "What the compiler accepts
-today". Refused: float/double, arrays, `&`, `*p`, struct members, globals, static/const/typedef, function pointers.
+today". Arrays, pointers (16-bit offsets into bank $80, `LDA $800000,X`), structs/unions work; refused: float/double,
+string literals as pointers, struct values, globals, static/const/typedef, function pointers.
 Sources are strict C89 (`ZPdevtools/tests/c89/check.sh`). Tests: `tests/cc/run.sh dos`, `fuzz_ops.py`, `pp_tests.py`,
-`reject_tests.py`, `examples_check.sh`. Use `zpcc` for full C.
+`fuzz_mem.py`, `reject_tests.py`, `examples_check.sh`. Use `zpcc` for full C.
 
 ```bash
 cd ZPdevtools/c_compiler && make
