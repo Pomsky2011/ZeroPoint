@@ -222,11 +222,11 @@ cd ../ZeroPoint/build
 - `ZPdevtools/docs/ppu/preset-e-and-shorthands.txt` - Preset E instructions
 
 ### APU
-- `ZPdevtools/docs/apu/README.txt` - APU documentation index
-- `ZPdevtools/docs/apu/instruction-set.txt` - All 57 instruction mnemonics
-- `ZPdevtools/docs/apu/programming-guide.txt` - Complete programming examples
-- `ZPdevtools/docs/apu/mmp.txt` - Music Mixing Processor
-- `ZPdevtools/docs/apu/sst.txt` - Sample Storage System
+- `ZPdevtools/docs/apu/README.md` - APU documentation index
+- `ZPdevtools/docs/apu/instruction-set.md` - What every instruction does
+- `ZPdevtools/docs/apu/programming-guide.md` - Complete programming examples
+- `ZPdevtools/docs/apu/mmp.md` - Music Mixing Processor
+- `ZPdevtools/docs/apu/sst.md` - Sample Storage System
 
 ## Status
 
