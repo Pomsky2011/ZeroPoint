@@ -108,7 +108,7 @@ behavior; if a change truly can't avoid it, ask first.
   `test_movie_cli.sh`, `test_qt_movie` (offscreen).
 - **C compilers** (`zpcc`, `def88186cc`; 16-bit `int`, 32-bit `long` via `ZPdevtools/lib/zp_long.asm`): regression suite
   `ZPdevtools/tests/cc/run.sh` runs C in the emulator through `bin/zp_run_c` (`ZP_TRACE=1` traces a hang); runtime test
-  `bin/test_zp_long`. Arrays/pointer-deref/struct members only reach bank $00 and `def88186cc` has no globals.
+  `bin/test_zp_long`. `def88186cc` refuses arrays, `&`, `*p`, struct members and globals (they would hit bank $00, not the stack).
 - **Sequencer / boot jingle**: ZPA score engine in the APU BIOS (`ZPbootROM/apu/internalBIOS/engine.uas`);
   `System` plays it through a native HLE BIOS (`src/apu_hle.cpp`) unless `--apu-bios` loads the real
   image. Tests: `bin/test_zpa_engine`, `bin/test_boot_jingle`; spec `ZPdevtools/docs/apu/zpa.txt`.
@@ -322,9 +322,11 @@ cmake --build . -j
 **MS-DOS 4.01+ Compatible**: All dev tools can run on 1990's workstations (80286, 2 MB RAM, 100 MB HDD)
 
 ### C Compiler (def88186cc)
-C89-compliant compiler with Flex/Bison frontend. Supports: types, arrays, unions, enums, functions, control flow, operators, hardware LOOP/LPEND optimization.
-
-**C89 Compliance**: All compiler source files (ast.c, codegen.c, main.c, preprocessor.c) have been ported to strict C89 compliance for Turbo C 2.0 compatibility on MS-DOS 4.01+. Comments converted from `//` to `/* */`, for-loop variable declarations moved to function scope, and mixed declarations fixed.
+Flex/Bison compiler for a **subset** of C89 (DOS-hostable): anything outside it is refused (error, non-zero exit, no output),
+anything accepted is tested against gcc. Accepted/refused list: `ZPdevtools/c_compiler/README.md` "What the compiler accepts
+today". Refused: float/double, arrays, `&`, `*p`, struct members, globals, static/const/typedef, function pointers.
+Sources are strict C89 (`ZPdevtools/tests/c89/check.sh`). Tests: `tests/cc/run.sh dos`, `fuzz_ops.py`, `pp_tests.py`,
+`reject_tests.py`, `examples_check.sh`. Use `zpcc` for full C.
 
 ```bash
 cd ZPdevtools/c_compiler && make
@@ -379,7 +381,7 @@ See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
 - VOC (16 control registers)
 - DMA controller (4 modes, 16 channels)
 - **Hardware Timers** (8 independent timers with IRQ support: V-blank, H-blank, 1s, 1/4s, 1/8s, 1/1024s, ~1ms, 60-frame)
-- **C compiler (100% C89 compliant)**, assemblers (ppuasm/apuasm/cpuasm), ROM builder
+- **C compiler**: strict-C89 source, documented C89 subset (refuses the rest), assemblers (ppuasm/apuasm/cpuasm), ROM builder
 - **C89 Porting** (Turbo C 2.0 / MS-DOS 4.01+ compatible)
 - Memory mapping (24-bit), I/O registers (Bank $D8)
 - System integration, interrupt routing (V-Blank/H-Blank/Timers)
