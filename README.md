@@ -218,8 +218,8 @@ cd ../ZeroPoint/build
 
 ### PPU
 - `docs/display.md` - Display system and color modes
-- `ZPdevtools/docs/ppu/ucode.txt` - Complete instruction reference (2000+ lines)
-- `ZPdevtools/docs/ppu/preset-e-and-shorthands.txt` - Preset E instructions
+- `ZPdevtools/docs/ppu/instruction-set.md` - All 35 instructions, with cycle costs
+- `ZPdevtools/docs/ppu/assembler.md` - ppuasm, shorthands and the target-register trap
 
 ### APU
 - `ZPdevtools/docs/apu/README.md` - APU documentation index
