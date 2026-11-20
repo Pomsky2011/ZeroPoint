@@ -209,13 +209,12 @@ cd ../ZeroPoint/build
 - `TODO.md` - Development status and roadmap
 - `docs/INSTRUCTION_IMPLEMENTATION_GUIDE.md` - **Complete guide for implementing CPU/PPU/APU instructions** (400+ lines) ✨ NEW!
 
-### CPU (DEF88186) ✨ NEW!
-- `ZPdevtools/docs/cpu/README.txt` - CPU documentation index
-- `ZPdevtools/docs/cpu/instruction-set.txt` - All 256 instructions
-- `ZPdevtools/docs/cpu/addressing-modes.txt` - 14 addressing modes
-- `ZPdevtools/docs/cpu/programming-guide.txt` - Patterns and examples
-- `ZPdevtools/docs/cpu/flags.txt` - Processor status flags (NVMXDIZC)
-- Complete documentation: 12 files, 8000+ lines
+### CPU (DEF88186)
+- `ZPdevtools/docs/cpu/README.md` - CPU documentation index
+- `ZPdevtools/docs/cpu/architecture.md` - Registers, flags, and how it differs from a 65C816
+- `ZPdevtools/docs/cpu/opcode-table.md` - All 256 opcodes with measured bytes, cycles and flags
+- `ZPdevtools/docs/cpu/addressing-modes.md` - Operand forms and their traps
+- `ZPdevtools/docs/cpu/programming-guide.md` - Patterns and examples (all assembled by a checker)
 
 ### PPU
 - `docs/display.md` - Display system and color modes

@@ -22,7 +22,7 @@ using namespace ZeroPoint;
 
 // Mnemonic + addressing-mode text per opcode, extracted from the comments
 // src/cpu_instructions.cpp emits when tools/gen_cpu_instructions.py generates
-// it from the authoritative ../ZPdevtools/docs/cpu/DEF88186.csv. This is the
+// it from the authoritative ../ZPdevtools/spec/DEF88186.csv. This is the
 // same table the real dispatch table is built from, so it stays accurate as
 // long as this file is regenerated whenever the CSV changes (unlike the
 // standalone ZPdevtools cpudisasm.c table, which only covers ~80 of the 256

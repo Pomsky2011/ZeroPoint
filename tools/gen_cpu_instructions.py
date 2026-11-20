@@ -3,7 +3,7 @@
 # Run from the ZeroPoint repo root:  python3 tools/gen_cpu_instructions.py
 import csv, re, sys
 
-CSV = "../ZPdevtools/docs/cpu/DEF88186.csv"  # authoritative opcode spec
+CSV = "../ZPdevtools/spec/DEF88186.csv"  # authoritative opcode spec
 OUT = "src/cpu_instructions.cpp"
 
 MODE_TO_ADDR = {
@@ -45,6 +45,15 @@ SELF_COUNTING = {
  'opTCD','opTCS','opTDC','opTSC','opTXA','opTXY','opTYA','opTYX','opWAI',
 }
 
+# Stores and read-modify-write ops always pay the index-fixup cycle (65C816: it is spent before the CPU knows whether a
+# read could have skipped it), so they pass alwaysPenalize=true to the addressing helpers that take it.
+WRITE_OPS = {'STA','STX','STY','STZ','INC','DEC','ASL','LSR','ROL','ROR'}
+PENALTY_MODES = {'Absolute Indexed,X', 'Absolute Indexed,Y', 'DP Indirect Indexed, Y'}
+
+def addr_call(base, mode):
+    arg = 'true' if base in WRITE_OPS and mode in PENALTY_MODES else ''
+    return 'cpu->%s(%s)' % (MODE_TO_ADDR[mode], arg)
+
 def opname(base):
     return 'opXOR' if base == 'EOR' else 'op' + base
 
@@ -78,7 +87,7 @@ for r in rows[1:]:
         if mode == 'Accumulator':
             lines.append('    cpu->%s(0, true);' % on)
         else:
-            lines.append('    cpu->%s(cpu->%s(), false);' % (on, MODE_TO_ADDR[mode]))
+            lines.append('    cpu->%s(%s, false);' % (on, addr_call(base, mode)))
         lines.append('    cpu->cycleCount += %d;' % cycles)   # shifts don't self-count
     elif base in ('SHL', 'SHR'):
         isY = 'true' if asm.rstrip().upper().endswith('Y') else 'false'
@@ -87,7 +96,7 @@ for r in rows[1:]:
         addr = MODE_TO_ADDR.get(mode)
         if addr is None:
             print("!! unmapped addressed mode:", hex(op), asm, mode); sys.exit(1)
-        lines.append('    cpu->%s(cpu->%s());' % (on, addr))
+        lines.append('    cpu->%s(%s);' % (on, addr_call(base, mode)))
         if on not in SELF_COUNTING:
             lines.append('    cpu->cycleCount += %d;' % cycles)
     else:
@@ -106,7 +115,7 @@ out.append('')
 out.append('// ============================================================================')
 out.append('// DEF88186 CPU instruction handlers.')
 out.append('//')
-out.append('// GENERATED from ZPdevtools/docs/cpu/DEF88186.csv (the authoritative opcode')
+out.append('// GENERATED from ZPdevtools/spec/DEF88186.csv (the authoritative opcode')
 out.append('// spec that cpuasm and the C compilers target).  Do not hand-edit opcode')
 out.append('// assignments here - change the CSV and regenerate so the emulator, the')
 out.append('// assembler, and the docs stay in lock-step.  Each handler resolves the')

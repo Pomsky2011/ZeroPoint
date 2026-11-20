@@ -4,7 +4,7 @@
 // ============================================================================
 // DEF88186 CPU instruction handlers.
 //
-// GENERATED from ZPdevtools/docs/cpu/DEF88186.csv (the authoritative opcode
+// GENERATED from ZPdevtools/spec/DEF88186.csv (the authoritative opcode
 // spec that cpuasm and the C compilers target).  Do not hand-edit opcode
 // assignments here - change the CSV and regenerate so the emulator, the
 // assembler, and the docs stay in lock-step.  Each handler resolves the

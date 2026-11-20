@@ -465,6 +465,13 @@ endif()
 add_executable(test_cpu tools/test_cpu.cpp)
 target_link_libraries(test_cpu zeropoint_core)
 
+# Measures length/cycles/flags of all 256 CPU opcodes (feeds ZPdevtools' docs/cpu)
+add_executable(dump_cpu_table tools/dump_cpu_table.cpp)
+target_link_libraries(dump_cpu_table zeropoint_core)
+set_target_properties(dump_cpu_table PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # Boot ROM handoff test (System -> Boot ROM stub -> cartridge)
 add_executable(test_boot_rom tools/test_boot_rom.cpp)
 target_link_libraries(test_boot_rom zeropoint_core)

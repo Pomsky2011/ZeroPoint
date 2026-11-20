@@ -112,7 +112,7 @@ These need design decisions or specifications.
 
 **Define standard interrupt vectors**
 - **Needed for**: CPU interrupt handling
-- **Status**: Partially defined in cpu/interrupts.txt documentation
+- **Status**: Defined in ZPdevtools/docs/cpu/interrupts.md
 - **Standard 65816 vectors** (at end of bank $00):
   - $00:FFFA-$FFFB: NMI vector
   - $00:FFFC-$FFFD: RESET vector
