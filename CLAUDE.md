@@ -87,7 +87,7 @@ behavior; if a change truly can't avoid it, ask first.
   4-bit decoded on the APU in fast mode (77.5 instr/frame, 44.1 kHz stereo ~80% of fast mode), looping, into the stream port.
   This repo keeps the harness it tests through: `bin/test_adpcm_apu`, plus `bin/zpb_wav` (`--verify` = strict HLE signature check).
 - **COP calls from C/asm**: `ZPdevtools/lib/zp_cop.asm` + `include/zeropoint/zp_cop.h` (`zp_cop3`/`zp_cop32` for any
-  `COP #imm`, typed Boot ROM wrappers); test `bin/test_zp_cop`. See `ZPdevtools/docs/SDK.md`.
+  `COP #imm`, typed Boot ROM wrappers); test `bin/test_zp_cop`. See `ZPdevtools/docs/sdk/README.md`.
 - **HLE Boot ROM**: with no `--boot`, `System` boots natively: verifies the signature (strict: unsigned/bad ROMs halt;
   `setVerifySignatures(false)`, `zeropoint_sdl --no-verify`, `ZEROPOINT_NO_VERIFY=1`), jumps to the entry, and answers
   `COP #$F0-$FF` (math, `$F7` PPU load, `$FF` chunk verify) itself at the real ROM's cycle cost. `--boot` = real ROM, HLE off.
@@ -360,7 +360,7 @@ cd ZPdevtools
 make -f Makefile.dos          # Turbo C
 nmake /f Makefile.dos COMPILER=MSC  # Microsoft C
 ```
-See `README_DOS.txt` and `C89_PORTING_GUIDE.txt` for details
+See `ZPdevtools/docs/dos/README.md` for details
 
 ### Examples
 - PPU: `ZPdevtools/examples/ppu/*.asm`
