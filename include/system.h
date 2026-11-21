@@ -321,6 +321,10 @@ private:
     uint32_t hlePPULoad();
     uint32_t hleVerifyChunk();
     void hleBootCartridge();   // reset() with a cartridge mapped: verify, then jump to the entry point
+    // The native boot has no exception entries (docs/exceptions.md): a cartridge that sends a vector to $E0:0048-$E0:005B
+    // lands on unmapped memory and halts. This says so once, on stderr (host-side only: no machine state).
+    void reportHleException();
+    bool hleExceptionReported = false;
     BootHLE::SignedROMView signedView() const;
 
     // ROM information

@@ -1,5 +1,6 @@
 #include "system.h"
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -614,6 +615,24 @@ void System::runCycles(uint64_t cycles) {
     }
     leaveRunAhead();
     cpu.serialSettle();   // get the debug UART's finished bytes to the host (the guest's view doesn't depend on this)
+    reportHleException();
+}
+
+void System::reportHleException() {
+    if (!cpu.isHalted()) { hleExceptionReported = false; return; }
+    if (hleExceptionReported || cpu.hasBootROM() || cpu.getPB() != 0xE0) return;
+    // The HLT that stopped us was fetched from the entry itself (PC is already past it).
+    const uint32_t entry = (uint32_t)cpu.getPC() - 1;
+    if (entry < CPU::BOOT_EXC_ABORT || entry >= CPU::BOOT_EXC_TABLE_END) return;
+    hleExceptionReported = true;
+    const char* const kinds[5] = {"ABORT", "NMI", "IRQ", "BRK", "COP"};
+    const uint32_t frame = (0x80u << 16) | (uint16_t)(cpu.getSP() + 1);   // the stack is bank $80. P, PC low, PC high, PB: what the hardware pushed
+    const unsigned p = cpu.readByte(frame), pc = cpu.readByte(frame + 1) | (cpu.readByte(frame + 2) << 8), pb = cpu.readByte(frame + 3);
+    std::cerr << "[exception] " << kinds[(entry - CPU::BOOT_EXC_ABORT) / 4] << " at " << std::hex << std::uppercase
+              << std::setw(2) << std::setfill('0') << pb << ":" << std::setw(4) << pc << " (P=" << std::setw(2) << p << std::dec
+              << "): the cartridge sent it to the Boot ROM, and the native boot has no exception handler, so the machine halted.\n"
+              << "            Run with --boot ZPbootROM/build/bootrom_dev.bin --dev-unit --exception-handler <image> to get one"
+                 " (docs/exceptions.md).\n";
 }
 
 void System::leaveRunAhead() {

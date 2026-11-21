@@ -94,8 +94,23 @@ The frontends do it for you: `zeropoint_sdl game.zpb --boot ../ZPbootROM/build/b
 else on the other end of the UART (a script on `--serial-tcp`, a person pasting bytes) can do the same, and a dev unit without a
 responder just keeps asking.
 
-It needs the **real** dev Boot ROM (`--boot`): the native (HLE) boot has no Boot ROM code, so a cartridge's `jml $E0:0054` lands in the
-35-byte default stub.
+It needs the **real** dev Boot ROM (`--boot`). The native (HLE) boot has no Boot ROM code, so a cartridge that sends a vector to
+`$E0:0048-$E0:005B` lands on unmapped memory and halts; the emulator says so once on stderr
+(`[exception] BRK at 00:8016 (P=85): the cartridge sent it to the Boot ROM, and the native boot has no exception handler, so the machine halted.`)
+and does nothing else. Nothing is asked of a host and no state is involved (it is a message, not a machine change).
+
+### Double faults
+
+An exception taken while the **Boot ROM's own code** is running (one arriving during the request, say a host-raised NMI) or while
+the **handler image's region** (`$81:0000-$81:FDFF`) is running is a fault *in the handler*. The dev Boot ROM does not ask for another
+handler: it sends one line, waits for it to finish going out, and locks for good like the retail image does:
+
+```
+ZPX! DOUBLE FAULT BRK PC=81:0002 P=24 A=... 
+```
+
+(the second exception's kind and where it happened; the first is gone). A host's responder only answers `ZPX? ` lines, so this one is
+not answered. Code running from RAM at `$81:0000-$81:FDFF` would have been overwritten by the image anyway, so that window is reserved.
 
 ## Faults
 
@@ -120,7 +135,7 @@ from unmapped memory (it still reads `$FF` and halts), and an empty cartridge sl
 dev unit with the retail Boot ROM or the native boot, raise none of this: the latch reads 0 and a store to ROM vanishes as always.
 The marker `"ZPEX"` is how the CPU recognises a Boot ROM that handles faults, so none of it can happen with an image that does not.
 
-A fault inside the handler image itself is reported like any other, so a handler that stores to ROM asks for a handler again.
+A fault inside the handler image itself is a double fault (above): it locks.
 
 ## Determinism
 
@@ -131,5 +146,6 @@ movie (which cannot have used one) hashes and replays exactly as before. This is
 
 `tools/test_exception.sh` builds the cartridge and the handler from ZPdevtools and runs `bin/test_exception` against both real Boot ROMs:
 BRK, COP and the three faults round-trip with A/X/Y intact; no answer means asking again; a bad CRC is ignored; a whole session
-replays as a movie; and the retail image, the dev image on a retail unit, and the retail image on a dev unit all lock (about 30 s: the
+replays as a movie; and a handler that faults, or an NMI during the Boot ROM's own code, is a double fault that locks; the native boot prints its message and halts;
+the retail image, the dev image on a retail unit, and the retail image on a dev unit all lock (about 30 s: the
 lock cases wait out the real RSA check).

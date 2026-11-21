@@ -17,10 +17,12 @@
 #include "system.h"
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
 #include <cstring>
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -164,6 +166,61 @@ void testBadCrc() {
     check(m.mem(DONE) == 0xFF, "the good one was, and the program finished");
 }
 
+// A fault inside the handler (or an exception arriving while the Boot ROM's own code runs) is a double fault: one line, then it
+// locks for good; it does not ask for another handler.
+void testDoubleFault() {
+    std::printf("double fault\n");
+    {
+        Machine m(devRom, true, cartPath);
+        const std::vector<uint8_t> bad = frameFor({0x62, 0x00}, false);   // a handler that is just a BRK
+        std::vector<uint8_t> pending;
+        size_t sent = 0, seen = 0;
+        int asked = 0;
+        m.sys.setSerialSink([&](uint8_t b) {
+            m.captured.push_back((char)b);
+            if (b == '\n') {
+                const std::vector<std::string> l = linesOf(m.captured);
+                if (l.size() > seen && l.back().compare(0, 5, "ZPX? ") == 0) { asked++; pending = bad; sent = 0; }
+                seen = l.size();
+            }
+        });
+        runFrames(m, 3000, [&] {
+            for (int n = 0; n < 16 && sent < pending.size() && m.sys.serialRxHasRoom(); n++) m.sys.serialReceive(pending[sent++]);
+        }, [&] { return m.sys.getCPU().isHalted(); });
+        check(m.sys.getCPU().isHalted() && m.mem(DONE) != 0xFF, "a handler that faults locks the machine");
+        if (std::getenv("ZP_VERBOSE")) std::printf("--- %s\n", m.captured.c_str());
+        check(has(m.captured, "ZPX! DOUBLE FAULT BRK PC=81:0002"), "and says where");
+        check(asked == 1, "without asking for another handler");
+        check(m.mem(0xA01000) == 2 && m.sys.getCPU().getPB() == 0xE0, "the APU was told and it is parked in the Boot ROM");
+    }
+    {
+        Machine m(devRom, true, cartPath);   // no answer: the Boot ROM is in its request loop, and an NMI arrives
+        runFrames(m, 3000, [] {}, [&] { return has(m.captured, "ZPX? BRK"); });
+        m.sys.getCPU().triggerNMI();
+        runFrames(m, 200, [] {}, [&] { return m.sys.getCPU().isHalted(); });
+        if (std::getenv("ZP_VERBOSE")) std::printf("--- %s\n", m.captured.c_str());
+        check(m.sys.getCPU().isHalted() && has(m.captured, "ZPX! DOUBLE FAULT NMI PC=E0:"), "an NMI while the Boot ROM's own code runs is a double fault too");
+    }
+}
+
+// The native boot has no Boot ROM code to jump to: it says so on stderr, once, and the machine halts.
+void testHleException() {
+    std::printf("native boot\n");
+    System sys;
+    sys.loadROM(cartPath);
+    sys.setVerifySignatures(false);
+    sys.powerOn();
+    std::ostringstream err;
+    std::streambuf* old = std::cerr.rdbuf(err.rdbuf());
+    for (int f = 0; f < 2000 && !sys.getCPU().isHalted(); f++) sys.runCycles(System::CYCLES_PER_FRAME);
+    sys.runCycles(System::CYCLES_PER_FRAME);
+    std::cerr.rdbuf(old);
+    const std::string s = err.str();
+    check(sys.getCPU().isHalted(), "the machine halted");
+    check(has(s, "[exception] BRK at 00:8016"), "with an error message naming the exception and where");
+    check(s.find("[exception]") == s.rfind("[exception]"), "once");
+}
+
 void testLock(const char* label, const std::string& rom, bool devUnit) {
     std::printf("%s\n", label);
     Machine m(rom, devUnit, cartPath);
@@ -268,6 +325,8 @@ int main(int argc, char** argv) {
     testDevUnit();
     testNobodyAnswers();
     testBadCrc();
+    testDoubleFault();
+    testHleException();
     testMovie();
     testLock("dev Boot ROM on a retail unit (latch clear): locks", devRom, false);
     testLock("retail Boot ROM: locks", retailRom, false);
