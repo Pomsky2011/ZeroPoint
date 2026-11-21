@@ -613,6 +613,7 @@ void System::runCycles(uint64_t cycles) {
         }
     }
     leaveRunAhead();
+    cpu.serialSettle();   // get the debug UART's finished bytes to the host (the guest's view doesn't depend on this)
 }
 
 void System::leaveRunAhead() {
@@ -954,6 +955,13 @@ void System::checkInterrupts(bool currentVBlank, bool currentHBlank) {
     lastHBlank = currentHBlank;
 }
 
+void System::setDevUnit(bool enabled) {
+    cpu.setDevUnit(enabled);
+    if (enabled) {
+        std::cout << "Dev unit ENABLED - debug serial port is a UART, signature checks always pass\n";
+    }
+}
+
 void System::setDevMode(bool enabled) {
     devMode = enabled;
     // Write to DEV_MODE I/O register ($D80048)
@@ -1129,7 +1137,7 @@ BootHLE::SignedROMView System::signedView() const {
 }
 
 void System::hleBootCartridge() {
-    if (verifySignatures) {
+    if (verifySignatures && !cpu.isDevUnit()) {   // a dev unit's signature check always passes
         BootHLE::VerifyResult r = BootHLE::verifyROM(signedView());
         if (r != BootHLE::VerifyResult::Ok) {
             // The real Boot ROM hlts here too (after telling the APU, whose jingle HLE doesn't play).

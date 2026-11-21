@@ -1,4 +1,5 @@
 #include "emulatorwidget.h"
+#include "serial_host.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QPainter>
@@ -51,6 +52,7 @@ void EmulatorWidget::createSystem()
     destroySystem();
     system = std::make_unique<ZeroPoint::System>();
     system->setVerifySignatures(ZeroPoint::System::verifySignaturesDefault());   // ZEROPOINT_NO_VERIFY=1 to run unsigned ROMs
+    system->setDevUnit(devUnit);   // before any boot: the Boot ROM reads it (a movie being played overrides it)
 }
 
 void EmulatorWidget::destroySystem()
@@ -93,6 +95,7 @@ bool EmulatorWidget::loadROM(const QString &path)
         destroySystem();
         return false;
     }
+    wireSerial();
     system->powerOn();
     poweredOn = true;
     updateFrameBuffer();
@@ -109,6 +112,7 @@ bool EmulatorWidget::bootBIOS()
         destroySystem();
         return false;
     }
+    wireSerial();
     system->powerOn();
     poweredOn = true;
     updateFrameBuffer();
@@ -152,6 +156,7 @@ void EmulatorWidget::halt()
             killTimer(timerId);
             timerId = -1;
         }
+        drainSerialOutput();   // whatever the guest sent in its last ticks
         audio.flush();   // don't keep playing the tail of the queue after Stop
         emit fpsChanged(0);
     }
@@ -193,6 +198,7 @@ void EmulatorWidget::timerEvent(QTimerEvent *event)
     if (event->timerId() == timerId && running) {
         const auto tickStart = std::chrono::steady_clock::now();
         updatePlayerInput();
+        drainSerialOutput();
         bool fresh = false;
         {
             std::lock_guard<std::mutex> lock(frameMutex);
@@ -267,6 +273,8 @@ void EmulatorWidget::emuLoop()
             }
             if (actions & (ACT_SOFT_RESET | ACT_HARD_RESET)) audio.flush();
         }
+
+        serialTick(kind);
 
         const auto now = Clock::now();
         int due = pacer.framesDue(std::chrono::duration<double>(now.time_since_epoch()).count());
@@ -566,6 +574,7 @@ bool EmulatorWidget::startRecording(const QString &moviePath, const QString &aut
     setup.apuBiosPath = apuBiosPath.toStdString();
     setup.cartridgePath = currentRomPath.toStdString();
     setup.verifySignatures = ZeroPoint::System::verifySignaturesDefault();
+    setup.devUnit = devUnit;
     setup.author = author.toStdString();
     std::string err;
     if (!session.beginRecording(*system, setup, err)) {
@@ -573,6 +582,7 @@ bool EmulatorWidget::startRecording(const QString &moviePath, const QString &aut
         destroySystem();
         return false;
     }
+    wireSerial();
     recordPath = moviePath.toStdString();
     movieKind = 1;
     poweredOn = true;
@@ -599,6 +609,7 @@ bool EmulatorWidget::startPlayback(const QString &moviePath, const QStringList &
         destroySystem();
         return false;
     }
+    wireSerial();   // (the movie decided whether this is a dev unit)
     movieKind = 2;
     playbackReported = false;
     poweredOn = true;
@@ -627,6 +638,71 @@ QString EmulatorWidget::finishMovie()
     }
     destroySystem();   // stopping tears the machine down, movie or not
     return summary;
+}
+
+void EmulatorWidget::wireSerial()
+{
+    if (!system->isDevUnit()) return;
+    if (!serialHost && (!serialOuts.isEmpty() || !serialIns.isEmpty() || serialTcpPort >= 0)) {
+        auto host = std::make_unique<ZeroPoint::SerialHost>();
+        std::string err;
+        bool ok = true;
+        for (const QString &o : serialOuts) ok = host->addOutput(o.toStdString(), err) && ok;
+        for (const QString &i : serialIns) ok = host->addInput(i.toStdString(), err) && ok;
+        if (serialTcpPort >= 0) {
+            if (serialTcpPort > 65535) { err = "the serial TCP port must be 0-65535"; ok = false; }
+            else ok = host->listenTcp(static_cast<uint16_t>(serialTcpPort), err) && ok;
+        }
+        if (!ok) emit serialSetupFailed(QString::fromStdString(err));
+        serialHost = std::move(host);   // what did open still works
+    }
+    system->setSerialSink([this](uint8_t b) {
+        std::lock_guard<std::mutex> lock(serialMutex);
+        if (serialTx.size() < (1 << 20)) serialTx.append(static_cast<char>(b));   // (nobody draining: don't grow forever)
+        if (serialHost) serialHost->send(b);
+    });
+}
+
+void EmulatorWidget::serialSend(const QByteArray &bytes)
+{
+    std::lock_guard<std::mutex> lock(serialMutex);
+    for (char c : bytes) {
+        if (serialGuiRx.size() < (1 << 16)) serialGuiRx.push_back(static_cast<uint8_t>(c));
+    }
+}
+
+// A few bytes per ~60 Hz tick while the guest's queue has room, like the SDL frontend: through the movie session when
+// recording (it logs them at their exact cycle), straight in otherwise. A replay is in control and takes none, but the
+// typed bytes are still consumed so they don't pile up.
+void EmulatorWidget::serialTick(int movieKind)
+{
+    if (!system->isDevUnit()) return;
+    for (int n = 0; n < 192 && system->serialRxHasRoom(); n++) {
+        uint8_t b;
+        bool got = false;
+        {
+            std::lock_guard<std::mutex> lock(serialMutex);
+            if (!serialGuiRx.empty()) {
+                b = serialGuiRx.front();
+                serialGuiRx.pop_front();
+                got = true;
+            }
+        }
+        if (!got && !(serialHost && serialHost->receive(b))) break;
+        if (movieKind == 1) session.serialIn(b);
+        else if (movieKind != 2) system->serialReceive(b);
+    }
+    if (serialHost) serialHost->flush();
+}
+
+void EmulatorWidget::drainSerialOutput()
+{
+    QByteArray out;
+    {
+        std::lock_guard<std::mutex> lock(serialMutex);
+        out.swap(serialTx);
+    }
+    if (!out.isEmpty()) emit serialOutput(out);
 }
 
 void EmulatorWidget::updateFrameBuffer()

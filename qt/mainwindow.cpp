@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include "configdialog.h"
 #include "emulatorwidget.h"
+#include "serialconsole.h"
 #include "display.h"
 #include <QFileDialog>
 #include <QFileInfo>
@@ -244,6 +245,10 @@ void MainWindow::buildMovieMenu()
     actionTwoPlayers = menu->addAction(tr("&Two Players (player 2: i j k l, 7 8 9 0, u o n m)"));
     actionTwoPlayers->setCheckable(true);
     menu->addSeparator();
+    actionDevUnit = menu->addAction(tr("&Dev Unit (debug serial port; signature checks always pass)"));
+    actionDevUnit->setCheckable(true);
+    actionSerialConsole = menu->addAction(tr("Serial &Console..."));
+    menu->addSeparator();
     actionRecordMovie = menu->addAction(tr("&Record Movie..."));
     actionPlayMovie = menu->addAction(tr("&Play Movie..."));
     actionStopMovie = menu->addAction(tr("S&top Movie"));
@@ -252,8 +257,8 @@ void MainWindow::buildMovieMenu()
     actionHardReset->setShortcut(QKeySequence(Qt::Key_F2));
     actionYank->setShortcut(QKeySequence(Qt::Key_F3));
     actionSwap->setShortcut(QKeySequence(Qt::Key_F4));
-    for (QAction *a : {actionSoftReset, actionHardReset, actionYank, actionSwap, actionTwoPlayers, actionRecordMovie,
-                       actionPlayMovie, actionStopMovie})
+    for (QAction *a : {actionSoftReset, actionHardReset, actionYank, actionSwap, actionTwoPlayers, actionDevUnit,
+                       actionSerialConsole, actionRecordMovie, actionPlayMovie, actionStopMovie})
         addAction(a);   // live even with the menu bar hidden (see the constructor)
 
     connect(actionSoftReset, &QAction::triggered, this, &MainWindow::onReset);
@@ -261,10 +266,33 @@ void MainWindow::buildMovieMenu()
     connect(actionYank, &QAction::triggered, this, &MainWindow::onYankCartridge);
     connect(actionSwap, &QAction::triggered, this, &MainWindow::onSwapCartridge);
     connect(actionTwoPlayers, &QAction::toggled, this, [this](bool on) { emulatorWidget->setTwoPlayers(on); });
+    connect(actionDevUnit, &QAction::toggled, this, [this](bool on) {
+        emulatorWidget->setDevUnit(on);
+        if (emulatorWidget->isActive())
+            ui->statusbar->showMessage(tr("Dev unit %1: takes effect when a cartridge is next loaded").arg(on ? tr("on") : tr("off")), 6000);
+    });
+    connect(actionSerialConsole, &QAction::triggered, this, [this]() {
+        serialConsole->show();
+        serialConsole->raise();
+        serialConsole->activateWindow();
+    });
+    serialConsole = new SerialConsole(this);
+    connect(emulatorWidget, &EmulatorWidget::serialOutput, serialConsole, &SerialConsole::appendOutput);
+    connect(serialConsole, &SerialConsole::lineEntered, emulatorWidget, &EmulatorWidget::serialSend);
+    connect(emulatorWidget, &EmulatorWidget::serialSetupFailed, this, [this](const QString &message) {
+        ui->statusbar->showMessage(tr("Serial port: %1").arg(message), 10000);
+    });
     connect(actionRecordMovie, &QAction::triggered, this, &MainWindow::onRecordMovie);
     connect(actionPlayMovie, &QAction::triggered, this, &MainWindow::onPlayMovie);
     connect(actionStopMovie, &QAction::triggered, this, &MainWindow::onStopMovie);
     updateMovieActions();
+}
+
+void MainWindow::setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort)
+{
+    emulatorWidget->setSerialEndpoints(outs, ins, tcpPort);
+    actionDevUnit->setChecked(devUnit);   // also tells the widget
+    if (devUnit) serialConsole->show();
 }
 
 void MainWindow::updateMovieActions()

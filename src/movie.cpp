@@ -122,7 +122,7 @@ std::vector<uint8_t> Movie::serialize() const {
     w.u16(FORMAT_VERSION);
     w.u32(coreRevision);
     w.u64(lengthCycles);
-    w.u8((verifySignatures ? 1 : 0) | (hleBoot ? 2 : 0) | (hleApuBios ? 4 : 0));
+    w.u8((verifySignatures ? 1 : 0) | (hleBoot ? 2 : 0) | (hleApuBios ? 4 : 0) | (devUnit ? 8 : 0));
     if (!hleBoot) w.bytes(bootRom.data(), 32);
     if (!hleApuBios) w.bytes(apuBios.data(), 32);
     w.varint((uint64_t)(initialRom + 1));
@@ -140,6 +140,7 @@ std::vector<uint8_t> Movie::serialize() const {
         switch (e.type) {
             case MovieEvent::Input: w.u8(e.port); w.u8(e.dir); w.u8(e.ctrl); w.u8(e.btn); break;
             case MovieEvent::Insert: w.varint(e.rom); break;
+            case MovieEvent::SerialIn: w.u8(e.data); break;
             case MovieEvent::Checkpoint:
                 w.u8((uint8_t)e.parts.size());
                 for (uint64_t v : e.parts) w.u64(v);
@@ -170,7 +171,9 @@ bool Movie::parse(const uint8_t* data, size_t size, Movie& out, std::string& err
     out.verifySignatures = flags & 1;
     out.hleBoot = flags & 2;
     out.hleApuBios = flags & 4;
-    if (flags & ~7) return fail("unknown flag bits");
+    out.devUnit = flags & 8;
+    if (flags & ~15) return fail("unknown flag bits");
+    if (out.devUnit && out.coreRevision < 11) return fail("a dev-unit movie needs core revision 11 or later");
     if (!out.hleBoot) r.bytes(out.bootRom.data(), 32);
     if (!out.hleApuBios) r.bytes(out.apuBios.data(), 32);
     const uint64_t initial = r.varint();
@@ -197,7 +200,8 @@ bool Movie::parse(const uint8_t* data, size_t size, Movie& out, std::string& err
         cycle += delta;
         e.cycle = cycle;
         const uint8_t type = r.u8();
-        if (type < MovieEvent::Input || type > MovieEvent::Checkpoint) return fail("unknown event type");
+        if (type < MovieEvent::Input || type > MovieEvent::SerialIn) return fail("unknown event type");
+        if (type == MovieEvent::SerialIn && out.coreRevision < 11) return fail("serial input needs core revision 11 or later");
         e.type = (MovieEvent::Type)type;
         switch (e.type) {
             case MovieEvent::Input:
@@ -210,6 +214,7 @@ bool Movie::parse(const uint8_t* data, size_t size, Movie& out, std::string& err
                 e.rom = (uint32_t)idx;
                 break;
             }
+            case MovieEvent::SerialIn: e.data = r.u8(); break;
             case MovieEvent::Checkpoint: {
                 const uint8_t n = r.u8();
                 for (uint8_t k = 0; k < n && r.ok; k++) e.parts.push_back(r.u64());
@@ -261,6 +266,7 @@ std::string Movie::toText() const {
     o << "core " << coreRevision << "\n";
     o << "length " << lengthCycles << "\n";
     o << "verify " << (verifySignatures ? "on" : "off") << "\n";
+    if (devUnit) o << "devunit on\n";
     o << "boot " << (hleBoot ? "hle" : "sha256:" + toHex(bootRom)) << "\n";
     o << "apubios " << (hleApuBios ? "hle" : "sha256:" + toHex(apuBios)) << "\n";
     for (size_t i = 0; i < roms.size(); i++) o << "rom " << i << " sha256:" << toHex(roms[i].sha) << " " << roms[i].title << "\n";
@@ -276,6 +282,7 @@ std::string Movie::toText() const {
             case MovieEvent::HardReset: o << "hardreset"; break;
             case MovieEvent::Yank: o << "yank"; break;
             case MovieEvent::Insert: o << "insert " << e.rom; break;
+            case MovieEvent::SerialIn: o << "serial " << hex8(e.data); break;
             case MovieEvent::Checkpoint:
                 o << "checkpoint";
                 for (uint64_t v : e.parts) o << " " << hex64(v);
@@ -319,6 +326,7 @@ bool Movie::fromText(const std::string& text, Movie& out, std::string& error) {
         if (word == "core") { unsigned long long v; ls >> v; out.coreRevision = (uint32_t)v; }
         else if (word == "length") { unsigned long long v; ls >> v; out.lengthCycles = v; }
         else if (word == "verify") { std::string v; ls >> v; out.verifySignatures = v != "off"; }
+        else if (word == "devunit") { std::string v; ls >> v; out.devUnit = v == "on"; }
         else if (word == "boot") { std::string v; ls >> v; if (!pin(v, &out.hleBoot, out.bootRom, nullptr)) return fail("cannot resolve boot ROM '" + v + "'"); }
         else if (word == "apubios") { std::string v; ls >> v; if (!pin(v, &out.hleApuBios, out.apuBios, nullptr)) return fail("cannot resolve APU BIOS '" + v + "'"); }
         else if (word == "rom") {
@@ -353,6 +361,7 @@ bool Movie::fromText(const std::string& text, Movie& out, std::string& error) {
             } else if (kind == "softreset") e.type = MovieEvent::SoftReset;
             else if (kind == "hardreset") e.type = MovieEvent::HardReset;
             else if (kind == "yank") e.type = MovieEvent::Yank;
+            else if (kind == "serial") { std::string b; if (!(ls >> b)) return fail("serial <byte>"); e.type = MovieEvent::SerialIn; e.data = (uint8_t)std::strtoul(b.c_str(), nullptr, 0); }
             else if (kind == "insert") { unsigned idx; if (!(ls >> idx)) return fail("insert <rom index>"); e.type = MovieEvent::Insert; e.rom = idx; }
             else if (kind == "checkpoint") {
                 e.type = MovieEvent::Checkpoint;
@@ -417,6 +426,7 @@ bool MovieSession::setupMachine(const RecordSetup& s, const std::vector<uint8_t>
     if (apuImage) { if (!sys->loadAPUBiosImage(*apuImage)) { error = "cannot load the APU BIOS image"; return false; } }
     else sys->useHLEApuBios();
     sys->setVerifySignatures(movie.verifySignatures);
+    sys->setDevUnit(movie.devUnit);
     sys->ejectCartridge();
     if (cartImage && !sys->loadROMImage(*cartImage)) { error = "cannot load the cartridge image"; return false; }
     sys->hardReset();
@@ -430,6 +440,7 @@ bool MovieSession::beginRecording(System& system, const RecordSetup& setup, std:
     sys = &system;
     movie = Movie();
     movie.verifySignatures = setup.verifySignatures;
+    movie.devUnit = setup.devUnit;
     movie.checkpointInterval = setup.checkpointInterval;
     movie.author = setup.author;
     movie.description = setup.description;
@@ -461,9 +472,12 @@ bool MovieSession::beginPlayback(System& system, const Movie& m, const RomLibrar
     sys = &system;
     movie = m;
     library = &lib;
-    if (m.coreRevision != System::CORE_REVISION && !ignoreCoreRevision) {
+    // A revision from MIN_COMPATIBLE_REVISION up replays bit-for-bit (a newer core with its additions switched off is the
+    // older machine); anything older than that, or newer than this core, does not.
+    if ((m.coreRevision < System::MIN_COMPATIBLE_REVISION || m.coreRevision > System::CORE_REVISION) && !ignoreCoreRevision) {
         error = "movie was made with core revision " + std::to_string(m.coreRevision) + ", this core is revision " +
-                std::to_string(System::CORE_REVISION) + " (emulation changed; the movie will not replay)";
+                std::to_string(System::CORE_REVISION) + " and replays revisions " + std::to_string(System::MIN_COMPATIBLE_REVISION) +
+                "-" + std::to_string(System::CORE_REVISION) + " (emulation changed; the movie will not replay)";
         return false;
     }
     std::vector<uint8_t> boot, apu, cart;
@@ -507,6 +521,7 @@ bool MovieSession::applyEvent(const MovieEvent& e) {
         case MovieEvent::SoftReset: sys->softReset(); return true;
         case MovieEvent::HardReset: sys->hardReset(); return true;
         case MovieEvent::Yank: sys->ejectCartridge(); return true;
+        case MovieEvent::SerialIn: sys->serialReceive(e.data); return true;   // (a byte the full queue drops is dropped on replay too)
         case MovieEvent::Insert: {
             std::vector<uint8_t> image;
             if (e.rom >= movie.roms.size()) { failureText = "insert event references a missing ROM"; return false; }
@@ -594,6 +609,14 @@ void MovieSession::input(int port, uint8_t dir, uint8_t ctrl, uint8_t btn) {
     e.type = MovieEvent::Input;
     e.port = (uint8_t)port;
     e.dir = dir; e.ctrl = ctrl; e.btn = btn;
+    log(e);
+}
+
+void MovieSession::serialIn(uint8_t byte) {
+    if (currentMode != Mode::Recording || !sys->isDevUnit()) return;
+    MovieEvent e;
+    e.type = MovieEvent::SerialIn;
+    e.data = byte;
     log(e);
 }
 

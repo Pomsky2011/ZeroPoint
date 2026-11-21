@@ -97,7 +97,7 @@ int cmdInfo(const std::string& path) {
     Movie m;
     std::string err;
     if (!Movie::load(path, m, err)) { std::fprintf(stderr, "%s\n", err.c_str()); return 1; }
-    size_t inputs[2] = {0, 0}, resets[2] = {0, 0}, yanks = 0, inserts = 0, checks = 0;
+    size_t inputs[2] = {0, 0}, resets[2] = {0, 0}, yanks = 0, inserts = 0, checks = 0, serials = 0;
     for (const MovieEvent& e : m.events) {
         switch (e.type) {
             case MovieEvent::Input: inputs[e.port & 1]++; break;
@@ -105,19 +105,23 @@ int cmdInfo(const std::string& path) {
             case MovieEvent::HardReset: resets[1]++; break;
             case MovieEvent::Yank: yanks++; break;
             case MovieEvent::Insert: inserts++; break;
+            case MovieEvent::SerialIn: serials++; break;
             case MovieEvent::Checkpoint: checks++; break;
         }
     }
     std::printf("core revision : %u\n", m.coreRevision);
-    if (m.coreRevision != System::CORE_REVISION) std::printf("                (this core is revision %u: the movie will not replay without --ignore-core-revision)\n", System::CORE_REVISION);
+    if (m.coreRevision < System::MIN_COMPATIBLE_REVISION || m.coreRevision > System::CORE_REVISION)
+        std::printf("                (this core is revision %u and replays %u-%u: the movie will not replay without --ignore-core-revision)\n",
+                    System::CORE_REVISION, System::MIN_COMPATIBLE_REVISION, System::CORE_REVISION);
     std::printf("length        : %llu master cycles (%.3f s of console time)\n", (unsigned long long)m.lengthCycles, (double)m.lengthCycles / 68011355.0);
     std::printf("boot ROM      : %s\n", m.hleBoot ? "native (HLE)" : ("sha256 " + toHex(m.bootRom)).c_str());
     std::printf("APU BIOS      : %s\n", m.hleApuBios ? "native (HLE)" : ("sha256 " + toHex(m.apuBios)).c_str());
-    std::printf("signatures    : %s\n", m.verifySignatures ? "verified at boot" : "not verified");
+    std::printf("signatures    : %s\n", m.devUnit ? "dev unit: always pass" : m.verifySignatures ? "verified at boot" : "not verified");
+    if (m.devUnit) std::printf("dev unit      : yes (debug serial port is a UART)\n");
     std::printf("starts with   : %s\n", m.initialRom < 0 ? "an empty slot" : m.roms[(size_t)m.initialRom].title.c_str());
     for (size_t i = 0; i < m.roms.size(); i++) std::printf("  rom %zu       : %s  %s\n", i, toHex(m.roms[i].sha).c_str(), m.roms[i].title.c_str());
-    std::printf("events        : %zu  (P1 input %zu, P2 input %zu, soft resets %zu, hard resets %zu, yanks %zu, swaps %zu)\n",
-                m.events.size() - checks, inputs[0], inputs[1], resets[0], resets[1], yanks, inserts);
+    std::printf("events        : %zu  (P1 input %zu, P2 input %zu, soft resets %zu, hard resets %zu, yanks %zu, swaps %zu, serial bytes in %zu)\n",
+                m.events.size() - checks, inputs[0], inputs[1], resets[0], resets[1], yanks, inserts, serials);
     std::printf("checkpoints   : %zu%s\n", checks, checks ? "" : "   (unsealed: nothing to verify; run `zp_movie seal`)");
     if (!m.author.empty()) std::printf("author        : %s\n", m.author.c_str());
     if (!m.description.empty()) std::printf("description   : %s\n", m.description.c_str());

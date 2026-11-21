@@ -77,6 +77,8 @@ void CPU::reset() {
     std::memset(p2RxBuffer, 0, sizeof p2RxBuffer);
     blake2sReset();
     p2TxHead = p2TxTail = p2RxHead = p2RxTail = 0;
+    txDoneAt = 0;
+    rxOverrun = false;
 
     // Fresh boot ⇒ nothing verified yet, even if a chunk was verified before
     // this reset (chunkVerified.size() is left as configureDataGating() set
@@ -2443,6 +2445,7 @@ void CPU::setupIORegisters() {
 
                 // Debug serial interface (was at $D80038-$D8003A before port 2 became a controller)
                 case 0x0C: { // SER_STATUS
+                    serialSettle();
                     uint8_t status = 0x00;
                     // Bit 0: RX_READY (data available to read)
                     if (p2RxHead != p2RxTail) {
@@ -2452,6 +2455,10 @@ void CPU::setupIORegisters() {
                     uint8_t next_head = (p2TxHead + 1) & 0xFF;
                     if (next_head != p2TxTail) {
                         status |= 0x02;
+                    }
+                    if (devUnit) {
+                        if (rxOverrun) status |= 0x04;                 // Bit 2: OVERRUN (an RX byte was dropped)
+                        if (p2TxHead == p2TxTail) status |= 0x08;      // Bit 3: TX_DONE (everything has gone out)
                     }
                     return status;
                 }
@@ -2473,8 +2480,11 @@ void CPU::setupIORegisters() {
         [this](uint16_t offset, uint8_t value) {
             switch (offset) {
                 case 0x0D: { // SER_DATA (write)
+                    serialSettle();
                     uint8_t next_head = (p2TxHead + 1) & 0xFF;
                     if (next_head != p2TxTail) {
+                        // A dev unit's first queued byte starts going out now; the rest follow as each one finishes.
+                        if (devUnit && p2TxHead == p2TxTail) txDoneAt = cycleCount + SERIAL_CYCLES_PER_BYTE;
                         p2TxBuffer[p2TxHead] = value;
                         p2TxHead = next_head;
                     }
@@ -2483,10 +2493,14 @@ void CPU::setupIORegisters() {
 
                 case 0x0E: // SER_CTRL
                     if (value & 0x01) {
-                        // Clear buffers
+                        // Clear buffers (and, on a dev unit, the overrun flag)
+                        serialSettle();
                         p2TxHead = p2TxTail = 0;
                         p2RxHead = p2RxTail = 0;
+                        txDoneAt = 0;
+                        rxOverrun = false;
                     }
+                    if (devUnit && (value & 0x02)) rxOverrun = false;   // clear the overrun flag alone
                     break;
 
                 default:
@@ -2546,8 +2560,8 @@ void CPU::setupIORegisters() {
         // Read handler
         [this](uint16_t offset) -> uint8_t {
             switch (offset) {
-                case 0x00: // DEV_MODE flag
-                    return devModeFlag ? 0x01 : 0x00;
+                case 0x00: // DEV_MODE flag (bit 0, guest-writable) and the dev-unit latch (bit 1, read-only: host-set)
+                    return (devModeFlag ? 0x01 : 0x00) | (devUnit ? 0x02 : 0x00);
                 case 0x01: // CART_ENTRY low byte (set by System::loadROM)
                     return cartridgeEntryPoint & 0xFF;
                 case 0x02: // CART_ENTRY mid byte
@@ -2937,6 +2951,29 @@ void CPU::serviceAbort() {
 
 namespace ZeroPoint {
 
+void CPU::serialSettle() const {
+    if (!devUnit) return;
+    while (p2TxHead != p2TxTail && cycleCount >= txDoneAt) {
+        const uint8_t byte = p2TxBuffer[p2TxTail];
+        p2TxTail = (uint8_t)((p2TxTail + 1) & 0xFF);
+        // The next byte starts as this one finishes (not when we got around to noticing), so when we look doesn't matter.
+        if (p2TxHead != p2TxTail) txDoneAt += SERIAL_CYCLES_PER_BYTE;
+        if (serialSink) serialSink(byte);
+    }
+}
+
+bool CPU::serialReceive(uint8_t byte) {
+    if (!devUnit) return false;
+    const uint8_t next_head = (uint8_t)((p2RxHead + 1) & 0xFF);
+    if (next_head == p2RxTail) {
+        rxOverrun = true;
+        return false;
+    }
+    p2RxBuffer[p2RxHead] = byte;
+    p2RxHead = next_head;
+    return true;
+}
+
 uint64_t CPU::stateHash() const {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&h](const void* data, size_t n) {
@@ -2952,7 +2989,10 @@ uint64_t CPU::stateHash() const {
     mixv(irqPending); mixv(nmiPending); mixv(abortPending);
     mixv(p1Direction); mixv(p1Control); mixv(p1Buttons);
     mixv(p2Direction); mixv(p2Control); mixv(p2Buttons); mixv(cartridgeInserted);
+    serialSettle();   // the guest-visible TX queue is whatever the cycle counter says, not whenever the host last looked
     mixv(ppuRegSelect); mixv(dmaConfigIndex); mix(dmaConfigBuffer, sizeof dmaConfigBuffer); mixv(devModeFlag);
+    // Only a dev unit has these: a retail unit's hash is exactly what it was before the UART existed.
+    if (devUnit) { mixv(devUnit); mixv(txDoneAt); mixv(rxOverrun); }
     mix(p2TxBuffer, sizeof p2TxBuffer); mix(p2RxBuffer, sizeof p2RxBuffer);
     mixv(p2TxHead); mixv(p2TxTail); mixv(p2RxHead); mixv(p2RxTail);
     mixv(bootServiceActive); mixv(dataGatingActive); mixv(gatedCodeSize);

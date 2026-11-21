@@ -22,6 +22,10 @@ An unsigned or badly signed ROM halts the CPU (message on stderr), like the real
 (`SHA256(header||payload)`), v2, v3 (code digest + manifest digest), against the dev key; the digest is
 always recomputed, never read from the trailer. An 8 MiB v1 ROM verifies in ~120 ms (real ROM: ~9 min).
 
+A **dev unit** (`System::setDevUnit(true)`, `--dev-unit`; docs/debug-protocol.md) skips the check too, because on one the signature
+check always passes. The real **dev** Boot ROM (`ZPbootROM/build/bootrom_dev.bin`) does the same: it reads `$D80048` bit 1, a latch only the host can
+set. The retail `bootrom.bin` has no such code and always verifies.
+
 Turn it off for unsigned dev ROMs: `System::setVerifySignatures(false)`; `zeropoint_sdl --no-verify`; Qt and
 anything else using `System::verifySignaturesDefault()` honour `ZEROPOINT_NO_VERIFY=1`. Tools that run
 unsigned ROMs (`debugger`, `zpb_wav`, `test_batched`, `bench_qt_tick`) opt out themselves; tests default strict.

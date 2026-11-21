@@ -151,6 +151,15 @@ set(CORE_HEADERS
 
 add_library(zeropoint_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
 
+# Host end of the debug serial port (stdio / file / FIFO / TCP). Separate from the core: it needs threads and sockets.
+find_package(Threads REQUIRED)
+add_library(zeropoint_serial_host STATIC src/serial_host.cpp include/serial_host.h)
+target_include_directories(zeropoint_serial_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(zeropoint_serial_host PUBLIC Threads::Threads)
+if(WIN32 OR CROSS_WINDOWS OR PLATFORM_WINDOWS)
+    target_link_libraries(zeropoint_serial_host PUBLIC ws2_32)
+endif()
+
 # SDL2 rendering/input backend (Window). Leaf consumer of zeropoint_core, not
 # part of it — only frontends that actually want an SDL window link this.
 add_library(zeropoint_sdl_window STATIC
@@ -175,9 +184,9 @@ add_executable(zeropoint_sdl
     src/main.cpp
 )
 if(CROSS_WINDOWS OR PLATFORM_WINDOWS)
-    target_link_libraries(zeropoint_sdl zeropoint_sdl_window zeropoint_core SDL2::SDL2)
+    target_link_libraries(zeropoint_sdl zeropoint_sdl_window zeropoint_serial_host zeropoint_core SDL2::SDL2)
 else()
-    target_link_libraries(zeropoint_sdl zeropoint_sdl_window zeropoint_core $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}>)
+    target_link_libraries(zeropoint_sdl zeropoint_sdl_window zeropoint_serial_host zeropoint_core $<IF:$<OR:$<BOOL:${CROSS_WINDOWS}>,$<BOOL:${PLATFORM_WINDOWS}>>,SDL2::SDL2,${SDL2_LIBRARIES}>)
 endif()
 
 # Qt frontend
@@ -188,6 +197,7 @@ set(QT_SOURCES
     qt/emulatorwidget.cpp
     qt/audiooutput.cpp
     qt/keycapturebutton.cpp
+    qt/serialconsole.cpp
 )
 
 set(QT_HEADERS
@@ -196,6 +206,7 @@ set(QT_HEADERS
     qt/emulatorwidget.h
     qt/audiooutput.h
     qt/keycapturebutton.h
+    qt/serialconsole.h
     qt/keybindings.h
 )
 
@@ -222,6 +233,7 @@ endif()
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(zeropoint_qt
         zeropoint_core
+        zeropoint_serial_host
         Qt6::Core
         Qt6::Widgets
         ${ZP_SDL2_TARGET}
@@ -229,6 +241,7 @@ if(QT_VERSION_MAJOR EQUAL 6)
 else()
     target_link_libraries(zeropoint_qt
         zeropoint_core
+        zeropoint_serial_host
         Qt5::Core
         Qt5::Widgets
         ${ZP_SDL2_TARGET}
@@ -240,9 +253,9 @@ add_executable(bench_qt_tick tools/bench_qt_tick.cpp qt/emulatorwidget.cpp qt/au
 target_include_directories(bench_qt_tick PRIVATE ${CMAKE_SOURCE_DIR}/qt)
 set_target_properties(bench_qt_tick PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 if(QT_VERSION_MAJOR EQUAL 6)
-    target_link_libraries(bench_qt_tick zeropoint_core Qt6::Core Qt6::Widgets ${ZP_SDL2_TARGET})
+    target_link_libraries(bench_qt_tick zeropoint_core zeropoint_serial_host Qt6::Core Qt6::Widgets ${ZP_SDL2_TARGET})
 else()
-    target_link_libraries(bench_qt_tick zeropoint_core Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
+    target_link_libraries(bench_qt_tick zeropoint_core zeropoint_serial_host Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
 endif()
 
 # The Qt frontend's movie plumbing end to end, with the emulation thread running (QT_QPA_PLATFORM=offscreen)
@@ -250,9 +263,19 @@ add_executable(test_qt_movie tools/test_qt_movie.cpp qt/emulatorwidget.cpp qt/au
 target_include_directories(test_qt_movie PRIVATE ${CMAKE_SOURCE_DIR}/qt)
 set_target_properties(test_qt_movie PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 if(QT_VERSION_MAJOR EQUAL 6)
-    target_link_libraries(test_qt_movie zeropoint_core Qt6::Core Qt6::Widgets ${ZP_SDL2_TARGET})
+    target_link_libraries(test_qt_movie zeropoint_core zeropoint_serial_host Qt6::Core Qt6::Widgets ${ZP_SDL2_TARGET})
 else()
-    target_link_libraries(test_qt_movie zeropoint_core Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
+    target_link_libraries(test_qt_movie zeropoint_core zeropoint_serial_host Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
+endif()
+
+# The Qt frontend's debug serial port (dev unit) end to end (QT_QPA_PLATFORM=offscreen; tools/test_serial.sh runs it)
+add_executable(test_qt_serial tools/test_qt_serial.cpp qt/emulatorwidget.cpp qt/audiooutput.cpp qt/emulatorwidget.h qt/audiooutput.h)
+target_include_directories(test_qt_serial PRIVATE ${CMAKE_SOURCE_DIR}/qt)
+set_target_properties(test_qt_serial PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if(QT_VERSION_MAJOR EQUAL 6)
+    target_link_libraries(test_qt_serial zeropoint_core zeropoint_serial_host Qt6::Core Qt6::Widgets ${ZP_SDL2_TARGET})
+else()
+    target_link_libraries(test_qt_serial zeropoint_core zeropoint_serial_host Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
 endif()
 
 # Frame-skip latching must be invisible
@@ -364,6 +387,13 @@ target_link_libraries(test_movie zeropoint_core)
 # Cartridge slot (yank / Stop 'n' Swop), hard vs soft reset, port 2 controller (tools/test_cart_slot.sh)
 add_executable(test_cart_slot tools/test_cart_slot.cpp)
 target_link_libraries(test_cart_slot zeropoint_core)
+
+# Debug serial port: the dev unit's UART, its host end, and serial input in movies (docs/debug-protocol.md)
+add_executable(test_serial tools/test_serial.cpp)
+target_link_libraries(test_serial zeropoint_core zeropoint_serial_host)
+set_target_properties(test_serial PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
 
 # BLAKE2s engine ($D80060): digests, timing, rejects, determinism
 add_executable(test_blake2s_engine tools/test_blake2s_engine.cpp)

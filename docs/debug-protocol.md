@@ -1,62 +1,109 @@
-# ZeroPoint Serial Debug Protocol
+# Debug serial port and the dev unit
 
-> **Register move.** Port 2 ($D80038-$D8003A) is now a second *controller* (same layout as port 1; see
-> `docs/movies.md`). The serial debug interface described here moved to **$D8003C-$D8003E** (`SER_STATUS`,
-> `SER_DATA`, `SER_CTRL`; they were `P2_STATUS`/`P2_DATA`/`P2_CTRL` at $D80038-$D8003A).
+A UART between a running program and the host: the guest prints with `SER_DATA`, the host reads it from a terminal, file or
+TCP socket, and the host can type back. It is **built** (core revision 11) and it is deterministic: everything the guest can
+see is a function of the CPU cycle counter, and typed input is recorded in movies.
 
-> **ASPIRATIONAL — mostly not implemented.** Only three fragments of this
-> design exist today: the `$D80030`/`$D8003C-$D8003E` register addresses,
-> the RX_READY/TX_EMPTY bit assignments, and a `DEV_MODE` flag at `$D80048`
-> that the `--dev` CLI flag can set. Everything else described below does
-> not exist:
-> - No debug-loop boot ROM at bank $FF (it is unmapped/open-bus). The real
->   Boot ROM lives at banks $E0-$E1 (see CLAUDE.md): it does splash and
->   signature verification, but nothing in it reads DEV_MODE to gate boot
->   behavior or enters a debug loop
-> - No command processor (no register-dump/breakpoint/memory-read handling
->   anywhere in `src/`)
-> - No TCP server on port 6502 or any port (no socket code exists at all)
-> - No `--dev-mode`/`--debug-port` CLI flags (only `--dev` and `--scale N` exist)
-> - The P2 TX buffer is explicitly marked `// TX queue; no consumer yet` in
->   `src/cpu.cpp` — bytes written to it go nowhere
->
-> Treat this file as a design doc for a feature that hasn't been built, not
-> documentation of current behavior.
+The port **exists on every unit** but is only *read* by a **dev unit**. A retail unit has the same three registers and they
+behave exactly as they did at revision 10: the guest can write bytes into the transmit queue (it fills, 255 bytes, and is never
+drained) and the receive queue is always empty. Nothing on the host side listens (no sink is ever called, host input is
+refused), and nothing in the retail Boot ROM touches it or the dev-unit latch.
 
-## Overview
+## The dev unit
 
-The ZeroPoint debug interface uses a **serial port** ($D8003C-$D8003E, once part of player port 2) as a communication channel between the emulator and an external debug monitor. The boot ROM detects dev mode and enters a debug loop, allowing real-time inspection and control.
+A host setting, like `--no-verify`, and **never reachable from the guest**:
 
-## Architecture
+- `System::setDevUnit(true)`, or `zeropoint_sdl --dev-unit`. Set it before `powerOn()`; it survives `softReset()`/`hardReset()`.
+- It turns the serial port into a UART (below).
+- **Signature checks always pass.** The HLE boot skips verification (`--no-verify` is the same thing without the UART); the
+  real **dev Boot ROM** reads `$D80048` bit 1 at the top of `main` and goes straight to the handoff instead of running
+  `rsa_verify` (a dev unit boots in ~0.3 s of console time instead of tens of seconds). Trailer-v3 *chunk* verification (`COP #$FF`) is a
+  separate gate and still checks the data it is asked about.
+- **Two Boot ROMs** (`ZPbootROM/build.sh` makes both from one source): `bootrom.bin` is the **retail** image - signature
+  verification is unconditional and the image contains no read of the latch at all, so no host setting can skip it (it is
+  byte-for-byte what it was before the dev unit existed). `bootrom_dev.bin` is the **dev** image: identical, plus the latch check.
+  The dev image on a retail unit verifies like the retail one; the retail image on a dev unit still verifies (the HLE boot
+  has no such split: it follows the latch). `--boot ../ZPbootROM/build/bootrom_dev.bin --dev-unit` for the real thing.
+  `test_serial` runs the whole 2x2 (image x unit) matrix.
+- The guest can read it, never write it: bit 1 of `DEV_MODE` (`$D80048`) is 1 on a dev unit. Bit 0 is the older, guest-writable
+  `DEV_MODE` byte that `System::setDevMode` sets and nothing acts on; the two are independent, so a program writing the
+  register cannot turn verification off for the next boot.
+- It is part of a movie's setup (header flag), so a recording replays on a dev unit.
 
-### Memory Map
-- **Boot ROM**: Bank $FF (64 KB, read-only)
-- **Player Ports**: $D80030-$D8003F (16 bytes I/O)
-  - **Port 1** ($D80030-$D80032): Player 1 controller
-  - **Port 2** ($D80038-$D8003A): Player 2 controller
-  - **Debug serial** ($D8003C-$D8003E): this document
+## Registers (`$D8003C-$D8003E`)
 
-### Boot ROM Behavior
-1. CPU resets to RESET vector at $00FFFC-FFFD
-2. Boot ROM checks dev mode flag (I/O register $D80048)
-3. **Dev Mode (flag = 1)**: Enter debug loop, await commands on Port 2
-4. **Normal Mode (flag = 0)**: Jump to ROM entry point from header
+| Address | Name | |
+|---------|------|--|
+| `$D8003C` | `SER_STATUS` | r: bit 0 **RX_READY** (a byte is waiting), bit 1 **TX_EMPTY** (the queue has room), bit 2 **OVERRUN** (an RX byte was dropped), bit 3 **TX_DONE** (everything queued has gone out). Bits 2-3 read 0 on a retail unit. |
+| `$D8003D` | `SER_DATA` | r: next received byte (0 if none). w: queue a byte for transmit; dropped if the queue is full. |
+| `$D8003E` | `SER_CTRL` | w: bit 0 clears both queues (and OVERRUN, and discards unsent bytes); bit 1 clears OVERRUN alone (dev unit). |
 
-## Player Port 2 Registers (Debug Mode)
+Both queues hold 255 bytes. The addresses are bank `$D8`, so assemble them as long operands (`lda $D8003C`).
 
-| Address   | Name       | Access | Description                          |
-|-----------|------------|--------|--------------------------------------|
-| $D8003C   | SER_STATUS  | R      | Status flags (bit 0: data ready)     |
-| $D8003D   | SER_DATA    | R/W    | Data byte (read command, write response) |
-| $D8003E   | SER_CTRL    | W      | Control (bit 0: clear buffer)        |
-| $D8003B-F | Reserved   | -      | Future expansion                     |
+## Timing (dev unit)
 
-### SER_STATUS Flags
-- **Bit 0 (RX_READY)**: 1 = command byte available to read
-- **Bit 1 (TX_EMPTY)**: 1 = transmit buffer empty, can write
-- **Bits 2-7**: Reserved
+The transmit side models a 115200 baud 8N1 line on the 17.002839 MHz CPU clock: **one byte per 1476 CPU cycles**
+(`CPU::SERIAL_CYCLES_PER_BYTE`). A byte written to an idle port is out 1476 cycles later; bytes queued behind it follow back to
+back (the next starts when the previous finishes, not when the host got around to noticing). `TX_EMPTY` is "the queue is not
+full" as it always was, so a program that wants backpressure polls it, and one that wants to stop only after everything has gone
+out polls `TX_DONE`. A halted CPU stops the clock, so it stops the line.
 
-## Debug Protocol Commands
+The receive side has no baud limit of its own: a byte arrives at the cycle the host (or a movie) delivers it. If the queue is
+full the byte is dropped and `OVERRUN` is set. Frontends feed the guest only while the queue has room
+(`System::serialRxHasRoom()`), a few bytes per 60 Hz tick, so a file or a paste never overruns it.
+
+**Why this is deterministic.** The guest-visible queue state is "every byte whose time has come has gone out", computed from the
+cycle counter on every register access and every hash (`CPU::serialSettle`). When the host looks - every cycle, once a frame,
+only at the end - changes nothing but how soon the sink hears about a byte. `test_serial` checks that two rigs observed at
+different rates end in the same `stateHash`. On a retail unit none of this state exists: `stateHash` is bit-identical to
+revision 10 (the 24 `fuzz_determinism` goldens still match).
+
+## The host end
+
+`System::setSerialSink(fn)` receives each transmitted byte; `System::serialReceive(byte)` sends one in. `SerialHost`
+(`include/serial_host.h`, a separate small library: it needs threads and sockets) gives frontends the usual endpoints.
+`zeropoint_sdl`:
+
+| Flag | |
+|------|--|
+| `--dev-unit` | the dev unit (also needed for any `--serial-*`) |
+| `--serial-out FILE\|-` | transmitted bytes go to a file or FIFO, or `-` for stdout. The default, if no output is named, is stdout. May be repeated. |
+| `--serial-in FILE\|-` | received bytes come from stdin (`-`), a file (read once) or a FIFO (reopened when its writer goes). May be repeated. |
+| `--serial-tcp PORT` | both directions on `127.0.0.1:PORT` (localhost only: whoever connects gets the guest's console). One client at a time; a new connection replaces the old. Try `nc 127.0.0.1 5000`. |
+
+`--record`/`--play` work with all of it: while recording, typed bytes are logged as `serial` events at their exact master cycle
+(`MovieSession::serialIn`); a replay takes no live input and produces the same output.
+
+`zeropoint_qt` takes the same flags (`zeropoint_qt game.zpb --dev-unit --serial-tcp 5000`) and also has, in the Console menu, a
+**Dev Unit** toggle (off at every launch: it turns signature checks off, so it is never remembered; it applies when a cartridge
+is next loaded) and a **Serial Console** window: the guest's output scrolls by and a typed line goes to the guest on Enter
+(optionally with a newline). The console and the `--serial-*` endpoints work together. Recording and replay behave as above
+(`EmulatorWidget::serialSend` is the typed-text path, recorded like any host byte). Test: `bin/test_qt_serial`.
+
+The Vulkan target (`run_demo_vulkan`) only plays PPU programs: there is no `System` behind it, so there is no serial port to wire.
+
+## From a program
+
+`ZPdevtools/examples/cpu/serial_echo.asm` prints a banner and echoes input. The minimum to print a byte:
+
+```asm
+tx:     lda $D8003C         ; SER_STATUS
+        and #$02            ; TX_EMPTY
+        beq tx
+        lda #$41
+        sta $D8003D         ; 'A'
+```
+
+`tools/test_serial.sh` runs that program on the real frontend, then records and replays the session.
+
+## Design: a command protocol on top (not built)
+
+Everything below is the original design for a monitor that would sit on this UART: a guest-side program (a library in ZPdevtools)
+that answers register/memory/step/breakpoint commands from a host tool. None of it exists; the UART above is what it would use.
+Nothing in the emulator or the Boot ROM enters a debug loop, there is no command processor and no port-6502 server (the
+earlier draft's `--dev-mode`/`--debug-port` flags and a Boot ROM at bank `$FF` never existed).
+
+### Commands
 
 All commands are **single-byte** with optional parameters. Responses include status byte + data.
 
@@ -76,9 +123,9 @@ All commands are **single-byte** with optional parameters. Responses include sta
 - `0x02` - Error: Invalid address
 - `0x03` - Error: Invalid parameter
 
-## Command Set
+### Command set
 
-### 0x01: Read CPU Register
+#### 0x01: Read CPU Register
 **Format:** `01 [REG]`
 - **REG**: Register selector
   - `0x00` = A (16-bit, LSB first)
@@ -99,12 +146,12 @@ Send: 01 00
 Recv: 00 42 00  (A = 0x0042)
 ```
 
-### 0x02: Write CPU Register
+#### 0x02: Write CPU Register
 **Format:** `02 [REG] [DATA_LO] [DATA_HI]`
 
 **Response:** `[STATUS]`
 
-### 0x03: Read Memory
+#### 0x03: Read Memory
 **Format:** `03 [ADDR_LO] [ADDR_MID] [ADDR_HI] [LEN]`
 - **ADDR**: 24-bit address (little-endian)
 - **LEN**: Number of bytes to read (1-255)
@@ -117,12 +164,12 @@ Send: 03 00 00 80 04
 Recv: 00 AA BB CC DD
 ```
 
-### 0x04: Write Memory
+#### 0x04: Write Memory
 **Format:** `04 [ADDR_LO] [ADDR_MID] [ADDR_HI] [LEN] [BYTE1] ... [BYTEN]`
 
 **Response:** `[STATUS]`
 
-### 0x05: Continue Execution
+#### 0x05: Continue Execution
 **Format:** `05`
 - Resumes execution from current PC
 - Boot ROM exits debug loop, jumps to game code
@@ -130,7 +177,7 @@ Recv: 00 AA BB CC DD
 
 **Response:** `[STATUS]`
 
-### 0x06: Step Instruction
+#### 0x06: Step Instruction
 **Format:** `06 [COUNT]`
 - **COUNT**: Number of CPU instructions to execute (1-255)
 - Returns after executing COUNT instructions
@@ -138,7 +185,7 @@ Recv: 00 AA BB CC DD
 **Response:** `[STATUS] [PC_LO] [PC_HI] [PB]`
 - Returns new PC after step
 
-### 0x07: Set Breakpoint
+#### 0x07: Set Breakpoint
 **Format:** `07 [ADDR_LO] [ADDR_MID] [ADDR_HI]`
 - Sets CPU breakpoint at 24-bit address
 - Max 16 breakpoints supported
@@ -146,54 +193,54 @@ Recv: 00 AA BB CC DD
 **Response:** `[STATUS] [BP_ID]`
 - **BP_ID**: Breakpoint slot (0-15)
 
-### 0x08: Clear Breakpoint
+#### 0x08: Clear Breakpoint
 **Format:** `08 [BP_ID]`
 
 **Response:** `[STATUS]`
 
-### 0x09: Get All CPU State
+#### 0x09: Get All CPU State
 **Format:** `09`
 - Returns complete CPU state dump
 
 **Response:** `[STATUS] [A_LO] [A_HI] [X_LO] [X_HI] [Y_LO] [Y_HI] [SP_LO] [SP_HI] [D_LO] [D_HI] [PC_LO] [PC_HI] [PB] [DB] [P]`
 - Total: 1 status + 15 data bytes
 
-### 0x0A: Read PPU Register
+#### 0x0A: Read PPU Register
 **Format:** `0A [REG]`
 - **REG**: PPU register (0-63)
 
 **Response:** `[STATUS] [DATA_LO] [DATA_HI]`
 
-### 0x0B: Write PPU Register
+#### 0x0B: Write PPU Register
 **Format:** `0B [REG] [DATA_LO] [DATA_HI]`
 
 **Response:** `[STATUS]`
 
-### 0x0C: Read PPU Memory
+#### 0x0C: Read PPU Memory
 **Format:** `0C [ADDR_LO] [ADDR_HI] [LEN]`
 - **ADDR**: 16-bit PPU memory address
 
 **Response:** `[STATUS] [BYTE1] ... [BYTEN]`
 
-### 0x0D: Read APU Register
+#### 0x0D: Read APU Register
 **Format:** `0D [REG]`
 - **REG**: APU register (0-255)
 
 **Response:** `[STATUS] [DATA]`
 
-### 0x0E: Read APU Memory
+#### 0x0E: Read APU Memory
 **Format:** `0E [ADDR_LO] [ADDR_HI] [LEN]`
 
 **Response:** `[STATUS] [BYTE1] ... [BYTEN]`
 
-### 0x10: Reset System
+#### 0x10: Reset System
 **Format:** `10`
 - Soft reset (like pressing reset button)
 - Re-enters boot ROM debug loop in dev mode
 
 **Response:** `[STATUS]`
 
-### 0x11: Get System Info
+#### 0x11: Get System Info
 **Format:** `11`
 
 **Response:** `[STATUS] [MASTER_CYCLE_0] [MASTER_CYCLE_1] [MASTER_CYCLE_2] [MASTER_CYCLE_3] [CPU_STATE] [PPU_STATE] [APU_STATE] [DMA_ACTIVE]`
@@ -203,129 +250,7 @@ Recv: 00 AA BB CC DD
 - **APU_STATE**: APU state enum
 - **DMA_ACTIVE**: Number of active DMA channels
 
-## Boot ROM Debug Loop
+## Future extensions
 
-```asm
-; Boot ROM entry point ($FF0000)
-boot_rom_start:
-    SEI                   ; Disable interrupts
-    CLC
-    XCE                   ; Native mode
-    REP #$30              ; 16-bit A, X, Y
-
-    ; Check dev mode flag
-    LDA $D80048           ; DEV_MODE register
-    AND #$01
-    BEQ normal_boot       ; If 0, normal boot
-
-    ; Dev mode - enter debug loop
-debug_loop:
-    LDA $D8003C           ; Read SER_STATUS
-    AND #$01              ; Check RX_READY
-    BEQ debug_loop        ; Wait for command
-
-    LDA $D8003D           ; Read command byte
-    JSR process_command   ; Handle command
-    BRA debug_loop        ; Loop
-
-normal_boot:
-    ; Jump to ROM entry point from ROM header
-    LDA $00FFFE           ; Read entry point (24-bit)
-    ; ... setup and jump
-    JML entry_point
-```
-
-## External Debug Monitor
-
-The debug monitor is a separate program (Python/C++) that:
-1. Communicates with emulator via socket/pipe
-2. Sends debug commands
-3. Parses responses
-4. Provides CLI or GUI interface
-
-### Example Python Monitor
-```python
-import socket
-
-class ZeroPointDebugger:
-    def __init__(self, host='localhost', port=6502):
-        self.sock = socket.socket()
-        self.sock.connect((host, port))
-
-    def read_register(self, reg):
-        """Read CPU register (0=A, 1=X, etc.)"""
-        self.sock.send(bytes([0x01, reg]))
-        resp = self.sock.recv(3)
-        if resp[0] != 0x00:
-            raise Exception(f"Error: {resp[0]}")
-        return resp[1] | (resp[2] << 8)
-
-    def read_memory(self, addr, length):
-        """Read memory at 24-bit address"""
-        cmd = bytes([0x03, addr & 0xFF, (addr >> 8) & 0xFF,
-                     (addr >> 16) & 0xFF, length])
-        self.sock.send(cmd)
-        resp = self.sock.recv(1 + length)
-        if resp[0] != 0x00:
-            raise Exception(f"Error: {resp[0]}")
-        return resp[1:]
-
-    def set_breakpoint(self, addr):
-        """Set breakpoint at 24-bit address"""
-        cmd = bytes([0x07, addr & 0xFF, (addr >> 8) & 0xFF,
-                     (addr >> 16) & 0xFF])
-        self.sock.send(cmd)
-        resp = self.sock.recv(2)
-        return resp[1]  # Breakpoint ID
-```
-
-## Emulator Implementation
-
-### System Class Extensions
-```cpp
-class System {
-    // ...existing...
-
-    bool devMode;
-    DebugServer* debugServer;
-
-    void setDevMode(bool enabled);
-    void handleDebugCommand(uint8_t cmd, const uint8_t* params);
-};
-```
-
-### Debug Server (Socket Interface)
-The emulator runs a TCP server on port 6502 when dev mode is enabled:
-- Accepts debug monitor connections
-- Translates socket I/O to/from SER_DATA register
-- Handles protocol framing
-
-## Usage
-
-### Starting Emulator in Dev Mode
-```bash
-./bin/zeropoint_qt --dev-mode --debug-port 6502 game.zpb
-```
-
-### External Monitor Connection
-```bash
-python zpdb.py localhost:6502
-(zpdb) break $800100
-Breakpoint 0 set at $800100
-(zpdb) continue
-Running...
-Breakpoint 0 hit at $800100
-(zpdb) info registers
-A:  $0042  X: $0000  Y: $0000  SP: $01FF
-PC: $800100  PB: $80  DB: $00  P: --MX-I--
-(zpdb) x/16 $800000
-800000: EA EA EA EA 4C 00 80 A9 42 00 85 00 60 00 00 00
-```
-
-## Future Extensions
-
-- Watchpoints (break on memory write)
-- Conditional breakpoints
-- Performance profiling
-- Memory usage maps
-- Trace logging
+- A guest-side monitor library implementing the commands above
+- Watchpoints (break on memory write), conditional breakpoints

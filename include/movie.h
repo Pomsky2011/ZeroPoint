@@ -4,7 +4,8 @@
 //
 // A movie is a power-on setup (which boot ROM / APU BIOS / cartridge, pinned by SHA-256), then events at exact master
 // cycles of *movie time* (cycles since power-on; it keeps counting while a halted CPU freezes the machine, and across
-// resets): controller changes for both ports, soft/hard reset, cartridge yank, Stop 'n' Swop. Checkpoints (hashes of the
+// resets): controller changes for both ports, bytes typed into the debug serial port (dev unit only), soft/hard reset,
+// cartridge yank, Stop 'n' Swop. Checkpoints (hashes of the
 // machine state) let a replay name the cycle at which it first goes wrong.
 #include "system.h"
 #include <array>
@@ -20,11 +21,12 @@ std::string toHex(const Sha256& h);
 bool fromHex(const std::string& s, Sha256& out);
 
 struct MovieEvent {
-    enum Type : uint8_t { Input = 1, SoftReset = 2, HardReset = 3, Yank = 4, Insert = 5, Checkpoint = 6 };
+    enum Type : uint8_t { Input = 1, SoftReset = 2, HardReset = 3, Yank = 4, Insert = 5, Checkpoint = 6, SerialIn = 7 };
     uint64_t cycle = 0;                 // movie time, master cycles since power-on
     Type type = Input;
     uint8_t port = 0;                   // Input: 0 = player 1, 1 = player 2
     uint8_t dir = 0, ctrl = 0, btn = 0; // Input: the three controller bytes (PlayerInput::)
+    uint8_t data = 0;                   // SerialIn: the byte the host sends to the debug serial port
     uint32_t rom = 0;                   // Insert: index into Movie::roms
     std::vector<uint64_t> parts;        // Checkpoint: System::machineHashParts() values, in order
 };
@@ -40,6 +42,7 @@ struct Movie {
     bool verifySignatures = true;       // System::setVerifySignatures for the replay
     bool hleBoot = true;                // true: native boot ROM; false: bootRom below
     bool hleApuBios = true;             // true: native APU BIOS; false: apuBios below
+    bool devUnit = false;               // System::setDevUnit for the replay (debug UART, signature checks always pass)
     Sha256 bootRom{}, apuBios{};        // pinned images when not HLE
     int32_t initialRom = -1;            // index into roms, -1 = empty slot at power-on
     std::vector<MovieRom> roms;
@@ -82,6 +85,7 @@ public:
         std::string apuBiosPath;        // "" = native APU BIOS
         std::string cartridgePath;      // "" = empty slot at power-on
         bool verifySignatures = true;
+        bool devUnit = false;           // record on a dev unit (needed for the debug serial port)
         uint64_t checkpointInterval = System::CYCLES_PER_FRAME * 64;
         std::string author, description;
     };
@@ -104,6 +108,9 @@ public:
     void softReset();
     void hardReset();
     void yank();
+    // Host -> guest byte on the debug serial port. Recording: apply + log at cycle(). Playing: ignored. (Without a movie
+    // a frontend calls System::serialReceive() itself.) Only does anything on a dev unit.
+    void serialIn(uint8_t byte);
     bool insert(const std::vector<uint8_t>& image, const std::string& title);
 
     // Playback state.

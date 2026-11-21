@@ -8,6 +8,7 @@
 #include <QStringList>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -16,6 +17,8 @@
 #include "frame_pacer.h"
 #include "keybindings.h"
 #include "audiooutput.h"
+
+namespace ZeroPoint { class SerialHost; }
 
 class EmulatorWidget : public QWidget
 {
@@ -73,9 +76,28 @@ public:
     void setAudioEnabled(bool on) { audio.setEnabled(on); }
     void setAudioVolume(int percent) { audio.setVolume(percent); }
 
+    // ---- Dev unit and the debug serial port (docs/debug-protocol.md) --------------------------------------------
+    // A dev unit makes $D8003C-$D8003E a 115200-baud UART and makes signature checks always pass. Takes effect on the
+    // next loadROM()/bootBIOS()/startRecording() (a movie being played decides for itself). Off by default: it is a
+    // host setting, so it is never remembered between runs.
+    void setDevUnit(bool on) { devUnit = on; }
+    bool devUnitOn() const { return devUnit; }
+    // Where the guest's bytes go besides the Serial Console, and where host bytes come from (the same endpoints as the
+    // SDL frontend's --serial-out / --serial-in / --serial-tcp: "-" is stdout/stdin, otherwise a file or FIFO; port < 0
+    // = no TCP). Opened the first time a dev unit powers on.
+    void setSerialEndpoints(const QStringList &outs, const QStringList &ins, int tcpPort)
+    { serialOuts = outs; serialIns = ins; serialTcpPort = tcpPort; }
+    // Host -> guest: queued, then fed in by the emulation thread a few bytes per tick (recorded when recording).
+    void serialSend(const QByteArray &bytes);
+
     QSize sizeHint() const override;
 
 signals:
+    // Guest -> host: what the guest transmitted since the last tick (emitted on the GUI thread).
+    void serialOutput(const QByteArray &bytes);
+    // An endpoint (file, FIFO, TCP port) couldn't be opened; the machine runs without it.
+    void serialSetupFailed(const QString &message);
+
     // A playback reached its end, desynced, or failed (emitted from the emulation thread; queued to the GUI).
     void movieEnded(const QString &summary, bool ok);
 
@@ -160,6 +182,19 @@ private:
     void convertFrame(QImage &dst) const;   // latched display frame -> dst (system must be idle or the caller's)
     void updateFrameBuffer();
     void updatePlayerInput();
+
+    // Dev unit / serial. The sink runs on whichever thread steps the System (emuThread, or the GUI thread while
+    // stopped), so everything it and the GUI share is behind serialMutex.
+    bool devUnit = false;
+    QStringList serialOuts, serialIns;
+    int serialTcpPort = -1;
+    std::unique_ptr<ZeroPoint::SerialHost> serialHost;   // made on the first dev-unit power-on, kept for the widget's life
+    std::mutex serialMutex;
+    QByteArray serialTx;                    // guest -> GUI, drained by drainSerialOutput()
+    std::deque<uint8_t> serialGuiRx;        // GUI -> guest (serialSend), drained by serialTick()
+    void wireSerial();                      // after a System is built and its dev-unit setting is known
+    void serialTick(int movieKind);         // emuThread: feed host bytes to the guest
+    void drainSerialOutput();
 };
 
 #endif // EMULATORWIDGET_H

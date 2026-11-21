@@ -118,7 +118,11 @@ public:
     void softReset() { reset(); }
     void hardReset();
     // Bump when a change to the emulation changes what any program computes (a movie pins this; docs/movies.md).
-    static constexpr uint32_t CORE_REVISION = 10;
+    // Revision 11 added the dev unit (host-only latch: debug serial UART, signature checks always pass); with it off the
+    // machine is bit-identical to revision 10, so a movie recorded on any revision from MIN_COMPATIBLE_REVISION up to this
+    // one replays.
+    static constexpr uint32_t CORE_REVISION = 11;
+    static constexpr uint32_t MIN_COMPATIBLE_REVISION = 10;
 
     // Load a real Boot ROM image (bank $E0) - e.g. ZPbootROM's bootrom.bin, or a demo that never hands
     // off to a cartridge at all. Call reset() afterward to actually jump into it. Without one, System
@@ -219,6 +223,17 @@ public:
     // path is a single comparison against nextTimerEventCycle, and enabling or
     // disabling a timer changes when that next event is.
     void setTimerControl(uint8_t value);
+
+    // Dev unit (a host setting, never reachable from the guest): the debug serial port ($D8003C-$D8003E) becomes a UART
+    // - guest writes reach the sink at 115200 baud of CPU time, host bytes arrive through serialReceive() - and the
+    // Boot ROM's signature check always passes (HLE boot here; the real Boot ROM reads $D80048 bit 1). docs/debug-protocol.md.
+    // Set it before powerOn()/reset() so the boot sees it; it survives reset and hardReset like --no-verify does.
+    void setDevUnit(bool enabled);
+    bool isDevUnit() const { return cpu.isDevUnit(); }
+    void setSerialSink(CPU::SerialSink sink) { cpu.setSerialSink(std::move(sink)); }
+    bool serialReceive(uint8_t byte) { return cpu.serialReceive(byte); }
+    bool serialRxHasRoom() const { return cpu.serialRxHasRoom(); }
+    void serialPump() { cpu.serialSettle(); }
 
     // Debug mode
     void setDevMode(bool enabled);

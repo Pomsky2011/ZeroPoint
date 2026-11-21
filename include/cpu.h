@@ -315,6 +315,25 @@ public:
     // Field by field (never raw structs: padding is unspecified). For tools/test_determinism.
     uint64_t stateHash() const;   // what HLT does; System's HLE boot uses it to refuse a bad ROM
 
+    // ---- Debug serial port ($D8003C-$D8003E): a UART on a dev unit (docs/debug-protocol.md) ----------------------------
+    // The registers always exist and, on a retail unit, behave as they always did (two queues nothing drains). A *dev
+    // unit* is a host setting - the guest cannot set it (it reads back as bit 1 of $D80048 and nothing can write it) -
+    // and on one the port is a UART: the TX queue drains one byte per SERIAL_CYCLES_PER_BYTE CPU cycles into the sink,
+    // and the host can push bytes into the RX queue. Everything the guest can see is a function of the cycle counter, so
+    // the port is as deterministic as the rest of the machine; the sink only observes.
+    static constexpr uint32_t SERIAL_CYCLES_PER_BYTE = 1476;   // 115200 baud 8N1 on the 17.002839 MHz CPU clock
+    using SerialSink = std::function<void(uint8_t)>;
+    void setDevUnit(bool on) { devUnit = on; }
+    bool isDevUnit() const { return devUnit; }
+    void setSerialSink(SerialSink sink) { serialSink = std::move(sink); }
+    // Host -> guest: queue a byte for the guest to read at the current cycle. False if the queue is full (the byte is
+    // dropped and the guest's OVERRUN status bit is set). Only does anything on a dev unit.
+    bool serialReceive(uint8_t byte);
+    bool serialRxHasRoom() const { return ((p2RxHead + 1) & 0xFF) != p2RxTail; }   // a host that wants no OVERRUN checks this first
+    // Hand the sink every byte whose time on the wire has come. The guest-visible state is the same whenever this runs
+    // (it settles itself before every register access and hash); calling it just gets the bytes out promptly.
+    void serialSettle() const;
+
     // Statistics
     uint64_t getCycleCount() const { return cycleCount; }
     uint64_t getInstructionCount() const { return instructionCount; }
@@ -681,6 +700,7 @@ private:
     uint8_t dmaConfigBuffer[9] = {};   // the 9-byte DMA config being streamed in at $D80020-$D80028
     uint8_t dmaConfigIndex = 0;        // how many of those bytes have arrived
     bool devModeFlag = false;          // DEV_MODE ($D80048)
+    bool devUnit = false;              // host-only dev-unit latch (readable as $D80048 bit 1); survives reset(), like devModeFlag
     uint8_t p2Direction = 0, p2Control = 0, p2Buttons = 0;   // port 2 controller; set by setPlayer2Input()
     bool cartridgeInserted = false;
 
@@ -697,9 +717,15 @@ private:
 public:
     static constexpr uint32_t BLAKE2S_CYCLES_PER_BLOCK = 64;   // CPU cycles per 64-byte block: the 8-bit ROM bus feeds 1 byte/cycle (~17 MB/s, 8 MB in ~0.5 s)
 private:
-    uint8_t p2TxBuffer[256] = {};      // debug serial queues ($D8003C-$D8003E); TX has no consumer yet
+    // debug serial queues ($D8003C-$D8003E). On a retail unit nothing drains TX; on a dev unit serialSettle() does, so the
+    // tail and the completion time are mutable (settling is a deterministic function of cycleCount, not a state change).
+    uint8_t p2TxBuffer[256] = {};
     uint8_t p2RxBuffer[256] = {};
-    uint8_t p2TxHead = 0, p2TxTail = 0, p2RxHead = 0, p2RxTail = 0;
+    uint8_t p2TxHead = 0, p2RxHead = 0, p2RxTail = 0;
+    mutable uint8_t p2TxTail = 0;
+    mutable uint64_t txDoneAt = 0;     // dev unit: cycleCount at which the byte at the TX tail finishes going out
+    bool rxOverrun = false;            // dev unit: an RX byte was dropped because the queue was full
+    SerialSink serialSink;
 
     ServiceHook serviceHook;   // see setServiceHook()
 

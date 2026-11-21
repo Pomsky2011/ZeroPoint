@@ -4,7 +4,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
 ## Status: emulator + boot ROM done (dev-unit boot ROM); only ZPdevtools work remains
 
-**All new revisions must be backwards compatible with revision 10** (`System::CORE_REVISION`).
+**All new revisions must be backwards compatible with revision 10** (`System::CORE_REVISION`, now 11: the dev unit, off = rev 10).
 ROMs, movies and goldens that run on rev 10 must keep running identically. Don't change emulation
 behavior; if a change truly can't avoid it, ask first.
 
@@ -99,6 +99,10 @@ behavior; if a change truly can't avoid it, ask first.
   `bin/test_determinism <bootrom|none> <rom> <secs>`, `bin/fuzz_determinism <dir> [seed] [n]` (random guests/event schedules,
   also under clang ASan/UBSan and TSan builds; `--golden-check tools/determinism_golden.txt` is the cross-host digest check),
   and `tools/determinism_audit.py`; see `docs/determinism.md` and `docs/determinism-proof.md`.
+- **Dev unit + debug serial UART** (rev 11): host-only latch (`System::setDevUnit`, `zeropoint_sdl --dev-unit`; guest reads it as `$D80048`
+  bit 1, can't write it) makes `$D8003C-$D8003E` a 115200-baud UART (TX to a sink, `--serial-out/-in/-tcp`; RX recorded in movies) and
+  makes signature checks always pass (HLE and the **dev** Boot ROM `ZPbootROM/build/bootrom_dev.bin`; the retail `bootrom.bin` never reads the latch). On a retail unit the port exists but nothing reads it. Retail units are bit-identical to rev 10; rev-10 movies still replay
+  (`MIN_COMPATIBLE_REVISION`). `docs/debug-protocol.md`; tests `bin/test_serial`, `tools/test_serial.sh`, `bin/test_qt_serial`. Qt: same flags + Console menu (Dev Unit, Serial Console).
 - **Cartridge slot + movies**: `System::insertCartridge` (Stop 'n' Swop: replaces it in one instant, no reset/verify),
   `ejectCartridge` (yank: banks `$00-$7F`/`$E2` read `CA FE CA FE...`, not `$FF`), `softReset`, `hardReset` (power cycle,
   state-identical to a fresh System). `.zpm` movies (`include/movie.h`, `bin/zp_movie`, `zeropoint_sdl --record/--play`,
@@ -194,7 +198,9 @@ behavior; if a change truly can't avoid it, ask first.
   the boot ROM's entire security boundary: it runs `rsa_verify`, checks
   `RSA_VALID`, and `hlt`s outright rather than jumping to the cartridge
   entry point on any failure (invalid signature, or an unsigned ROM, since
-  the header/trailer bytes it reads won't coincidentally verify). This is
+  the header/trailer bytes it reads won't coincidentally verify). Only the separate
+  **dev** image (`bootrom_dev.bin`) skips the check, on a dev unit (`$D80048` bit 1, a
+  latch only the host can set); the retail `bootrom.bin` has no such code. This is
   opt-in, not automatic: it only applies when `ZPbootROM` is loaded via
   `System::loadBootROM()`/`--boot` in place of the default stub. ZeroPoint's
   own bundled 35-byte default stub (below) does **not** verify anything —
@@ -211,9 +217,9 @@ behavior; if a change truly can't avoid it, ask first.
 - **$D80020-$D8002F**: DMA Control
 - **$D80030-$D8003F**: Player Ports: P1 controller `$D80030-$D80032` (dir/ctrl/buttons, plugged in by default),
   P2 controller `$D80038-$D8003A` (same layout, unplugged until a frontend/movie plugs it in), debug serial
-  `$D8003C-$D8003E` (RX/TX queues, no consumer yet — `docs/debug-protocol.md` is a design doc)
+  `$D8003C-$D8003E` (debug serial: queues on a retail unit, a UART on a dev unit — `docs/debug-protocol.md`)
 - **$D80040-$D80047**: Display Status
-- **$D80048-$D8004F**: System Control — offset 0: DEV_MODE flag byte; offsets
+- **$D80048-$D8004F**: System Control — offset 0: DEV_MODE flag byte (bit 0, guest-writable) + dev-unit latch (bit 1, read-only); offsets
   1-3: cartridge entry point (low/mid/bank byte, read-only), written by
   `System::loadROM()` and read by the Boot ROM stub. The other registers
   described in early planning docs were never built.
@@ -414,8 +420,7 @@ See `ZPdevtools/docs/dos/README.md` for details
 - System integration (CPU ↔ PPU ↔ APU communication)
 
 ### Planned 🔲
-- Hardware scrolling
-- Window scaling options
+- (Hardware scrolling exists as layers microcode and window scaling is done: both were stale entries.)
 - **JIT for additional architectures**: ARMv8/7/6 (Switch/Vita/3DS), PPC32 (Wii/U), PPC64 (Xbox 360/PS3)
 
 ### Known Issues ⚠️

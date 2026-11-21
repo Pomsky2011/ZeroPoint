@@ -3,6 +3,7 @@
 #include "display.h"
 #include "window.h"
 #include "movie.h"
+#include "serial_host.h"
 #include <chrono>
 #include "frame_pacer.h"
 #include <cmath>
@@ -12,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -67,6 +69,7 @@ int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
     std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify] [--no-idle-skip]\n";
+    std::cout << "       [--dev-unit [--serial-out FILE|-] [--serial-in FILE|-] [--serial-tcp PORT]]\n";
     std::cout << "       [--two-players] [--speed] [--swap-rom rom.zpb]... [--record out.zpm [--author NAME]] [--play in.zpm [--roms PATH]...] [--frames N]\n";
     std::cout << "Keys: arrows/z x c v/a s d f/shift/enter = player 1 (i j k l/7 8 9 0/u o n m = player 2 with --two-players)\n";
     std::cout << "      F1 soft reset, F2 hard reset (power cycle), F3 yank the cartridge, F4 Stop 'n' Swop (next --swap-rom)\n";
@@ -77,6 +80,9 @@ int main(int argc, char** argv) {
     std::string apuBiosPath;
     bool devMode = false;
     bool noVerify = false;
+    bool devUnit = false;                            // --dev-unit: debug serial UART, signature checks always pass (docs/debug-protocol.md)
+    std::vector<std::string> serialOuts, serialIns;
+    long serialTcpPort = -1;
     bool idleSkip = System::idlePollSkipDefault();   // --no-idle-skip turns the poll fast-forward off (docs/idle-poll-skip.md)
     bool twoPlayers = false;
     bool showSpeed = false;
@@ -87,6 +93,14 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--dev") == 0) {
             devMode = true;
+        } else if (std::strcmp(argv[i], "--dev-unit") == 0) {
+            devUnit = true;
+        } else if (std::strcmp(argv[i], "--serial-out") == 0 && i + 1 < argc) {
+            serialOuts.push_back(argv[++i]);
+        } else if (std::strcmp(argv[i], "--serial-in") == 0 && i + 1 < argc) {
+            serialIns.push_back(argv[++i]);
+        } else if (std::strcmp(argv[i], "--serial-tcp") == 0 && i + 1 < argc) {
+            serialTcpPort = std::atol(argv[++i]);
         } else if (std::strcmp(argv[i], "--no-verify") == 0) {
             noVerify = true;   // run unsigned/badly signed ROMs (HLE boot only; a real --boot ROM decides for itself)
         } else if (std::strcmp(argv[i], "--no-idle-skip") == 0) {
@@ -141,6 +155,9 @@ int main(int argc, char** argv) {
         system.setDevMode(true);
     }
     system.setVerifySignatures(!noVerify && System::verifySignaturesDefault());
+    if (devUnit) system.setDevUnit(true);   // before any boot: the Boot ROM reads it. (A movie being played sets its own.)
+    if (!devUnit && (!serialOuts.empty() || !serialIns.empty() || serialTcpPort >= 0))
+        std::cerr << "note: --serial-* only does anything with --dev-unit (or a dev-unit movie)\n";
     // Movies set the machine up themselves (the pinned boot ROM, APU BIOS and cartridge), so a recording replays from
     // exactly the state it started in; dev mode isn't part of that state, so it can't be combined with them.
     const bool movieMode = !playPath.empty() || !recordPath.empty();
@@ -176,6 +193,7 @@ int main(int argc, char** argv) {
         setup.apuBiosPath = apuBiosPath;
         setup.cartridgePath = romPath;
         setup.verifySignatures = !noVerify && System::verifySignaturesDefault();
+        setup.devUnit = devUnit;
         setup.author = author;
         if (!movieSession.beginRecording(system, setup, movieError)) {
             std::cerr << movieError << "\n";
@@ -193,6 +211,38 @@ int main(int argc, char** argv) {
         }
     }
 
+    // The host end of the debug serial port, once we know whether this is a dev unit (a movie being played decides for itself).
+    // Guest bytes go to the sink; host bytes are fed in a few per tick, only while the guest's queue has room, and through the
+    // movie session when recording (it logs them at their exact cycle; a replay is in control and takes none).
+    std::unique_ptr<SerialHost> serialHost;
+    if (system.isDevUnit()) {
+        serialHost.reset(new SerialHost);
+        std::string err;
+        bool ok = true;
+        if (serialOuts.empty() && serialTcpPort < 0) serialOuts.push_back("-");   // a dev unit's console goes to the terminal by default
+        for (const std::string& o : serialOuts) ok = serialHost->addOutput(o, err) && ok;
+        for (const std::string& in : serialIns) ok = serialHost->addInput(in, err) && ok;
+        if (serialTcpPort >= 0) {
+            if (serialTcpPort > 65535) { err = "--serial-tcp wants a port number"; ok = false; }
+            else ok = serialHost->listenTcp((uint16_t)serialTcpPort, err) && ok;
+        }
+        if (!ok) {
+            std::cerr << err << "\n";
+            return 1;
+        }
+        SerialHost* host = serialHost.get();
+        system.setSerialSink([host](uint8_t b) { host->send(b); });
+    }
+    auto serialTick = [&]() {
+        if (!serialHost) return;
+        uint8_t b;
+        for (int n = 0; n < 192 && system.serialRxHasRoom() && serialHost->receive(b); n++) {   // ~one 60 Hz tick of 115200 baud
+            if (movieSession.mode() == MovieSession::Mode::Recording) movieSession.serialIn(b);
+            else if (movieSession.mode() != MovieSession::Mode::Playing) system.serialReceive(b);
+        }
+        serialHost->flush();
+    };
+
     // A Boot ROM payload with no cartridge (e.g. a hardware demo) runs on
     // its own - only load/require a ROM if one was actually given.
     if (romPath.empty() && !movieMode) {
@@ -202,6 +252,7 @@ int main(int argc, char** argv) {
         while (!window.shouldClose()) {
             auto frameStart = std::chrono::steady_clock::now();
             window.pollEvents();
+            serialTick();
             const int due = pacer.framesDue(std::chrono::duration<double>(frameStart.time_since_epoch()).count());
             int done = 0;
             while (done < due) {
@@ -269,6 +320,7 @@ int main(int argc, char** argv) {
         window.getPlayerInput(direction, control, buttons);
         window.getPlayer2Input(direction2, control2, buttons2, twoPlayers);
         const unsigned hotkeys = window.takeHotkeys();
+        serialTick();
 
         if (moviePlaying) {
             // The movie is in control: keys do nothing but ESC.

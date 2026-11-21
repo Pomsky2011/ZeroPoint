@@ -12,6 +12,7 @@ namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class EmulatorWidget;
+class SerialConsole;
 class QAction;
 class QLabel;
 class QMenu;
@@ -27,6 +28,9 @@ public:
     // Load a .zpb and start it, as File > Load ROM does. `announce` = also show the "ROM Loaded" box (the menu does,
     // a ROM handed to us on the command line / by the desktop does not).
     void openROMFile(const QString &filename, bool announce);
+
+    // The command line's --dev-unit / --serial-out / --serial-in / --serial-tcp (same as zeropoint_sdl). Call before loading.
+    void setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort);
 
 private slots:
     void onLoadROM();
@@ -68,6 +72,8 @@ private:
     QAction *actionRecordMovie = nullptr, *actionPlayMovie = nullptr, *actionStopMovie = nullptr;
     QAction *actionSoftReset = nullptr, *actionHardReset = nullptr, *actionYank = nullptr, *actionSwap = nullptr;
     QAction *actionTwoPlayers = nullptr;
+    QAction *actionDevUnit = nullptr, *actionSerialConsole = nullptr;
+    SerialConsole *serialConsole = nullptr;
     QString lastRomPath;   // where Play Movie looks for the ROMs a movie pins, besides the movie's own folder
     void buildMovieMenu();
     void updateMovieActions();
