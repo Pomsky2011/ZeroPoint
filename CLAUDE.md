@@ -42,7 +42,7 @@ behavior; if a change truly can't avoid it, ask first.
   inside a stretch, so an instruction always sees them as they are on its own cycle with nothing to settle first. A cell held on its rows (`tqHeld`) is
   released when the display moves (`revalidateHold`, each call) or on a render-mode change (`releaseHold()`: call it from any new path that changes the window).
   Tests: `bin/test_queue_timing` (exact dispatch/retire cycles, incl. the tie where a blit would finish with an older overlapping one), `bin/fuzz_queue`.
-- **Layers + sprites microcode** (`ZPdevtools/ucode/layers`, `docs/ppu/layers.md`): two scrolling 64x64 BG layers, per-band sprite lists and
+- **Layers + sprites microcode** (`ZPdevtools/ucode/layers`, `docs/ppu/layers.md`): two scrolling 64x64 BG layers, per-band sprite lists (3 priorities: behind BG0 / between / above; `docs/ppu/layers.md`) and
   one standstill window layer above all (textbox/HUD spans; solid ones cull the BG under them) on that queue; `bin/test_layers <layers.bin>` checks whole frames against a reference and that no band goes late, even saturated.
   Demo cart: `ZPdevtools/ucode/layers/demo/build_demo.py` -> `build/demo.zpb`, run with `zeropoint_sdl` (or `dump_splash none <cart> ...` headless).
 

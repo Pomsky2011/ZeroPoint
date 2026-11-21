@@ -55,7 +55,7 @@ static Scene makeScene(std::mt19937& rng) {
 }
 
 // sprites with at most `tileBudget` cells in total, random sizes, positions (partly off-screen), flips and cells
-static void addSprites(Scene& s, std::mt19937& rng, int count, int tileBudget) {
+static void addSprites(Scene& s, std::mt19937& rng, int count, int tileBudget, bool priorities = false) {
     s.sprites.clear(); s.cells.clear();
     int used = 0;
     for (int i = 0; i < count; i++) {
@@ -64,6 +64,7 @@ static void addSprites(Scene& s, std::mt19937& rng, int count, int tileBudget) {
         if (used + sp.w * sp.h > tileBudget) break;
         sp.x = static_cast<short>(int(rng() % 300) - 30); sp.y = static_cast<short>(int(rng() % 290) - 30);
         sp.flags = static_cast<unsigned short>((rng() & 1 ? ZPL_SPR_HFLIP : 0) | (rng() & 1 ? ZPL_SPR_VFLIP : 0));
+        if (priorities) { static const unsigned short prio[3] = {0, ZPL_SPR_PRIO_MID, ZPL_SPR_PRIO_BACK}; sp.flags |= prio[rng() % 3]; }
         sp.cells = static_cast<unsigned short>(ZPL_SPRCELLS + 4 * used);
         for (unsigned c = 0; c < sp.w * sp.h; c++) {
             uint16_t attr = static_cast<uint16_t>((rng() % 4) | 0x1000);
@@ -150,21 +151,25 @@ static void drawWindow(const Scene& s, std::vector<uint16_t>& frame) {
     }
 }
 
-static std::vector<uint16_t> reference(const Scene& s, const int sc[4]) {
-    std::vector<uint16_t> frame(256 * 256, 0);
+static bool g_l0t = false;   // ZPL_CTRL_L0FLAGS = T: BG0 is transparent too (the default is opaque)
+
+static void drawLayer(const Scene& s, std::vector<uint16_t>& frame, int l, const int sc[4]) {
     for (int sy = 0; sy < 256; sy++) for (int sx = 0; sx < 256; sx++) {
-        uint16_t out = 0;
-        for (int l = 0; l < 2; l++) {
-            const int wx = (sx + sc[2 * l]) & 511, wy = (sy + sc[2 * l + 1]) & 511;
-            const int c = (wy >> 3) * 64 + (wx >> 3);
-            bool t;
-            const uint16_t color = static_cast<uint16_t>(tilePixel(s, s.map[l][c][0], s.map[l][c][1], wx & 7, wy & 7, &t));
-            if (l == 1 && t) continue;
-            out = color;
-        }
-        frame[sy * 256 + sx] = out;
+        const int wx = (sx + sc[2 * l]) & 511, wy = (sy + sc[2 * l + 1]) & 511;
+        const int c = (wy >> 3) * 64 + (wx >> 3);
+        uint16_t w1 = s.map[l][c][1];
+        if (l == 0 && g_l0t) w1 |= 0x04;                       // the queue's TRANSPARENT flag, whatever the cell's own T bit says
+        bool t;
+        const uint16_t color = static_cast<uint16_t>(tilePixel(s, s.map[l][c][0], w1, wx & 7, wy & 7, &t));
+        if (!t) frame[sy * 256 + sx] = color;
     }
-    for (const ZPL_Sprite& sp : s.sprites) {     // array order: later on top
+}
+
+// the sprites of one priority (0 above both layers, 1 between them, 2 behind BG0), array order: later on top
+static void drawSprites(const Scene& s, std::vector<uint16_t>& frame, unsigned prio) {
+    for (const ZPL_Sprite& sp : s.sprites) {
+        const unsigned p = (sp.flags & ZPL_SPR_PRIO_MASK) == ZPL_SPR_PRIO_BACK ? 2 : (sp.flags & ZPL_SPR_PRIO_MASK) == ZPL_SPR_PRIO_MID ? 1 : 0;
+        if (p != prio) continue;
         for (int py = 0; py < sp.h * 8; py++) for (int px = 0; px < sp.w * 8; px++) {
             const int sy = sp.y + py, sx = sp.x + px;
             if (sy < 0 || sy >= 256 || sx < 0 || sx >= 256) continue;
@@ -179,6 +184,16 @@ static std::vector<uint16_t> reference(const Scene& s, const int sc[4]) {
             if (!t) frame[sy * 256 + sx] = color;
         }
     }
+}
+
+// z-order, bottom to top: sprites behind BG0, BG0, sprites between, BG1, sprites above, the window layer
+static std::vector<uint16_t> reference(const Scene& s, const int sc[4]) {
+    std::vector<uint16_t> frame(256 * 256, 0);
+    drawSprites(s, frame, 2);
+    drawLayer(s, frame, 0, sc);
+    drawSprites(s, frame, 1);
+    drawLayer(s, frame, 1, sc);
+    drawSprites(s, frame, 0);
     drawWindow(s, frame);
     return frame;
 }
@@ -248,6 +263,7 @@ static void setControl(PPU& ppu, const int sc[4], int sprites) {
     w16(ppu, ZPL_CTRL_NCOLS, 33);
     w16(ppu, ZPL_CTRL_SPREN, static_cast<uint16_t>(sprites));
     w16(ppu, ZPL_CTRL_L1FLAGS, 0);
+    w16(ppu, ZPL_CTRL_L0FLAGS, g_l0t ? ZPL_F_TRANSPARENT : 0);
     w16(ppu, ZPL_CTRL_WINBASE, g_winBase);
     w16(ppu, ZPL_CTRL_LISTBASE, g_nextBase);                       // flip to the block just filled
     g_nextBase = g_nextBase == ZPL_LISTS ? ZPL_LISTS2 : ZPL_LISTS;   // and fill the other one next time
@@ -511,6 +527,76 @@ int main(int argc, char** argv) {
             if (!ok && bi == 0) failures++;
         }
         g_budget = ZPL_BAND_BUDGET;
+    }
+
+    {   // sprite priority: behind BG0, between the layers, above both, against the per-pixel reference. BG0 gets the see-through tiles first, and L0FLAGS = T
+        // (g_l0t) makes them see-through: only then does a sprite behind BG0 show at all (with BG0 opaque it must vanish, which the reference checks too)
+        for (int c = 0; c < 64 * 64; c++) scene.map[0][c][1] = static_cast<uint16_t>((scene.map[0][c][1] & ~3) | (rng() % 4));
+        loadScene(sys, scene);
+        struct PrioCase { const char* name; int sc[4]; bool l0t; int winScene; int sprites; int tiles; };   // sprites/tiles: fewer under a window, which takes its share of the band budget
+        const PrioCase pcases[] = {
+            {"priority: BG0 opaque, fine scroll",              {3, 3, 5, 6},         false, 0, 24, 70},
+            {"priority: BG0 opaque, aligned scroll",           {0, 0, 0, 0},         false, 0, 24, 70},
+            {"priority: BG0 transparent, fine scroll",         {3, 3, 5, 6},         true,  0, 24, 70},
+            {"priority: BG0 transparent, aligned scroll",      {0, 0, 0, 0},         true,  0, 24, 70},
+            {"priority: BG0 transparent, wrapping scroll",     {457, 301, 130, 509}, true,  0, 24, 70},
+            {"priority: BG0 transparent, different phases",    {19, 1, 250, 7},      true,  0, 24, 70},
+            {"priority: under a solid window, fine scroll",    {3, 3, 5, 6},         true,  1, 16, 40},
+            {"priority: under overlay and glass",              {3, 3, 5, 6},         true,  8, 10, 25},
+        };
+        for (const PrioCase& c : pcases) {
+            unsigned dropped = 0, wdropped = 0;
+            g_l0t = c.l0t;
+            for (int tries = 0; tries < 60; tries++) {
+                clearWindow(scene);
+                if (c.winScene) buildWindowScene(scene, rng, c.winScene);
+                wdropped = loadWindow(sys, scene);
+                addSprites(scene, rng, c.sprites, c.tiles, true);
+                dropped = loadSprites(sys, scene);
+                if (dropped == 0 && wdropped == 0) break;
+            }
+            setControl(ppu, c.sc, 1);
+            for (int f = 0; f < 2; f++) sys.runCycles(System::CYCLES_PER_FRAME);
+            w16(ppu, 0x0364, 0);
+            int status = 0;
+            const int bad = runCase(sys, scene, c.sc, 3, verbose, &status);
+            const bool ok = bad == 0 && (status & 3) == 0 && dropped == 0 && wdropped == 0;
+            std::printf("  %s: %s (%d sprites, %u pieces dropped; %d wrong pixels; late/overflow bits %d)\n", ok ? "ok  " : "FAIL", c.name,
+                        static_cast<int>(scene.sprites.size()), dropped, bad, status & 3);
+            if (!ok) failures++;
+            w16(ppu, 0x0364, 0);
+        }
+        // saturated bands with the pieces spread over the three priorities: the extra passes must not make a band late
+        std::printf("== saturation with the pieces spread over the three priorities, BG0 transparent, fine scroll on both layers\n");
+        g_l0t = true;
+        clearWindow(scene); loadWindow(sys, scene);
+        static const int scrolls[][4] = {{3, 3, 5, 6}, {0, 0, 0, 0}, {1, 7, 2, 4}, {7, 1, 6, 2}, {5, 5, 0, 3}};
+        const int variants[][3] = {{2, 4, 0}, {4, 2, 0}, {8, 1, 5}, {4, 4, 0}, {6, 4, 3}, {16, 4, 3}, {16, 1, 7}};
+        int lateRuns = 0;
+        for (const auto& sc : scrolls) for (const auto& v : variants) {
+            scene.sprites.clear(); scene.cells.clear();
+            for (int c = 0; c < 4; c++) { scene.cells.push_back(static_cast<uint16_t>(c + 1)); scene.cells.push_back(static_cast<uint16_t>((c % 4) | 0x1000)); }
+            for (int band = 0; band < 32; band++) for (int k = 0; k < v[0]; k++) {
+                static const unsigned short prio[3] = {0, ZPL_SPR_PRIO_MID, ZPL_SPR_PRIO_BACK};
+                ZPL_Sprite sp;
+                sp.w = static_cast<unsigned short>(v[1]); sp.h = 1;
+                sp.x = static_cast<short>((k * (256 / v[0] - 4)) % 224); sp.y = static_cast<short>(8 * band + v[2]);
+                sp.flags = prio[k % 3]; sp.cells = ZPL_SPRCELLS;
+                scene.sprites.push_back(sp);
+            }
+            const unsigned dropped = loadSprites(sys, scene);
+            setControl(ppu, sc, 1);
+            for (int f = 0; f < 4; f++) sys.runCycles(System::CYCLES_PER_FRAME);
+            w16(ppu, 0x0364, 0);
+            for (int f = 0; f < 4; f++) sys.runCycles(System::CYCLES_PER_FRAME);
+            const int status = ppu.readMemory(0x0364);
+            if (status & 3) std::printf("  LATE: %2d sprites of %d tiles per band at +%d, scroll %d,%d,%d,%d: %u pieces dropped; bits %d\n", v[0], v[1], v[2], sc[0], sc[1], sc[2], sc[3], dropped, status & 3);
+            lateRuns += status & 3 ? 1 : 0;
+            w16(ppu, 0x0364, 0);
+        }
+        std::printf("  %s: saturated bands with mixed priorities never go late\n", lateRuns == 0 ? "ok  " : "FAIL");
+        if (lateRuns) failures++;
+        g_l0t = false;
     }
 
     if (std::getenv("LAYERS_SWEEP")) {
