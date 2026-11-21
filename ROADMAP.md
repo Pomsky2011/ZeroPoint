@@ -22,7 +22,8 @@ July and had gone stale; the history is in `git log`. Day-to-day open items are 
 
 ## What a release needs
 
-None of this exists yet.
+1.0.0-rc1 is the first run of this: `build.yml`'s `release` job builds a GitHub release from a pushed `v*` tag (notes in `docs/release-notes/`), the
+Boot ROM and APU BIOS go out as binary-only zips, and everything below is what is still open.
 
 1. **A release process.** No tags, GitHub releases, version number (only `CORE_REVISION`) or changelog exist. Decide the version
    scheme and what a release ships: emulator binaries per platform, the retail `bootrom.bin`, and the ZPdevtools bundle.
