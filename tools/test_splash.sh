@@ -25,6 +25,10 @@ while read -r frame want; do
     [ -z "$frame" ] && continue
     got=$(sha256sum "$TMP/f_$frame.rgba" | awk '{print $1}')
     if [ "$got" = "$want" ]; then echo "  ok  : splash frame $frame"; else echo "  FAIL: splash frame $frame ($got)"; fail=1; fi
+    # A hash only says "same as the recording", and a recording can be wrong (the first rev-13 one had a 32 px strip never drawn, which the lead
+    # scanline count had stopped covering). Every pixel the splash draws is opaque (drawn black is 000000ff), so alpha 0 = never drawn.
+    undrawn=$(python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); print(sum(1 for i in range(3,len(d),4) if d[i]==0))' "$TMP/f_$frame.rgba")
+    if [ "$undrawn" = 0 ]; then echo "  ok  : splash frame $frame has no undrawn pixels"; else echo "  FAIL: splash frame $frame has $undrawn undrawn pixels (alpha 0): the draw-ahead LEAD is off for this timing"; fail=1; fi
 done < <(grep -v '^#' "$HERE/splash_golden.txt")
 [ $fail -eq 0 ] && echo "all ok"
 exit $fail

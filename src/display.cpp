@@ -6,7 +6,7 @@ namespace ZeroPoint {
 Display::Display()
     : renderMode(RenderMode::RGBA16)
     , currentScanline(0)
-    , currentPixel(0)
+    , lineCycle(0)
     , windowStart(0)
 {
     // Initialize rolling buffer and latched output frame to black
@@ -18,17 +18,17 @@ Display::~Display() {
 }
 
 void Display::tick() {
-    // Advance pixel position (hot path optimization)
-    currentPixel++;
+    // Advance the position within the line (hot path optimization)
+    lineCycle++;
 
-    if (currentPixel >= TOTAL_PIXELS_PER_LINE) [[unlikely]] {
+    if (lineCycle >= LINE_CYCLES) [[unlikely]] {
         // End of scanline (H-Blank). Latch the scanline we just displayed into
         // the full-frame output before the rolling window slides past it.
         if (latchEnabled && currentScanline >= 1 && currentScanline <= VISIBLE_SCANLINES) [[likely]] {
             latchScanline(currentScanline - 1);
         }
 
-        currentPixel = 0;
+        lineCycle = 0;
         currentScanline++;
 
         if (currentScanline == VISIBLE_SCANLINES + 1) [[unlikely]] {
@@ -404,7 +404,7 @@ uint64_t Display::hashImpl(bool withOutputFrame) const {
     int mode = static_cast<int>(renderMode);
     mix(&mode, sizeof mode);
     mix(&currentScanline, sizeof currentScanline);
-    mix(&currentPixel, sizeof currentPixel);
+    mix(&lineCycle, sizeof lineCycle);
     mix(&windowStart, sizeof windowStart);
     mix(&frameRowOffset, sizeof frameRowOffset);
     mix(&rollingModeBlock, sizeof rollingModeBlock);

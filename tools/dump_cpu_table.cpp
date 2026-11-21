@@ -12,7 +12,7 @@
 //   dsp     distinct SP deltas (stack bytes pushed -, pulled +)      mem  r = read data, w = wrote memory
 //   flow    PC didn't land on the next instruction (jump/branch/call/return/vector)
 //   end     run state afterwards (R running, H halted, W waiting)
-// ZPdevtools' scripts/gen_cpu_docs.py joins this with spec/DEF88186.csv. The emulator is frozen at CORE_REVISION 10,
+// ZPdevtools' scripts/gen_cpu_docs.py joins this with spec/DEF88186.csv. The CPU is unchanged since CORE_REVISION 10,
 // so the output only changes if the CPU does.
 
 #include "cpu.h"

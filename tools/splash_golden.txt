@@ -1,5 +1,7 @@
-# test_splash.sh: sha256 of the boot ROM splash's latched frames (raw RGBA, 256x256), recorded from the emulator
-# before the tile attribute / row clip / blit ordering work, whose output was correct. frame sha256
-100 f2f35b324aee1ad79db56094a3d3231a3848db7c63282955c3c719d57684ea64
-300 10fc69535d4e3878d07af187208147f50f9652cdc639dfa82e41ee73b5008862
-600 d790061264e05d928efda65290c684adcc6a4821a186c383fbcad38936c23547
+# test_splash.sh: sha256 of the boot ROM splash's latched frames (raw RGBA, 256x256), recorded from the emulator with the rev-13 raster (a frame is 1/60 s),
+# the retimed splash (SLIDE_DIV 1, FADE_DIV 8) and LEAD 7 (docs: gen_mosaic.py). Each frame was checked for undrawn (alpha 0) pixels and looked at: 20 = plaque entering,
+# 45 = rows crossing mid slide-in, 100 = settled, strobe rising, 150 = strobe near white. frame sha256
+20 a3db9b0d297a889ae317de5fc0e36fd3d0c6552ba7681aa9d2960e58555a91bc
+45 33d2e2f036bb8bbac61ce4028a73c6052b80cec8a604b342a0ff25b1798bad44
+100 3b2ff03a655af4f97cb3a76eabc6616eb79102f4100b65307e220cfaa1426457
+150 7bd55db6a1da1e44109b0c82160d11b3fbe42193819c3e7156e6282af291b0ea

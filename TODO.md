@@ -10,6 +10,16 @@ of finished work, which had gone stale; it was cut down to what is actually open
   unit work. Fix the HLE or the test, but not the emulation (frozen).
 - **ARM64 JIT under QEMU** crashes (instruction cache flush); fine on real ARM64 hardware. Use the interpreter under QEMU.
 
+## Revision 13 (stretched raster) follow-ups
+
+- **CI has not seen it.** The determinism goldens (`tools/determinism_golden.txt`) were regenerated on one Linux x86-64 host; the other five CI
+  platforms have to confirm they match. Same for the splash goldens (`tools/splash_golden.txt`).
+- **`test_hle_cop.sh` and `test_cart_slot.sh` were not run** after the raster change: they need `../ZPgameTemplate/build/game.elf`, which is not
+  checked out here. Their cycle costs are CPU-side, so they should be unaffected, but that is unverified.
+- **`TIMER_HBLANK_PERIOD` is still master/4096** (~3.8 scanlines), not one scanline (`LINE_CYCLES`). It was never one; left alone so the timer set
+  did not change twice. Make it `LINE_CYCLES` if a program ever wants a per-scanline tick (it would not be phase-locked to the raster either).
+- **The frontends (Qt, SDL) were not run interactively** on the 1/60 s frame; `test_frame_pacer`, `test_latch_skip` and the Qt offscreen tests pass.
+
 ## Dev unit and exceptions (built; loose ends)
 
 - **The native boot has no exception entries.** A cartridge that sends an exception to `$E0:0048-$5B` prints one stderr line and halts

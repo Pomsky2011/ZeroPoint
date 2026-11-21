@@ -11,14 +11,15 @@
   - Scanlines 257-260: VBlank (4 scanlines)
 
 ### Horizontal Timing
-- **Total pixels per scanline**: 340
+- **Cycles per scanline**: 4343 (core revision 13; one pixel per cycle, 340 cycles, before)
+- **Total pixel positions per scanline**: 340 (what the Display Status registers report: `floor(cycleInLine x 340 / 4343)`)
 - **Visible pixels**: 256
-- **HBlank pixels**: 84 (pixels 256-339)
+- **HBlank pixels**: 84 (pixels 256-339), i.e. cycles 3271-4342 of the line
 
 ## Display Resolution
 
 - **Active display**: 256x256 pixels
-- **Total frame**: 340x261 pixels
+- **Total frame**: 340x261 pixel positions, 4343x261 = 1,133,523 master cycles = 1/60 s
 
 ## Color Formats
 

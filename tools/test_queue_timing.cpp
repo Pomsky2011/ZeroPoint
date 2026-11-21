@@ -63,7 +63,7 @@ static void launch(PPU& ppu, uint16_t src, int count, int x, int y, uint16_t fla
 }
 
 static void runTo(System& sys, int scanline) {
-    for (int g = 0; sys.getDisplay().getCurrentScanline() != scanline && g < 3 * 88740; g++) sys.step();
+    for (int g = 0; sys.getDisplay().getCurrentScanline() != scanline && g < 3 * static_cast<int>(System::CYCLES_PER_FRAME); g++) sys.step();
 }
 
 static uint16_t px(System& sys, int x, int y) { return Display::color32To16(sys.getDisplay().getPixel(x, y)); }

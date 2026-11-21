@@ -324,7 +324,7 @@ private:
     // to fit all 32 of a band's columns into the 4 scanlines the vblank tail
     // gives it. With only 4 channels, the 5th-8th dispatch in that call had to
     // wait for a channel (a ~264-cycle stall each when this was a synchronous
-    // draw, not a cheap dispatch) and blew the 340-cycle H-blank budget, corrupting the ISR
+    // draw, not a cheap dispatch) and blew the 340-cycle H-blank budget (the line was 340 cycles before core revision 13), corrupting the ISR
     // via re-entry. 8 channels means all 8 dispatches stay on the cheap
     // async path - strictly more headroom than 4 gave the existing 4-per-
     // H-blank general schedule too (bands 1-31), never less.

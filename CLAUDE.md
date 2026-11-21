@@ -4,9 +4,9 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
 ## Status: emulator + Boot ROM done (retail and dev images); only ZPdevtools work and release engineering remain
 
-**All new revisions must be backwards compatible with revision 10** (`System::CORE_REVISION`, now 12: dev unit + its faults, off = rev 10).
-ROMs, movies and goldens that run on rev 10 must keep running identically. Don't change emulation
-behavior; if a change truly can't avoid it, ask first.
+**All new revisions must be backwards compatible with revision 13** (`System::CORE_REVISION`, now 13: the stretched raster). Rev 13 deliberately broke
+everything before it (a line is 4343 cycles, was 340: `docs/display.md`); ROMs, movies and goldens that run on rev 13 must keep running identically.
+Don't change emulation behavior; if a change truly can't avoid it, ask first. Run `tools/run_tests.sh` (all suites, ~7 min).
 
 **Minimum requirements** (host running the emulator): 2 cores, PassMark single-thread rating of 1500.
 
@@ -14,6 +14,8 @@ behavior; if a change truly can't avoid it, ask first.
 
 ### Display
 - **256×256** pixels, RGBA16 (5-5-5-1) / RGBA32 (8-8-8-8)
+- **Raster** (rev 13): 261 lines × **4343 cycles** = 1,133,523 = exactly 1/60 s (= `TIMER_VBLANK_PERIOD`), a pixel is ~12.8 cycles
+  (pixel = `floor(cycle*340/4343)`), H-blank starts at cycle 3271. Before rev 13 a line was 340 cycles and a frame 1.3 ms.
 - **Rolling Buffer**: 8 banks × 1 KiB, rotates each H-Blank. `windowStart` and
   the local scanline Y (0-255) live in an ever-growing absolute row space
   (`frameRowOffset`, bumped once per frame at the vblank-tail transition,
@@ -47,9 +49,9 @@ behavior; if a change truly can't avoid it, ask first.
   Demo cart: `ZPdevtools/ucode/layers/demo/build_demo.py` -> `build/demo.zpb`, run with `zeropoint_sdl` (or `dump_splash none <cart> ...` headless).
 
 - **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in
-  from the right and even from the left (slide-out at handoff). A display frame is ~1.3 ms of console time (~766/s), not
-  1/60 s. Interrupts nest at any instruction boundary and share `DP`, so each splash handler saves/restores it; the
-  hblank handler must stay under 340 cycles. Check with `bin/dump_splash` + `tools/splash_frames.py`.
+  from the right and even from the left (slide-out at handoff). A display frame is 1/60 s (rev 13; the animation divisors
+  `SLIDE_DIV`/`FADE_DIV` in `ZPbootROM/ppu/code/gen_mosaic.py` count frames). Interrupts nest at any instruction boundary and share `DP`, so each
+  splash handler saves/restores it; the hblank handler must finish within a scanline (4343 cycles). Check with `bin/dump_splash` + `tools/test_splash.sh`.
   `zeropoint_sdl --speed` prints console speed (% of real time) each second; use `perf stat` instruction counts to A/B, wall time is noisy.
 
 ### APU (Audio Processing Unit)
@@ -101,8 +103,8 @@ behavior; if a change truly can't avoid it, ask first.
   and `tools/determinism_audit.py`; see `docs/determinism.md` and `docs/determinism-proof.md`.
 - **Dev unit + debug serial UART** (rev 11): host-only latch (`System::setDevUnit`, `zeropoint_sdl --dev-unit`; guest reads it as `$D80048`
   bit 1, can't write it) makes `$D8003C-$D8003E` a 115200-baud UART (TX to a sink, `--serial-out/-in/-tcp`; RX recorded in movies) and
-  makes signature checks always pass (HLE and the **dev** Boot ROM `ZPbootROM/build/bootrom_dev.bin`; the retail `bootrom.bin` never reads the latch). On a retail unit the port exists but nothing reads it. Retail units are bit-identical to rev 10; rev-10 movies still replay
-  (`MIN_COMPATIBLE_REVISION`). `docs/debug-protocol.md`; tests `bin/test_serial`, `tools/test_serial.sh`, `bin/test_qt_serial`. Qt: same flags + Console menu (Dev Unit, Serial Console).
+  makes signature checks always pass (HLE and the **dev** Boot ROM `ZPbootROM/build/bootrom_dev.bin`; the retail `bootrom.bin` never reads the latch). On a retail unit the port exists but nothing reads it. On a retail unit it is silent; only rev 13 movies replay
+  (`MIN_COMPATIBLE_REVISION == CORE_REVISION`). `docs/debug-protocol.md`; tests `bin/test_serial`, `tools/test_serial.sh`, `bin/test_qt_serial`. Qt: same flags + Console menu (Dev Unit, Serial Console).
 - **Boot ROM exception entries** (rev 12): both Boot ROMs have a fixed table at `$E0:0044` (ABORT/NMI/IRQ/BRK/COP, reached by a cartridge's own
   vector stubs: the CPU still reads every vector from the cartridge). Retail locks; the dev image asks the host for a handler image over the UART
   (`--exception-handler FILE`). A dev unit with the dev Boot ROM also raises ABORT for ROM writes / unmapped accesses (latch `$D8004C`). `docs/exceptions.md`;
@@ -233,7 +235,7 @@ behavior; if a change truly can't avoid it, ask first.
 ### Timer System ($D80050-$D80052)
 8 independent hardware timers with IRQ support (bit pattern: `0bVHSQETAR`):
 - **V (0x80)**: V-blank timer (~16.67ms, 60Hz)
-- **H (0x40)**: H-blank timer (one scanline, ~244μs)
+- **H (0x40)**: H-blank timer (~244μs, master/4096: not one scanline, which is 63.9μs)
 - **S (0x20)**: 1 second timer
 - **Q (0x10)**: 1/4 second timer (250ms)
 - **E (0x08)**: 1/8 second timer (125ms)

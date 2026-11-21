@@ -12,8 +12,8 @@
 //   4. after it every channel is silent and the BIOS is back to waiting for a program,
 //   5. a cartridge APU program ($0A header) is then accepted and runs.
 //
-// Time is console time: one System frame is a 262x340 raster at the 68.011355 MHz
-// master clock (~1.3 ms), NOT 1/60 s, so everything below converts through the
+// Time is console time: one System frame is a 261x4343 raster at the 68.011355 MHz
+// master clock (1/60 s since core revision 13; ~1.3 ms before), so everything below converts through the
 // master clock.
 #include "system.h"
 #include <algorithm>

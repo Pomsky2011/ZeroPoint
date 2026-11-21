@@ -12,9 +12,20 @@ constexpr int TOTAL_SCANLINES = 261;
 constexpr int VISIBLE_SCANLINES = 256;
 constexpr int VBLANK_SCANLINES = 5;
 
+// Pixel positions along a line (what the guest reads from the Display Status registers): 256 visible, 84 of H-blank.
 constexpr int TOTAL_PIXELS_PER_LINE = 340;
 constexpr int VISIBLE_PIXELS_PER_LINE = 256;
 constexpr int HBLANK_PIXELS = 84;
+
+// Core revision 13: the raster is paced like a real one. A line is LINE_CYCLES master cycles (68.011355 MHz / 15.66 kHz), not one
+// cycle per pixel, so a frame is exactly 1/60 s (see System::TIMER_VBLANK_PERIOD) and the PPU has ~12.8x the cycles per line and
+// per frame it had at one pixel per cycle (revision 12 and before: 340 cycles a line, ~1.3 ms a frame). The beam is at pixel
+// floor(cycleInLine * 340 / LINE_CYCLES); H-blank starts on the first cycle whose pixel is 256.
+constexpr int LINE_CYCLES = 4343;
+constexpr int HBLANK_START_CYCLE = 3271;
+static_assert((HBLANK_START_CYCLE * TOTAL_PIXELS_PER_LINE) / LINE_CYCLES == VISIBLE_PIXELS_PER_LINE &&
+              ((HBLANK_START_CYCLE - 1) * TOTAL_PIXELS_PER_LINE) / LINE_CYCLES == VISIBLE_PIXELS_PER_LINE - 1,
+              "HBLANK_START_CYCLE must be the first cycle of pixel VISIBLE_PIXELS_PER_LINE");
 
 // Framebuffer dimensions (rolling bank-based buffer)
 constexpr int FB_WIDTH = 256;
@@ -50,17 +61,17 @@ public:
     Display();
     ~Display();
 
-    // Clock the display by one pixel
+    // Clock the display by one master cycle
     void tick();
 
     // Bulk advance for a batching scheduler. quietTicks() is how many of the next tick()s are guaranteed to do
-    // nothing but currentPixel++ (no H-blank edge at pixel VISIBLE_PIXELS_PER_LINE, no end of line); advanceQuiet(n)
+    // nothing but lineCycle++ (no H-blank edge at HBLANK_START_CYCLE, no end of line); advanceQuiet(n)
     // applies n <= quietTicks() of them at once. The tick after those is the one that must be run for real.
     int quietTicks() const {
-        const int next = currentPixel < VISIBLE_PIXELS_PER_LINE ? VISIBLE_PIXELS_PER_LINE : TOTAL_PIXELS_PER_LINE;
-        return next - currentPixel - 1;
+        const int next = lineCycle < HBLANK_START_CYCLE ? HBLANK_START_CYCLE : LINE_CYCLES;
+        return next - lineCycle - 1;
     }
-    void advanceQuiet(int n) { currentPixel += n; }
+    void advanceQuiet(int n) { lineCycle += n; }
 
     // Latching copies each finished scanline into the frame a frontend reads (getScanline*()); nothing in the
     // machine reads it back. A frontend that steps several rasters per displayed frame can switch it off for all
@@ -98,13 +109,15 @@ public:
         return previous < windowStart;
     }
 
-    // Get current pixel position in scanline (0-339)
-    int getCurrentPixel() const { return currentPixel; }
+    // Get current pixel position in scanline (0-339): where the beam is, derived from the cycle within the line
+    int getCurrentPixel() const { return (lineCycle * TOTAL_PIXELS_PER_LINE) / LINE_CYCLES; }
+    // Master cycles into the current line (0 .. LINE_CYCLES - 1)
+    int getLineCycle() const { return lineCycle; }
 
     // Check if we're in visible area (inlined for performance)
     inline bool isVisibleArea() const {
         return (currentScanline >= 1 && currentScanline <= 256) &&
-               (currentPixel < VISIBLE_PIXELS_PER_LINE);
+               (lineCycle < HBLANK_START_CYCLE);
     }
 
     // Check if we're in VBlank (inlined for performance)
@@ -114,7 +127,7 @@ public:
 
     // Check if we're in HBlank (inlined for performance)
     inline bool isHBlank() const {
-        return currentPixel >= VISIBLE_PIXELS_PER_LINE;
+        return lineCycle >= HBLANK_START_CYCLE;
     }
 
     // Get/set render mode
@@ -234,7 +247,7 @@ private:
 
     // Current position
     int currentScanline;
-    int currentPixel;
+    int lineCycle;
 
     // fbY of the oldest scanline currently in the rolling window. The window
     // covers [windowStart, windowStart + windowScanlines) and tracks the beam.

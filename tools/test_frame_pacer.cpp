@@ -19,8 +19,8 @@ int main() {
         for (int i = 0; i <= 600; i++) { int n = p.framesDue(100.0 + i / 60.0); p.stepped(n); frames += n; }
         const double console = frames * FramePacer::FRAME_SECONDS;
         std::printf("  (%ld frames = %.4f s of console time for 10 s of wall time, %.1f frames/tick)\n", frames, console, frames / 601.0);
-        check(console > 9.99 && console <= 10.0 + 1e-9, "console time tracks wall time (10 s -> within one frame)");
-        check(frames / 601.0 > 12 && frames / 601.0 < 14, "about 13 System frames per 60 Hz tick");
+        check(console > 10.0 - FramePacer::FRAME_SECONDS - 1e-9 && console <= 10.0 + 1e-9, "console time tracks wall time (10 s -> within one frame)");
+        check(frames / 601.0 > 0.95 && frames / 601.0 < 1.05, "about one System frame per 60 Hz tick (a frame is 1/60 s since core revision 13)");
     }
     // A 2 s stall (window drag, slow host): at most MAX_LAG of it is replayed, in capped batches.
     {
@@ -28,7 +28,8 @@ int main() {
         p.framesDue(0.0);
         int n = p.framesDue(2.0);
         p.stepped(n);
-        check(n == FramePacer::MAX_FRAMES_PER_TICK, "a long stall is stepped in a capped batch");
+        check(n == static_cast<int>(FramePacer::MAX_LAG / FramePacer::FRAME_SECONDS) && n <= FramePacer::MAX_FRAMES_PER_TICK,
+              "a long stall is stepped in a capped batch (MAX_LAG's worth of frames)");
         double total = n * FramePacer::FRAME_SECONDS;
         double t = 2.0;
         for (int i = 0; i < 60; i++) { t += 1.0 / 60; int k = p.framesDue(t); p.stepped(k); total += k * FramePacer::FRAME_SECONDS; }
@@ -38,7 +39,7 @@ int main() {
         for (int i = 0; i < 60; i++) { t += 1.0 / 60; int k = p.framesDue(t); p.stepped(k); after += k * FramePacer::FRAME_SECONDS; }
         check(after > 0.98 && after < 1.02, "back to one console second per wall second after the stall");
     }
-    // A host too slow to keep up (it steps only 4 of the frames due each tick): the debt stays bounded by MAX_LAG,
+    // A host too slow to keep up (it steps one frame every other tick, half speed): the debt stays bounded by MAX_LAG,
     // and the console still advances at the host's own speed instead of the pacer demanding more.
     {
         FramePacer p;
@@ -47,12 +48,12 @@ int main() {
         for (int i = 0; i <= 600; i++) {
             int n = p.framesDue(i / 60.0);
             worst = n > worst ? n : worst;
-            int k = n < 4 ? n : 4;
+            int k = (i % 2 == 0 && n > 0) ? 1 : 0;
             p.stepped(k);
             done += k;
         }
         check(worst <= (int)(FramePacer::MAX_LAG / FramePacer::FRAME_SECONDS) + 2, "a slow host's backlog never exceeds MAX_LAG");
-        check(done == 4L * 601 || done > 4L * 590, "and it still advances at the host's own pace");
+        check(done >= 295 && done <= 301, "and it still advances at the host's own pace (a frame every other tick)");
     }
     // A clock that doesn't move (or goes backwards) steps nothing.
     {
@@ -102,7 +103,8 @@ int main() {
         // a host that stalls for a second is not chased in full, lead or not
         double t = 100.0 + 10.0 + 1.0;
         int n = p.framesDue(t);
-        check(n == FramePacer::MAX_FRAMES_PER_TICK, "a long stall is still stepped in a capped batch with a lead");
+        check(n == static_cast<int>((FramePacer::MAX_LAG + lead) / FramePacer::FRAME_SECONDS) && n <= FramePacer::MAX_FRAMES_PER_TICK,
+              "a long stall is still stepped in a capped batch with a lead");
         p.stepped(n);
         for (int i = 0; i < 60; i++) { t += 1.0 / 60; p.stepped(p.framesDue(t)); }   // the capped catch-up drains
         double after = 0;

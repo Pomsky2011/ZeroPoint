@@ -180,8 +180,8 @@ cycles for a blended one (`src/ppu.cpp` `CYC_*` constants). 8 channels gives
 enough headroom for the ZPbootROM splash screen's per-H-blank dispatch
 pattern (up to 8 `TILEDRAW`s per H-blank call) to stay entirely on the cheap
 async path — with fewer channels, the excess dispatches would hit the
-264-cycle-plus synchronous fallback and could blow the 340-cycle H-blank
-budget.
+264-cycle-plus synchronous fallback and could blow the H-blank budget (340
+cycles a line, before core revision 13; see "Timing").
 
 **Clipping**: the draw position's x (`$0200-$0201`) is signed 16-bit, so a tile can start off the left edge
 (`0xFFFC` = -4 draws columns 4-7 at x = 0-3); pixels off either side of the 256-pixel scanline are dropped, and a
@@ -374,24 +374,20 @@ MOV R6          ; R6 = value at (DP)
 
 ## Timing
 
-68.011355 MHz is the *nominal* clock the CPU/DMA/APU clocks and timer periods
-are derived from (master/4, master/2, master/16), not a literal free-running
-wall-clock rate: the Display and PPU are ticked together, cycle-for-cycle, by
-`System::tickComponents()`, and `System::stepFrame()` runs exactly
-`CYCLES_PER_FRAME` master cycles per call before the frontend sleeps to a
-~60 Hz real-time target (`src/main.cpp`) — so in real time the PPU executes
-roughly `CYCLES_PER_FRAME` cycles per 1/60 s, not 68 million cycles every
-real second.
+68.011355 MHz is the master clock the CPU/DMA/APU clocks and timer periods are derived from (master/4, master/2, master/16), and
+the Display and PPU are ticked with it cycle for cycle, by `System::tickComponents()`. `System::stepFrame()` runs exactly
+`CYCLES_PER_FRAME` master cycles per call, and since core revision 13 that is exactly 1/60 s of console time: a frontend steps one
+frame per 60 Hz tick. (Revisions 12 and before drew one pixel per cycle, so a frame was 88,740 cycles, ~1.3 ms, and a frontend
+stepped ~13 per tick and showed one of them.)
 
-Within that budget, cycles per scanline/frame are exact and raster-derived,
-not a clock/60 Hz approximation:
+Cycles per scanline and per frame are exact and raster-derived (`include/display.h`):
 
-- **Cycles per scanline**: 340 (`TOTAL_PIXELS_PER_LINE`, `include/display.h`) — a hard ceiling on how much work (including `TILEDRAW` dispatches, see "Concurrent TILEDRAW Blitter" above) fits between two H-Blank edges
-- **Cycles per frame**: 88,740 (340 × 261 `TOTAL_SCANLINES` = `System::CYCLES_PER_FRAME`)
+- **Cycles per scanline**: 4343 (`LINE_CYCLES`) — a hard ceiling on how much work (including `TILEDRAW` dispatches, see "Concurrent TILEDRAW Blitter" above) fits between two H-Blank edges. The beam is at pixel `floor(cycleInLine x 340 / 4343)`, so a pixel lasts ~12.8 cycles (a pixel clock of ~5.33 MHz, close to NTSC's); H-blank starts at cycle 3271 (pixel 256) and lasts 1072 cycles
+- **Cycles per frame**: 1,133,523 (4343 × 261 `TOTAL_SCANLINES` = `System::CYCLES_PER_FRAME` = `TIMER_VBLANK_PERIOD`)
 - **Peak issue rate if never stalled**: ~68 million instructions/second (fewer in practice — branches/MUL/DIV/palette loads/`CLRTILE`/`CLRPALETTE` all cost more than 1 cycle, and `TILEDRAW` stalls while all eight blit channels are busy — see the `CYC_*` constants in `src/ppu.cpp`)
 
-An H-Blank ISR's real deadline is the full 340-cycle scanline (the interrupt
-is edge-triggered once per scanline, not tied to the 84-pixel physical
+An H-Blank ISR's real deadline is the full 4343-cycle scanline (the interrupt
+is edge-triggered once per scanline, not tied to the 1072-cycle physical
 blanking window alone) — see `ZPdevtools/docs/ppu/ucode.txt` section 8.3 for
 why this specifically motivated the concurrent TILEDRAW blitter's 8-channel
 design.

@@ -67,7 +67,7 @@ static void launch(PPU& ppu, uint16_t src, int count, int x, int y, uint16_t fla
 }
 
 static void runTo(System& sys, int scanline) {
-    for (int g = 0; sys.getDisplay().getCurrentScanline() != scanline && g < 3 * 88740; g++) sys.step();
+    for (int g = 0; sys.getDisplay().getCurrentScanline() != scanline && g < 3 * static_cast<int>(System::CYCLES_PER_FRAME); g++) sys.step();
 }
 
 // the colour a tile pixel (id, bank) lands as, for a destination pixel (tx, ty) of the tile, with the attributes of the cell; -1 = transparent
@@ -187,7 +187,7 @@ int main() {
 
     // ---- a tile above row 0 ---------------------------------------------------------------------------------------------------
     std::printf("== signed y: a tile starting above row 0, clipped\n");
-    for (int i = 0; i < 3 * 88740; i++) sys.step();   // let the overflow test's queue drain
+    for (int i = 0; i < 3 * static_cast<int>(System::CYCLES_PER_FRAME); i++) sys.step();   // let the overflow test's queue drain
     w16(ppu, 0x0364, 0);   // the overflow test's 100-cell row at one y was itself too much to land in time: its late bit is not this test's
     runTo(sys, 258);
     launch(ppu, MAP, 2, 24, -3, F_MODE2 | F_CLIP, 0, 5);
@@ -247,7 +247,7 @@ int main() {
 
     // ---- open bus ------------------------------------------------------------------------------------------------------------
     std::printf("== write-ahead mode\n");
-    for (int i = 0; i < 3 * 88740; i++) sys.step();
+    for (int i = 0; i < 3 * static_cast<int>(System::CYCLES_PER_FRAME); i++) sys.step();
     ppu.writeMemory(0xC000, 0x12); ppu.writeMemory(0x8000, 0x34);
     check(ppu.readMemory(0xC000) == 0x12, "off: $C000 is ordinary RAM");
     ppu.writeMemory(0x0362, 1);

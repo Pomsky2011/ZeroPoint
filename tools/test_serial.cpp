@@ -1,12 +1,12 @@
 // test_serial: the debug serial port ($D8003C-$D8003E) and the dev unit that turns it into a UART (docs/debug-protocol.md).
 //
-//   * retail unit: the port is exactly what it was at revision 10 (TX queue fills and is never drained; nothing reaches a sink;
+//   * retail unit: the port is exactly what it was before the dev unit existed (TX queue fills and is never drained; nothing reaches a sink;
 //     host input is ignored) and the dev-unit latch reads 0
 //   * the latch is host-only: no guest write to $D80048 sets or clears it
 //   * dev unit: a byte goes out SERIAL_CYCLES_PER_BYTE cycles after it starts, queued bytes follow back to back, the sink
 //     sees them in order, and *when the host looks* (every cycle, or once at the end) changes nothing the guest can see
 //   * RX: bytes the host sends arrive in order, a full queue drops the byte and sets OVERRUN until cleared
-//   * movies: serial input is recorded and replays identically (checkpoints verify), the revision window accepts rev 10 and
+//   * movies: serial input is recorded and replays identically (checkpoints verify), the revision window accepts only the current revision and
 //     refuses what it should, and a dev-unit movie round-trips through the binary and text forms
 //   * SerialHost: file output, file input, and a TCP client both ways
 //   * with the real Boot ROMs (optional 2nd and 3rd arguments: ZPbootROM's bootrom.bin = RETAIL and bootrom_dev.bin = DEV):
@@ -230,7 +230,7 @@ void testSystemAndMovies() {
         spinInRam(sys);
         sys.getCPU().writeByte(SER_DATA, 'o');
         sys.getCPU().writeByte(SER_DATA, 'k');
-        sys.runCycles(System::CYCLES_PER_FRAME);   // ~1.3 ms of console time: far more than two byte times
+        sys.runCycles(System::CYCLES_PER_FRAME);   // 1/60 s of console time: far more than two byte times
         check(got == "ok", "System::runCycles hands finished bytes to the sink");
         check(sys.isDevUnit() && (sys.getCPU().readByte(DEV_MODE) & 2), "System::isDevUnit / latch");
     }
@@ -292,15 +292,18 @@ void testSystemAndMovies() {
         check(sys.getCPU().readByte(SER_STATUS) % 2 == 0, "playback ignores live serial input");
     }
     {
-        // The revision window: rev 10 movies (made before the dev unit existed) still replay; older and newer do not.
+        // The revision window: revision 13 stretched the raster, so only this revision replays (MIN_COMPATIBLE_REVISION ==
+        // CORE_REVISION); the revisions before it and any newer one are refused.
         Movie m;
-        m.coreRevision = 10;
+        m.coreRevision = System::CORE_REVISION;
         m.lengthCycles = System::CYCLES_PER_FRAME;
         std::string err;
         RomLibrary lib;
-        { System s; MovieSession ms; check(ms.beginPlayback(s, m, lib, err), "a revision-10 movie replays"); }
-        m.coreRevision = 9;
-        { System s; MovieSession ms; check(!ms.beginPlayback(s, m, lib, err), "revision 9 is refused"); }
+        { System s; MovieSession ms; check(ms.beginPlayback(s, m, lib, err), "a current-revision movie replays"); }
+        m.coreRevision = 12;
+        { System s; MovieSession ms; check(!ms.beginPlayback(s, m, lib, err), "revision 12 (the old raster) is refused"); }
+        m.coreRevision = 10;
+        { System s; MovieSession ms; check(!ms.beginPlayback(s, m, lib, err), "revision 10 is refused"); }
         m.coreRevision = System::CORE_REVISION + 1;
         { System s; MovieSession ms; check(!ms.beginPlayback(s, m, lib, err), "a newer revision is refused"); }
         Movie d;

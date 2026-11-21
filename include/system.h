@@ -37,7 +37,7 @@ public:
     // cycles per frame. Shared by every frontend via stepFrame() so they all
     // run the same core at the same pace instead of each re-deriving it.
     static constexpr uint64_t CYCLES_PER_FRAME =
-        static_cast<uint64_t>(TOTAL_SCANLINES) * TOTAL_PIXELS_PER_LINE;
+        static_cast<uint64_t>(TOTAL_SCANLINES) * LINE_CYCLES;
 
     // Sample rate the APU's MMP mixer is polled at (see getAudioBuffer()).
     // A frontend's audio device should be opened at this same rate.
@@ -119,12 +119,15 @@ public:
     void hardReset();
     // Bump when a change to the emulation changes what any program computes (a movie pins this; docs/movies.md).
     // Revision 11 added the dev unit (host-only latch: debug serial UART, signature checks always pass); with it off the
-    // machine is bit-identical to revision 10, so a movie recorded on any revision from MIN_COMPATIBLE_REVISION up to this
-    // one replays.
+    // machine was bit-identical to revision 10, so a movie recorded on any revision from MIN_COMPATIBLE_REVISION up to the
+    // current one replays (until revision 13, see below).
     // Revision 12 added the dev unit's fault latch and ABORT routing ($D8004C-$D8004F, docs/exceptions.md), which only exist on a
     // dev unit whose Boot ROM carries the exception table: nothing a revision 10 or 11 movie can have pinned.
-    static constexpr uint32_t CORE_REVISION = 12;
-    static constexpr uint32_t MIN_COMPATIBLE_REVISION = 10;
+    // Revision 13 stretched the raster: a line is LINE_CYCLES (4343) master cycles instead of 340, so a frame is 1/60 s and every
+    // cycle count measured in scanlines or frames changed. A deliberate break: nothing recorded on revision 12 or earlier replays
+    // (MIN_COMPATIBLE_REVISION = CORE_REVISION), and the compatibility rule restarts from 13.
+    static constexpr uint32_t CORE_REVISION = 13;
+    static constexpr uint32_t MIN_COMPATIBLE_REVISION = 13;
 
     // Load a real Boot ROM image (bank $E0) - e.g. ZPbootROM's bootrom.bin, or a demo that never hands
     // off to a cartridge at all. Call reset() afterward to actually jump into it. Without one, System
@@ -254,21 +257,21 @@ public:
     // (1 second, 1/4 second, one NTSC-ish scanline, etc), then rounded to
     // the nearest whole cycle since colorburst-derived Hz isn't a clean
     // divisor of a real second (same tradeoff real NTSC hardware timers had
-    // - see the SNES's actual 60.0988Hz "60Hz"). None of these are tied to
-    // the *real* display geometry (TOTAL_SCANLINES/TOTAL_PIXELS_PER_LINE in
-    // display.h, which drive System::CYCLES_PER_FRAME and the actual
-    // VBlank/HBlank IRQ edge detection in checkInterrupts()) - HBLANK and
-    // VBLANK here are just periodic timers that happen to be named after
-    // the display events they approximate; verify against TIMER_DEFS in
-    // system.cpp before assuming otherwise.
+    // - see the SNES's actual 60.0988Hz "60Hz"). None of these are phase-locked to the
+    // raster (display.h: TOTAL_SCANLINES x LINE_CYCLES drive System::CYCLES_PER_FRAME
+    // and the actual VBlank/HBlank IRQ edge detection in checkInterrupts()) - they are
+    // free-running periodic timers named after the display events they approximate.
+    // Since revision 13 the V-blank period is exactly one frame (checked below); the
+    // H-blank period is not one scanline (LINE_CYCLES), it is master/4096.
     static constexpr uint64_t TIMER_VBLANK_PERIOD = 1133523;      // ~16.667ms / 60Hz (master/60, rounded)
-    static constexpr uint64_t TIMER_HBLANK_PERIOD = 16604;        // ~244us, approximating one scanline (master/4096, rounded)
+    static constexpr uint64_t TIMER_HBLANK_PERIOD = 16604;        // ~244us (master/4096, rounded): ~3.8 scanlines, not one
     static constexpr uint64_t TIMER_SECOND_PERIOD = 68011355;     // 1 second (= master Hz)
     static constexpr uint64_t TIMER_QUARTER_SEC_PERIOD = 17002839;// 1/4 second (master/4, rounded)
     static constexpr uint64_t TIMER_EIGHTH_SEC_PERIOD = 8501419;  // 1/8 second (master/8, rounded)
     static constexpr uint64_t TIMER_K1024_PERIOD = 66417;         // 1/1024 second (master/1024, rounded)
     static constexpr uint64_t TIMER_MICRO_PERIOD = 68010;         // ~1ms (master x 16777/16777216, rounded)
     static constexpr uint64_t TIMER_VBLANK60_PERIOD = TIMER_VBLANK_PERIOD * 60; // 60 V-blanks, ~1 second
+    static_assert(CYCLES_PER_FRAME == TIMER_VBLANK_PERIOD, "one raster is one V-blank timer period (revision 13)");
 
     // Interrupt controller (public for I/O register access). Aggregates all
     // IRQ sources onto the CPU's single maskable line and lets the ISR read

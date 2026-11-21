@@ -5,7 +5,7 @@ TCP socket, and the host can type back. It is **built** (core revision 11) and i
 see is a function of the CPU cycle counter, and typed input is recorded in movies.
 
 The port **exists on every unit** but is only *read* by a **dev unit**. A retail unit has the same three registers and they
-behave exactly as they did at revision 10: the guest can write bytes into the transmit queue (it fills, 255 bytes, and is never
+behave exactly as they did before the dev unit existed (revision 10): the guest can write bytes into the transmit queue (it fills, 255 bytes, and is never
 drained) and the receive queue is always empty. Nothing on the host side listens (no sink is ever called, host input is
 refused), and nothing in the retail Boot ROM touches it or the dev-unit latch.
 
@@ -56,7 +56,7 @@ full the byte is dropped and `OVERRUN` is set. Frontends feed the guest only whi
 cycle counter on every register access and every hash (`CPU::serialSettle`). When the host looks - every cycle, once a frame,
 only at the end - changes nothing but how soon the sink hears about a byte. `test_serial` checks that two rigs observed at
 different rates end in the same `stateHash`. On a retail unit none of this state exists: `stateHash` is bit-identical to
-revision 10 (the 24 `fuzz_determinism` goldens still match).
+what it was without the dev unit (when the dev unit went in, at revision 11, the 24 `fuzz_determinism` goldens still matched; revision 13 regenerated them for the new raster).
 
 ## The host end
 

@@ -16,8 +16,9 @@ July and had gone stale; the history is in `git log`. Day-to-day open items are 
 - **Toolchain (`ZPdevtools`):** assemblers and disassemblers for all three processors, the linker and signer, two C compilers, an SDK,
   and a rewritten documentation tree whose tables are generated and whose code blocks are assembled by a checker.
 - **Platforms:** Windows, Linux, macOS on x64 and ARM64, all built by CI (green as of `ec2b89e`).
-- **Compatibility rule:** the emulator is frozen at revision 10 behaviour. The core is at revision 12 and everything added since is
-  off on a retail unit, so revision 10 ROMs, movies and golden hashes still run identically.
+- **Compatibility rule:** the emulator is frozen at revision 13 behaviour. Revision 13 stretched the raster (a line is 4343 cycles, was 340; a
+  frame is 1/60 s, was 1.3 ms) and deliberately broke everything before it, so ROMs, movies and golden hashes from revision 12 and earlier no
+  longer replay; from here on, revision 13 ones must keep running identically. `tools/run_tests.sh` runs every suite.
 
 ## What a release needs
 

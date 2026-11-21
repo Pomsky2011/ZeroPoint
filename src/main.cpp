@@ -303,7 +303,7 @@ int main(int argc, char** argv) {
     const bool movieRecording = movieSession.mode() == MovieSession::Mode::Recording;
 
     // Every ~60 Hz tick: step as many System frames as it takes for the console clock to catch up with the
-    // wall clock (a System frame is ~1.3 ms, see frame_pacer.h), then render once. Sleep out the rest of the
+    // wall clock (a System frame is 1/60 s since core revision 13, so usually one; see frame_pacer.h), then render once. Sleep out the rest of the
     // tick so we don't spin the host CPU at 100%. (A movie runs for as long as its time lasts, not until the CPU
     // halts: a reset can bring a halted machine back.)
     const auto frameDuration = std::chrono::microseconds(16667);

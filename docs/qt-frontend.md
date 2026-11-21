@@ -121,7 +121,7 @@ scaling step in the Qt frontend; that conversion only happens internally in
 
 ### Timing
 The emulator runs at approximately 60 FPS:
-- Each frame: 261 scanlines × 340 pixels = 88,740 pixels
+- Each frame: 261 scanlines × 4343 cycles = 1,133,523 master cycles = 1/60 s (one frame per tick)
 - Visible area: 256 × 256 = 65,536 pixels
 - QTimer interval: 16ms (~60 Hz)
 

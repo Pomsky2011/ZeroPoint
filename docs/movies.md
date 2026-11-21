@@ -23,11 +23,11 @@ it stopped doing so.** (Why replay can't silently drift: `docs/determinism-proof
 - **Checkpoints**: `System::machineHashParts()` (cpu incl. all RAM, ppu, display, apu, dma, timers+irq, clock, cartridge, audio) at
   intervals. A replay checks each one and reports `DESYNC at movie cycle C: state differs in: cpu, apu`.
 - `coreRevision`: `System::CORE_REVISION`. Bump it whenever a change to the emulation changes what a program computes.
-  A core replays the revisions from `System::MIN_COMPATIBLE_REVISION` up to its own: revision 11 added the dev unit, and with it
-  off the machine is bit-identical to revision 10, so rev-10 movies still replay (and their checkpoints still match). A movie
-  from an older or newer revision is refused (`--ignore-core-revision` to try anyway). A movie that uses the dev unit or
-  `serial` events must say revision 11 or later. Revision 12 added the dev unit's faults (docs/exceptions.md), which need a Boot
-  ROM carrying the exception table, so revision 10 and 11 movies still replay bit for bit.
+  A core replays the revisions from `System::MIN_COMPATIBLE_REVISION` up to its own. Revision 13 stretched the raster (a scanline is
+  4343 master cycles, not 340, so a frame is 1/60 s), which changes the cycle at which everything that watches the display happens, so
+  it replays only revision 13: a movie from an older or newer revision is refused (`--ignore-core-revision` to try anyway). (Revisions 11
+  and 12 had added the dev unit and its faults, docs/exceptions.md, without changing a retail unit, and revision-10 movies still replayed on them.)
+  A movie that uses the dev unit or `serial` events must say revision 11 or later.
 
 Movie time keeps counting while a halted CPU freezes the machine, and across resets, so a reset event on a halted machine
 still lands at its cycle.

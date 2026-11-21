@@ -3,7 +3,7 @@
 //
 //   zpb_wav <rom.zpb> <seconds> <out.wav> [--boot bootrom.bin] [--apu-bios bios.bin] [--verify]
 //
-// <seconds> is console time (a System frame is ~1.3 ms, not 1/60 s). Prints the audio's peak, when it was last
+// <seconds> is console time (a System frame is 1/60 s since core revision 13). Prints the audio's peak, when it was last
 // audible, and where the APU's sequencer is, so a script can check that a cartridge really got a score
 // playing: it exits non-zero if nothing was ever audible.
 #include "system.h"

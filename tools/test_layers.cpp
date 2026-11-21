@@ -277,7 +277,7 @@ static int runCase(System& sys, const Scene& scene, const int sc[4], int frames,
         sys.runCycles(System::CYCLES_PER_FRAME);
         if (verbose) std::printf("      frame %d: status %d, pending %u, EP=$%04X\n", f, ppu.readMemory(0x0364), ppu.readMemory(0x0360), ppu.getExecutionPointer());
     }
-    for (int g = 0; sys.getDisplay().getCurrentScanline() != 258 && g < 2 * 88740; g++) sys.step();
+    for (int g = 0; sys.getDisplay().getCurrentScanline() != 258 && g < 2 * static_cast<int>(System::CYCLES_PER_FRAME); g++) sys.step();
     const uint8_t status = ppu.readMemory(0x0364);
     if (lateOut) *lateOut = status;
     const std::vector<uint16_t> want = reference(scene, sc);
@@ -444,7 +444,7 @@ int main(int argc, char** argv) {
         g_budget = budgetList[wbi];
         std::printf("== saturation with the window layer at a per-band budget of %lu, fine scroll on both layers\n", g_budget);
         static const int scrolls[][4] = {{3, 3, 5, 6}, {0, 0, 0, 0}, {1, 7, 2, 4}, {7, 1, 6, 2}, {5, 5, 0, 3}};
-        const int variants[][3] = {{2, 4, 0}, {4, 2, 0}, {8, 1, 5}, {4, 4, 0}, {6, 4, 3}, {16, 4, 3}, {16, 1, 7}};
+        const int variants[][3] = {{2, 4, 0}, {4, 2, 0}, {8, 1, 5}, {4, 4, 0}, {6, 4, 3}, {16, 4, 3}, {16, 1, 7}, {15, 16, 2}, {15, 32, 0}, {15, 32, 0}, {15, 32, 5}};
         const char* shapeNames[] = {"solid 28x12", "solid full-width strip", "solid 1-wide column", "overlay 4 + glass 3", "solid 2-wide + overlay", "overlay and glass on the same rows", "solid 12x32 (tall)"};
         int lateRuns = 0;
         for (int shape = 0; shape < 7; shape++) for (const auto& sc : scrolls) for (const auto& v : variants) {
@@ -465,7 +465,7 @@ int main(int argc, char** argv) {
             for (int band = 0; band < 32; band++) for (int k = 0; k < v[0]; k++) {
                 ZPL_Sprite sp;
                 sp.w = static_cast<unsigned short>(v[1]); sp.h = 1;
-                sp.x = static_cast<short>((k * (256 / v[0] - 4)) % 224); sp.y = static_cast<short>(8 * band + v[2]);
+                sp.x = v[1] >= 16 ? static_cast<short>(k % 8) : static_cast<short>((k * (256 / v[0] - 4)) % 224);   // the very wide ones start at the left edge so every cell is on screen sp.y = static_cast<short>(8 * band + v[2]);
                 sp.flags = 0; sp.cells = ZPL_SPRCELLS;
                 scene.sprites.push_back(sp);
             }
@@ -499,16 +499,16 @@ int main(int argc, char** argv) {
             }
             int lateRuns = 0;
             // {sprites per band, width in tiles, y offset inside the band}: all share one 4-cell array, so nothing but the budget limits them
-            const int variants[][3] = {{2, 4, 0}, {2, 4, 3}, {4, 2, 0}, {8, 1, 5}, {4, 4, 0}, {6, 4, 3}, {16, 4, 3}, {16, 1, 7}};
+            const int variants[][3] = {{2, 4, 0}, {2, 4, 3}, {4, 2, 0}, {8, 1, 5}, {4, 4, 0}, {6, 4, 3}, {16, 4, 3}, {16, 1, 7}, {15, 16, 2}, {15, 32, 0}, {15, 32, 0}, {15, 32, 5}};
             for (size_t si = 0; si < nScrolls; si++) for (const auto& v : variants) {
                 const int* sc = scrolls[si];
-                if (std::getenv("LAYERS_ALLPHASES") && !(v[0] == 16 || v[0] == 6 || (v[0] == 4 && v[1] == 4))) continue;
+                if (std::getenv("LAYERS_ALLPHASES") && !(v[0] == 16 || v[0] == 15 || v[0] == 6 || (v[0] == 4 && v[1] == 4))) continue;
                 scene.sprites.clear(); scene.cells.clear();
                 for (int c = 0; c < 4; c++) { scene.cells.push_back(static_cast<uint16_t>(c + 1)); scene.cells.push_back(static_cast<uint16_t>((c % 4) | 0x1000)); }
                 for (int band = 0; band < 32; band++) for (int k = 0; k < v[0]; k++) {
                     ZPL_Sprite sp;
                     sp.w = static_cast<unsigned short>(v[1]); sp.h = 1;
-                    sp.x = static_cast<short>((k * (256 / v[0] - 4)) % 224); sp.y = static_cast<short>(8 * band + v[2]);
+                    sp.x = v[1] >= 16 ? static_cast<short>(k % 8) : static_cast<short>((k * (256 / v[0] - 4)) % 224);   // the very wide ones start at the left edge so every cell is on screen sp.y = static_cast<short>(8 * band + v[2]);
                     sp.flags = 0; sp.cells = ZPL_SPRCELLS;
                     scene.sprites.push_back(sp);
                 }
@@ -571,7 +571,7 @@ int main(int argc, char** argv) {
         g_l0t = true;
         clearWindow(scene); loadWindow(sys, scene);
         static const int scrolls[][4] = {{3, 3, 5, 6}, {0, 0, 0, 0}, {1, 7, 2, 4}, {7, 1, 6, 2}, {5, 5, 0, 3}};
-        const int variants[][3] = {{2, 4, 0}, {4, 2, 0}, {8, 1, 5}, {4, 4, 0}, {6, 4, 3}, {16, 4, 3}, {16, 1, 7}};
+        const int variants[][3] = {{2, 4, 0}, {4, 2, 0}, {8, 1, 5}, {4, 4, 0}, {6, 4, 3}, {16, 4, 3}, {16, 1, 7}, {15, 16, 2}, {15, 32, 0}, {15, 32, 0}, {15, 32, 5}};
         int lateRuns = 0;
         for (const auto& sc : scrolls) for (const auto& v : variants) {
             scene.sprites.clear(); scene.cells.clear();
@@ -580,7 +580,7 @@ int main(int argc, char** argv) {
                 static const unsigned short prio[3] = {0, ZPL_SPR_PRIO_MID, ZPL_SPR_PRIO_BACK};
                 ZPL_Sprite sp;
                 sp.w = static_cast<unsigned short>(v[1]); sp.h = 1;
-                sp.x = static_cast<short>((k * (256 / v[0] - 4)) % 224); sp.y = static_cast<short>(8 * band + v[2]);
+                sp.x = v[1] >= 16 ? static_cast<short>(k % 8) : static_cast<short>((k * (256 / v[0] - 4)) % 224);   // the very wide ones start at the left edge so every cell is on screen sp.y = static_cast<short>(8 * band + v[2]);
                 sp.flags = prio[k % 3]; sp.cells = ZPL_SPRCELLS;
                 scene.sprites.push_back(sp);
             }

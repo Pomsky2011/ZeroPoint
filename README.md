@@ -252,7 +252,7 @@ cd ../ZeroPoint/build
 
 **Dev tooling**: ✅ dev unit with a debug serial UART, handler images for exceptions, and movie record/replay, on both the SDL and Qt frontends (the Vulkan target only plays PPU programs, with no `System` behind it).
 
-The emulator core is at **revision 12** (`System::CORE_REVISION`). Everything added after revision 10 is off on a retail unit, so ROMs, movies and golden hashes from revision 10 still run identically.
+The emulator core is at **revision 13** (`System::CORE_REVISION`), frozen: ROMs, movies and golden hashes from revision 13 must keep running identically. Revision 13 stretched the raster so a frame is exactly 1/60 s (a line is 4343 master cycles, it was 340) and replays nothing older. `tools/run_tests.sh` runs every test suite.
 
 ## License
 

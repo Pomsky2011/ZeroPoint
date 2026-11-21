@@ -6,7 +6,7 @@
 // noppu.zpb spins and has no PPU program: the splash must fade to black before the CPU gets there, and the PPU
 // must be left idle and the screen black. withppu.zpb loads a PPU program from its ROM with COP #$F7; the
 // program must be running and must have written its marker ($1234 at PPU $9000).
-// Time is console time (a System frame is ~1.3 ms, not 1/60 s).
+// Time is console time (a System frame is 1/60 s since core revision 13).
 #include "system.h"
 #include <algorithm>
 #include <cstdio>
