@@ -6,8 +6,24 @@
 #include <cstring>
 #include <iostream>
 #include <type_traits>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 namespace ZeroPoint {
+
+namespace {
+// Index of the lowest set bit of a non-zero mask (MSVC has no __builtin_ctz).
+inline int lowestSetBit(uint32_t mask) {
+#if defined(_MSC_VER)
+    unsigned long index;
+    _BitScanForward(&index, mask);
+    return static_cast<int>(index);
+#else
+    return __builtin_ctz(mask);
+#endif
+}
+}  // namespace
 
 // --- PPU instruction cycle-cost model ---------------------------------------
 // The PPU issues one instruction at a time, but instructions are not all
@@ -623,7 +639,7 @@ void PPU::opTILEDRAW(const DecodedOp&) {
         // The actual pixel writes happen in executeBlit() when the
         // channel's own completeAt is reached, not here.
         const uint32_t freeTiles = ~tileBusyMask & ((1u << NUM_BLIT_CHANNELS) - 1);
-        const int freeChannel = freeTiles != 0 ? __builtin_ctz(freeTiles) : -1;
+        const int freeChannel = freeTiles != 0 ? lowestSetBit(freeTiles) : -1;
 
         // TILE_ATTR_CLIP: the blit writes only the rows of [$0204, $0206) and is charged only for those rows
         const uint8_t attrs = tileAttrs;
@@ -993,7 +1009,7 @@ void PPU::stepQueueEngine() {
 
         const uint32_t freeMask = ~tileBusyMask & ((1u << NUM_BLIT_CHANNELS) - 1);
         assert(freeMask != 0);
-        const unsigned freeChannel = static_cast<unsigned>(__builtin_ctz(freeMask));
+        const unsigned freeChannel = static_cast<unsigned>(lowestSetBit(freeMask));
         BlitChannel& ch = blitChannels[freeChannel];
         ch = BlitChannel();
         ch.busy = true;
