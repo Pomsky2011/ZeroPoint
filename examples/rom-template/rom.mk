@@ -3,15 +3,11 @@
 # =============================================================================
 # Copy this Makefile into your game/software project and edit the "PROJECT"
 # section below. It drives the ZeroPoint devtools (cpuasm / ppuasm / apuasm /
-# def88186cc) through one of two link paths:
-#
-#   modern:   cpuasm/... -> zplink (-> ELF) -> zpbuild (-> signed .zpb)
-#   classic:  cpuasm/... -> rombuilder (-> .rom + .txt)
+# def88186cc):  cpuasm/... -> zplink (-> ELF) -> zpbuild (-> signed .zpb)
 #
 #   make               build + locally sign  -> build/<ROM>.zpb
 #   make elf           dev link only         -> build/<ROM>.elf  (submit this to HQ)
-#   make classic       legacy/DOS            -> build/<ROM>.rom  (rombuilder)
-#   make PLATFORM=dos  build on MS-DOS via DJGPP (defaults to the classic path)
+#   make PLATFORM=dos  build on MS-DOS via DJGPP
 #   make clean
 #   make help
 #
@@ -28,8 +24,7 @@
 #
 # NOTE ON MS-DOS: the devtools ship as real-mode DOS .exe's, so this Makefile
 # runs on a 1990s box — but it needs *GNU* make (DJGPP's `make`), because it
-# uses conditionals and functions Borland/Turbo MAKE don't understand. On DOS
-# it defaults to `rombuilder` (the classic path).
+# uses conditionals and functions Borland/Turbo MAKE don't understand.
 # =============================================================================
 
 # ---- PROJECT (edit these) ---------------------------------------------------
@@ -71,18 +66,10 @@ else
   EXE := .exe
 endif
 
-# On DOS default to the classic rombuilder path; elsewhere use zplink.
-ifeq ($(PLATFORM),dos)
-  LINKER ?= rombuilder
-else
-  LINKER ?= zplink
-endif
-
 # ---- Resolved tools ---------------------------------------------------------
 CPUASM     := $(ZPTOOLS)/cpuasm$(EXE)
 PPUASM     := $(ZPTOOLS)/ppuasm$(EXE)
 APUASM     := $(ZPTOOLS)/apuasm$(EXE)
-ROMBUILDER := $(ZPTOOLS)/rombuilder$(EXE)
 ZPLINK     := $(ZPTOOLS)/zplink$(EXE)
 ZPBUILD    := $(ZPTOOLS)/zpbuild$(EXE)
 CC88       := $(ZPCC)$(EXE)
@@ -97,33 +84,25 @@ APU_BIN := $(BUILD)/apu.bin
 # =============================================================================
 COMPONENTS := $(CPU_BIN)
 ZL_ARGS    := --cpu $(CPU_BIN)@$(CPU_BASE)
-RB_ARGS    := -cpu $(CPU_BIN)
 
 ifneq ($(strip $(PPU_SRC)),)
   COMPONENTS += $(PPU_BIN)
   ZL_ARGS    += --ppu $(PPU_BIN)@$(PPU_BASE)
-  RB_ARGS    += -ppu $(PPU_BIN)
 endif
 ifneq ($(strip $(APU_SRC)),)
   COMPONENTS += $(APU_BIN)
   ZL_ARGS    += --apu $(APU_BIN)@$(APU_BASE)
-  RB_ARGS    += -apu $(APU_BIN)
 endif
 
 # =============================================================================
 # Default goal
 # =============================================================================
-.PHONY: all elf sign classic clean help
+.PHONY: all elf sign clean help
 
-ifeq ($(LINKER),rombuilder)
-all: classic
-else
 all: sign
-endif
 
-elf:     $(BUILD)/$(ROM).elf
-sign:    $(BUILD)/$(ROM).zpb
-classic: $(BUILD)/$(ROM).rom
+elf:  $(BUILD)/$(ROM).elf
+sign: $(BUILD)/$(ROM).zpb
 
 # =============================================================================
 # Assemble / compile the components
@@ -163,10 +142,6 @@ $(BUILD)/$(ROM).elf: $(COMPONENTS)
 $(BUILD)/$(ROM).zpb: $(BUILD)/$(ROM).elf
 	$(ZPBUILD) $< -o $@ --title "$(TITLE)" --dev "$(DEV)"
 
-# rombuilder: classic .rom + .txt metadata. Requires all three components.
-$(BUILD)/$(ROM).rom: $(COMPONENTS)
-	$(ROMBUILDER) $(RB_ARGS) -entry $(ENTRY) -o $@ -v
-
 # =============================================================================
 # Housekeeping
 # =============================================================================
@@ -177,15 +152,13 @@ help:
 	@echo "ZeroPoint ROM build template"
 	@echo
 	@echo "Targets:"
-	@echo "  all (default)  signed .zpb on Unix (zplink+zpbuild), classic .rom on DOS"
+	@echo "  all (default)  signed .zpb (zplink+zpbuild)"
 	@echo "  elf            build/$(ROM).elf  - zplink output; submit this to HQ to ship"
 	@echo "  sign           build/$(ROM).zpb  - zpbuild-signed ROM (dev key, emulator-loadable)"
-	@echo "  classic        build/$(ROM).rom  - rombuilder + .txt metadata"
 	@echo "  clean          remove build/"
 	@echo
 	@echo "Options (VAR=value):"
-	@echo "  PLATFORM   unix (default) | dos | windows   (dos => classic path, .exe tools)"
-	@echo "  LINKER     zplink (default) | rombuilder"
+	@echo "  PLATFORM   unix (default) | dos | windows   (dos/windows => .exe tools)"
 	@echo "  ROM TITLE DEV                                output name + metadata"
 	@echo "  CPU_SRC PPU_SRC APU_SRC                      component sources (.asm/.c)"
 	@echo "  ENTRY CPU_BASE PPU_BASE APU_BASE             load addresses"

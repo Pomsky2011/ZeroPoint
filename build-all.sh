@@ -86,7 +86,7 @@ else
 
     # Show what was built
     echo "Built tools:"
-    ls -1 executables/ppuasm executables/apuasm executables/cpuasm executables/rombuilder executables/rominspect executables/cpudisasm executables/ppudisasm executables/apudisasm executables/wav2mmp executables/hexview 2>/dev/null | sed 's/^/  - /' || echo "  (some tools may not have built)"
+    ls -1 executables/ppuasm executables/apuasm executables/cpuasm executables/zplink executables/zpbuild executables/rominspect executables/cpudisasm executables/ppudisasm executables/apudisasm executables/hexview 2>/dev/null | sed 's/^/  - /' || echo "  (some tools may not have built)"
     echo ""
 
     cd "$SCRIPT_DIR"
@@ -108,9 +108,9 @@ echo ""
 if [ -d "$ZPDEVTOOLS_DIR" ]; then
     echo "Development tools (in ../ZPdevtools/):"
     echo "  ppuasm, apuasm, cpuasm      - Assemblers"
-    echo "  rombuilder, rominspect      - ROM tools"
+    echo "  zplink, zpbuild, rominspect - Linker, signer, ROM inspector"
     echo "  cpudisasm, ppudisasm, etc.  - Disassemblers"
-    echo "  wav2mmp, hexview            - Utilities"
+    echo "  hexview                     - Utilities"
     echo ""
 fi
 echo "Quick start:"

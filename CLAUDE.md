@@ -341,11 +341,12 @@ cd ZPdevtools/c_compiler && make
 - **apuasm**: APU programs
 - **cpuasm**: DEF88186 assembly (with `.include`)
 
-### ROM Builder
+### Linker + signer
 ```bash
-rombuilder -cpu main.bin -ppu gfx.bin -apu audio.bin -o game.rom
+zplink -o game.elf --cpu main.bin@0x8000 --ppu gfx.bin@0x100000 --apu audio.bin@0x200000 --entry 0x8000
+zpbuild game.elf -o game.zpb --title "My Game" --dev ZP
 ```
-Creates: `game.rom` (binary) + `game.txt` (metadata)
+Creates a signed `.zpb` (dev key) the emulator loads. `ZPdevtools/docs/tools/`
 
 ### Development Tools
 ```bash
@@ -437,7 +438,7 @@ ZeroPoint/          - Emulator core
 ZPdevtools/         - Development tools
 ├── c_compiler/     - def88186cc compiler
 ├── *asm.c          - Assemblers (ppu/apu/cpu)
-├── rombuilder.c    - ROM builder
+├── zplink.c, zpbuild.c - Linker (ELF) and signer (.zpb)
 ├── examples/       - Example programs
 └── docs/           - Complete documentation
 ```

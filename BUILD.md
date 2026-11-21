@@ -216,7 +216,7 @@ cd build/bin
 cd ../ZPdevtools
 executables/ppuasm examples/ppu/simple_white_pixel.asm -o test.bin
 executables/cpuasm examples/cpu/test.asm test.bin
-executables/rombuilder -cpu cpu.bin -ppu ppu.bin -apu apu.bin -o test.rom
+executables/zplink -o test.elf --cpu cpu.bin@0x8000 --entry 0x8000 && executables/zpbuild test.elf -o test.zpb
 ```
 
 ## See Also
