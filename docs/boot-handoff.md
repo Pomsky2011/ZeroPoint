@@ -20,6 +20,25 @@ Caveat: the copy goes through the PPU window, so the PPU sees each byte as a *wr
 register (`$00F0` is the VOC render mode, enabling the blank interrupts) takes effect mid-copy. The splash's
 `main.ppu` clears `$00F0` as its very first act for this reason; a PPU program should too.
 
+## The machine state a cartridge starts in
+
+The Boot ROM jumps to the cartridge through a small trampoline in Work RAM (`JML` at `$80:0000`, scratch that is not cleared). Measured at the first cartridge
+instruction (`PB = $00`, the entry point):
+
+| | |
+|--|--|
+| `A` | `$0200` |
+| `X`, `D` | `$0000` |
+| `Y` | `$FFFE` |
+| `S` | `$01FF`: a 512-byte stack at the bottom of Work RAM (the bank is `$80`) |
+| `DB` | **`$80`** (the native boot leaves `$00`) |
+| `P` | whatever the Boot ROM last left; set `REP #$30` / `CLC` yourself |
+
+Two consequences for startup code. `JMP addr` jumps into bank `DB`, not `PB` (`ZPdevtools/docs/cpu/addressing-modes.md`), so with `DB = $80` a plain `JMP main` leaves
+the cartridge for RAM; use `BRA`, `JMP long` or `JSR`. And a C program's call chains do not fit 512 bytes, so move `S` first (`ZPdevtools/lib/crt0_entry.asm` does both).
+A cartridge that worked on the native boot and does nothing on the real one is almost always one of these two, or its signing (a ROM over a few KB must be signed with
+`zpbuild --codesize N --trailer 2`, or the Boot ROM hashes it in software for good: `docs/zpb-format.md`).
+
 ## How the fade works
 
 The splash is interrupt driven and its vblank handler is flag-free on purpose (it can pre-empt the hblank
