@@ -16,7 +16,7 @@ A host setting, like `--no-verify`, and **never reachable from the guest**:
 - `System::setDevUnit(true)`, or `zeropoint_sdl --dev-unit`. Set it before `powerOn()`; it survives `softReset()`/`hardReset()`.
 - It turns the serial port into a UART (below).
 - **Signature checks always pass.** The HLE boot skips verification (`--no-verify` is the same thing without the UART); the
-  real **dev Boot ROM** reads `$D80048` bit 1 at the top of `main` and goes straight to the handoff instead of running
+  real **dev Boot ROM** (which also answers exceptions by asking the host for a handler image over this UART: docs/exceptions.md) reads `$D80048` bit 1 at the top of `main` and goes straight to the handoff instead of running
   `rsa_verify` (a dev unit boots in ~0.3 s of console time instead of tens of seconds). Trailer-v3 *chunk* verification (`COP #$FF`) is a
   separate gate and still checks the data it is asked about.
 - **Two Boot ROMs** (`ZPbootROM/build.sh` makes both from one source): `bootrom.bin` is the **retail** image - signature

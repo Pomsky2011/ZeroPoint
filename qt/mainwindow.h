@@ -29,8 +29,8 @@ public:
     // a ROM handed to us on the command line / by the desktop does not).
     void openROMFile(const QString &filename, bool announce);
 
-    // The command line's --dev-unit / --serial-out / --serial-in / --serial-tcp (same as zeropoint_sdl). Call before loading.
-    void setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort);
+    // The command line's --dev-unit / --serial-out / --serial-in / --serial-tcp / --exception-handler (same as zeropoint_sdl). Call before loading.
+    void setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort, const QString &exceptionHandler);
 
 private slots:
     void onLoadROM();

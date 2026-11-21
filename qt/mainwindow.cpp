@@ -288,9 +288,10 @@ void MainWindow::buildMovieMenu()
     updateMovieActions();
 }
 
-void MainWindow::setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort)
+void MainWindow::setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort, const QString &exceptionHandler)
 {
     emulatorWidget->setSerialEndpoints(outs, ins, tcpPort);
+    emulatorWidget->setExceptionHandler(exceptionHandler);
     actionDevUnit->setChecked(devUnit);   // also tells the widget
     if (devUnit) serialConsole->show();
 }

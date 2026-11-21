@@ -643,12 +643,13 @@ QString EmulatorWidget::finishMovie()
 void EmulatorWidget::wireSerial()
 {
     if (!system->isDevUnit()) return;
-    if (!serialHost && (!serialOuts.isEmpty() || !serialIns.isEmpty() || serialTcpPort >= 0)) {
+    if (!serialHost && (!serialOuts.isEmpty() || !serialIns.isEmpty() || serialTcpPort >= 0 || !exceptionHandlerPath.isEmpty())) {
         auto host = std::make_unique<ZeroPoint::SerialHost>();
         std::string err;
         bool ok = true;
         for (const QString &o : serialOuts) ok = host->addOutput(o.toStdString(), err) && ok;
         for (const QString &i : serialIns) ok = host->addInput(i.toStdString(), err) && ok;
+        if (!exceptionHandlerPath.isEmpty()) ok = host->setExceptionHandler(exceptionHandlerPath.toStdString(), err) && ok;
         if (serialTcpPort >= 0) {
             if (serialTcpPort > 65535) { err = "the serial TCP port must be 0-65535"; ok = false; }
             else ok = host->listenTcp(static_cast<uint16_t>(serialTcpPort), err) && ok;

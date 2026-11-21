@@ -34,6 +34,7 @@ struct Shared {
     sock_t listener = BAD_SOCK;
     sock_t client = BAD_SOCK;
     bool stopping = false;
+    std::deque<uint8_t> replies;          // bytes the exception-handler responder wants the guest to see (served before rx)
 };
 
 void pushRx(Shared& s, const uint8_t* data, size_t n) {
@@ -43,8 +44,20 @@ void pushRx(Shared& s, const uint8_t* data, size_t n) {
 
 }  // namespace
 
+// CRC-16/CCITT-FALSE (poly $1021, init $FFFF, MSB first), the Boot ROM's check.
+uint16_t crc16(const std::vector<uint8_t>& data) {
+    uint16_t crc = 0xFFFF;
+    for (uint8_t b : data) {
+        crc ^= (uint16_t)(b << 8);
+        for (int i = 0; i < 8; i++) crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
+    }
+    return crc;
+}
+
 struct SerialHost::Impl {
     std::shared_ptr<Shared> shared = std::make_shared<Shared>();
+    std::vector<uint8_t> handlerFrame;   // "ZPXI" + length + image + CRC; empty = no responder
+    std::string guestLine;               // the guest's output since its last newline (only kept with a responder)
     std::vector<std::FILE*> outputs;     // stdout is in here too (and never closed)
     std::vector<std::FILE*> owned;       // the ones to fclose
     bool wsaStarted = false;
@@ -185,7 +198,40 @@ bool SerialHost::listenTcp(uint16_t port, std::string& error) {
     return true;
 }
 
+bool SerialHost::setExceptionHandler(const std::string& path, std::string& error) {
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) { error = "cannot open " + path + " for the exception handler"; return false; }
+    std::vector<uint8_t> image;
+    uint8_t buf[4096];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) image.insert(image.end(), buf, buf + n);
+    std::fclose(f);
+    if (image.empty() || image.size() > 0xFE00) {
+        error = path + ": an exception handler image is 1 to 65024 bytes";
+        return false;
+    }
+    std::vector<uint8_t> frame = {'Z', 'P', 'X', 'I', (uint8_t)(image.size() & 0xFF), (uint8_t)(image.size() >> 8)};
+    frame.insert(frame.end(), image.begin(), image.end());
+    const uint16_t crc = crc16(image);
+    frame.push_back((uint8_t)(crc & 0xFF));
+    frame.push_back((uint8_t)(crc >> 8));
+    impl->handlerFrame = std::move(frame);
+    return true;
+}
+
 void SerialHost::send(uint8_t byte) {
+    if (!impl->handlerFrame.empty()) {
+        if (byte == '\n') {
+            if (impl->guestLine.compare(0, 5, "ZPX? ") == 0) {
+                std::lock_guard<std::mutex> g(impl->shared->lock);
+                if (impl->shared->replies.empty())
+                    impl->shared->replies.insert(impl->shared->replies.end(), impl->handlerFrame.begin(), impl->handlerFrame.end());
+            }
+            impl->guestLine.clear();
+        } else if (impl->guestLine.size() < 256) {
+            impl->guestLine.push_back((char)byte);
+        }
+    }
     for (std::FILE* f : impl->outputs) {
         std::fputc(byte, f);
         if (byte == '\n') std::fflush(f);
@@ -209,6 +255,11 @@ void SerialHost::flush() {
 
 bool SerialHost::receive(uint8_t& byte) {
     std::lock_guard<std::mutex> g(impl->shared->lock);
+    if (!impl->shared->replies.empty()) {
+        byte = impl->shared->replies.front();
+        impl->shared->replies.pop_front();
+        return true;
+    }
     if (impl->shared->rx.empty()) return false;
     byte = impl->shared->rx.front();
     impl->shared->rx.pop_front();

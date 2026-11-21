@@ -259,6 +259,14 @@ public:
     // The table ends here; a Boot ROM shorter than this (System's 35-byte
     // default stub) has no slots, so those signatures stay the cartridge's own.
     static constexpr uint16_t BOOT_SVC_TABLE_END = BOOT_SVC_TABLE + 4 * (BOOT_SVC_MATH_LAST - BOOT_SVC_MATH_FIRST + 1);
+    // The Boot ROM's exception entries (docs/exceptions.md), right after that table: a 4-byte marker, then one 4-byte `jml`
+    // each for ABORT, NMI, IRQ, BRK and COP. Only the DEV Boot ROM's marker reads "ZPEX"; a dev unit that finds it routes
+    // ABORT here (see faultsOn). Nothing else is routed: the CPU still reads every other vector from the cartridge.
+    static constexpr uint16_t BOOT_EXC_MAGIC = BOOT_SVC_TABLE_END;
+    static constexpr uint16_t BOOT_EXC_ABORT = BOOT_EXC_MAGIC + 4;
+    static constexpr uint16_t BOOT_EXC_TABLE_END = BOOT_EXC_ABORT + 4 * 5;
+    // What a dev unit's fault latch ($D8004C) says about the access that raised ABORT (0 = none).
+    enum Fault : uint8_t { FAULT_NONE = 0, FAULT_WRITE_ROM = 1, FAULT_READ_UNMAPPED = 2, FAULT_WRITE_UNMAPPED = 3 };
 
     // Native boot services (System's HLE, see docs/boot-hle.md): when set, opCOP() offers every
     // signature byte to the hook *before* pushing any state. The hook returns the cycles it charged
@@ -323,7 +331,7 @@ public:
     // the port is as deterministic as the rest of the machine; the sink only observes.
     static constexpr uint32_t SERIAL_CYCLES_PER_BYTE = 1476;   // 115200 baud 8N1 on the 17.002839 MHz CPU clock
     using SerialSink = std::function<void(uint8_t)>;
-    void setDevUnit(bool on) { devUnit = on; }
+    void setDevUnit(bool on) { devUnit = on; updateFaultMode(); }
     bool isDevUnit() const { return devUnit; }
     void setSerialSink(SerialSink sink) { serialSink = std::move(sink); }
     // Host -> guest: queue a byte for the guest to read at the current cycle. False if the queue is full (the byte is
@@ -701,6 +709,15 @@ private:
     uint8_t dmaConfigIndex = 0;        // how many of those bytes have arrived
     bool devModeFlag = false;          // DEV_MODE ($D80048)
     bool devUnit = false;              // host-only dev-unit latch (readable as $D80048 bit 1); survives reset(), like devModeFlag
+    // Faults: on a dev unit whose Boot ROM has the exception table (marker "ZPEX"), a program's write to ROM or access to an
+    // unmapped bank raises ABORT, which enters the Boot ROM directly instead of the cartridge's $00:FFF8 vector. Never on a
+    // retail unit; never for the Boot ROM's own accesses, DMA, vector fetches by the CPU itself or an instruction fetch.
+    bool faultsOn = false;             // derived from devUnit + the loaded Boot ROM (updateFaultMode()); not state
+    uint8_t faultKind = FAULT_NONE;    // the latch, readable at $D8004C, cleared by writing there or by reset()
+    uint32_t faultAddress = 0;
+    void updateFaultMode();
+    void noteFault(uint8_t kind, uint32_t address);
+    void noteReadFault(uint32_t address);
     uint8_t p2Direction = 0, p2Control = 0, p2Buttons = 0;   // port 2 controller; set by setPlayer2Input()
     bool cartridgeInserted = false;
 

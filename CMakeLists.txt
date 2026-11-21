@@ -395,6 +395,13 @@ set_target_properties(test_serial PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
+# The Boot ROMs' exception entries with the real images (docs/exceptions.md; tools/test_exception.sh builds what it needs)
+add_executable(test_exception tools/test_exception.cpp)
+target_link_libraries(test_exception zeropoint_core zeropoint_serial_host)
+set_target_properties(test_exception PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # BLAKE2s engine ($D80060): digests, timing, rejects, determinism
 add_executable(test_blake2s_engine tools/test_blake2s_engine.cpp)
 target_include_directories(test_blake2s_engine PRIVATE ${CMAKE_SOURCE_DIR}/src)

@@ -67,6 +67,8 @@ void CPU::reset() {
     irqPending = false;
     nmiPending = false;
     abortPending = false;
+    faultKind = FAULT_NONE;
+    faultAddress = 0;
 
     // The I/O blocks' write-sequence latches are hardware state: a reset in the middle of a 9-byte DMA config
     // (or with a PPU register selected) must not leave the next boot's first write landing mid-sequence.
@@ -121,6 +123,7 @@ uint8_t CPU::readByteUntraced(uint32_t address) {
     if (PB == 0xE0 && offset < bankReadable[bank] && useMemoryMap) {
         return bankData[bank][offset];
     }
+    if (faultsOn) [[unlikely]] noteReadFault(address);
     if (bank == apuWindowBank && apuPtr && apuPtr->isFastMode()) cycleCount += 1;   // APU bus contention
     return readByteGated(address, PB == 0xE0);
 }
@@ -211,6 +214,7 @@ void CPU::writeByteUntraced(uint32_t address, uint8_t value) {
                 return;
             }
             if (r->type == MemoryRegion::ROM) {
+                if (faultsOn) [[unlikely]] noteFault(FAULT_WRITE_ROM, address);
                 return;  // ROM writes ignored
             }
             // Full-range window (PPU/APU) region: fall through to writeMapped.
@@ -1792,6 +1796,10 @@ void CPU::writeMapped(uint32_t address, uint8_t value) {
     MemoryRegion* region = findRegion(address);
     if (!region) {
         // Writes to unmapped memory are ignored
+        if (faultsOn) [[unlikely]] {
+            const uint8_t b = (address >> 16) & 0xFF;
+            if (b > 0x7F && b != 0xE2) noteFault(FAULT_WRITE_UNMAPPED, address);   // (an empty cartridge slot is not a fault)
+        }
         return;
     }
 
@@ -1803,6 +1811,7 @@ void CPU::writeMapped(uint32_t address, uint8_t value) {
     switch (region->type) {
         case MemoryRegion::ROM: {
             // ROM writes are ignored
+            if (faultsOn) [[unlikely]] noteFault(FAULT_WRITE_ROM, address);
             break;
         }
 
@@ -1876,6 +1885,7 @@ void CPU::unloadBootROM() {
     bootROMLoaded = false;
     bootROMSize = 0;
     rebuildBankTable();
+    updateFaultMode();
 }
 
 void CPU::loadBootROM(const uint8_t* data, size_t size) {
@@ -1895,6 +1905,7 @@ void CPU::loadBootROM(const uint8_t* data, size_t size) {
     loadROM(data, size, 0xE0);
     bootROMLoaded = true;
     bootROMSize = size;
+    updateFaultMode();
 }
 
 void CPU::loadSignedROMMetadata(const uint8_t* data, size_t size) {
@@ -2568,6 +2579,11 @@ void CPU::setupIORegisters() {
                     return (cartridgeEntryPoint >> 8) & 0xFF;
                 case 0x03: // CART_ENTRY bank byte
                     return (cartridgeEntryPoint >> 16) & 0xFF;
+                // Fault latch (dev unit with a fault-handling Boot ROM only; reads 0 everywhere else, as at revision 10)
+                case 0x04: return faultsOn ? faultKind : 0x00;
+                case 0x05: return faultsOn ? (faultAddress & 0xFF) : 0x00;
+                case 0x06: return faultsOn ? ((faultAddress >> 8) & 0xFF) : 0x00;
+                case 0x07: return faultsOn ? ((faultAddress >> 16) & 0xFF) : 0x00;
                 default:
                     return 0x00;
             }
@@ -2577,6 +2593,9 @@ void CPU::setupIORegisters() {
             switch (offset) {
                 case 0x00: // DEV_MODE flag (set by emulator, read by boot ROM)
                     devModeFlag = (value & 0x01) != 0;
+                    break;
+                case 0x04: // any write clears the fault latch (does nothing where there is none)
+                    if (faultsOn) { faultKind = FAULT_NONE; faultAddress = 0; }
                     break;
                 default:
                     break;
@@ -2935,6 +2954,15 @@ void CPU::serviceAbort() {
     // 6. Clear D flag (binary mode)
     P.D = false;
 
+    // A dev unit with a fault-handling Boot ROM goes straight to the Boot ROM's ABORT entry (the cartridge's vector, which a
+    // faulting program may well have trashed, is not consulted); everything else reads $00:FFF8-FFF9 as it always did.
+    if (faultsOn) {
+        PC = BOOT_EXC_ABORT;
+        PB = 0xE0;
+        cycleCount += 7;
+        return;
+    }
+
     // 7. Read ABORT vector from $00:FFF8-FFF9
     uint32_t vectorAddr = 0x00FFF8;
     uint16_t handlerAddr = readWord(vectorAddr);
@@ -2950,6 +2978,32 @@ void CPU::serviceAbort() {
 } // namespace ZeroPoint
 
 namespace ZeroPoint {
+
+void CPU::updateFaultMode() {
+    faultsOn = false;
+    if (!devUnit || !bootROMLoaded || bootROMSize < BOOT_EXC_TABLE_END) return;
+    const uint8_t magic[4] = {0x5A, 0x50, 0x45, 0x58};   // "ZPEX"
+    for (int i = 0; i < 4; i++) {
+        if (readByteUntraced(0xE00000u + BOOT_EXC_MAGIC + i) != magic[i]) return;
+    }
+    faultsOn = true;
+}
+
+void CPU::noteFault(uint8_t kind, uint32_t address) {
+    // The Boot ROM's own accesses never fault (its handler must not recurse), and the first fault stays latched until the
+    // handler has read it.
+    if (PB == 0xE0 || faultKind != FAULT_NONE) return;
+    faultKind = kind;
+    faultAddress = address & 0xFFFFFF;
+    triggerAbort();
+}
+
+void CPU::noteReadFault(uint32_t address) {
+    const uint8_t bank = (address >> 16) & 0xFF;
+    if (bank <= 0x7F || bank == 0xE2) return;   // cartridge banks: an empty slot reads its own pattern, it is not a fault
+    if (PB == 0xE0 || findRegion(address)) return;
+    noteFault(FAULT_READ_UNMAPPED, address);
+}
 
 void CPU::serialSettle() const {
     if (!devUnit) return;
@@ -2993,6 +3047,7 @@ uint64_t CPU::stateHash() const {
     mixv(ppuRegSelect); mixv(dmaConfigIndex); mix(dmaConfigBuffer, sizeof dmaConfigBuffer); mixv(devModeFlag);
     // Only a dev unit has these: a retail unit's hash is exactly what it was before the UART existed.
     if (devUnit) { mixv(devUnit); mixv(txDoneAt); mixv(rxOverrun); }
+    if (faultsOn) { mixv(faultKind); mixv(faultAddress); }   // (only with a Boot ROM that handles them: rev-11 dev hashes are unchanged)
     mix(p2TxBuffer, sizeof p2TxBuffer); mix(p2RxBuffer, sizeof p2RxBuffer);
     mixv(p2TxHead); mixv(p2TxTail); mixv(p2RxHead); mixv(p2RxTail);
     mixv(bootServiceActive); mixv(dataGatingActive); mixv(gatedCodeSize);

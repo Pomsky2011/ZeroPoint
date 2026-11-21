@@ -121,7 +121,9 @@ public:
     // Revision 11 added the dev unit (host-only latch: debug serial UART, signature checks always pass); with it off the
     // machine is bit-identical to revision 10, so a movie recorded on any revision from MIN_COMPATIBLE_REVISION up to this
     // one replays.
-    static constexpr uint32_t CORE_REVISION = 11;
+    // Revision 12 added the dev unit's fault latch and ABORT routing ($D8004C-$D8004F, docs/exceptions.md), which only exist on a
+    // dev unit whose Boot ROM carries the exception table: nothing a revision 10 or 11 movie can have pinned.
+    static constexpr uint32_t CORE_REVISION = 12;
     static constexpr uint32_t MIN_COMPATIBLE_REVISION = 10;
 
     // Load a real Boot ROM image (bank $E0) - e.g. ZPbootROM's bootrom.bin, or a demo that never hands

@@ -4,7 +4,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
 ## Status: emulator + boot ROM done (dev-unit boot ROM); only ZPdevtools work remains
 
-**All new revisions must be backwards compatible with revision 10** (`System::CORE_REVISION`, now 11: the dev unit, off = rev 10).
+**All new revisions must be backwards compatible with revision 10** (`System::CORE_REVISION`, now 12: dev unit + its faults, off = rev 10).
 ROMs, movies and goldens that run on rev 10 must keep running identically. Don't change emulation
 behavior; if a change truly can't avoid it, ask first.
 
@@ -103,6 +103,10 @@ behavior; if a change truly can't avoid it, ask first.
   bit 1, can't write it) makes `$D8003C-$D8003E` a 115200-baud UART (TX to a sink, `--serial-out/-in/-tcp`; RX recorded in movies) and
   makes signature checks always pass (HLE and the **dev** Boot ROM `ZPbootROM/build/bootrom_dev.bin`; the retail `bootrom.bin` never reads the latch). On a retail unit the port exists but nothing reads it. Retail units are bit-identical to rev 10; rev-10 movies still replay
   (`MIN_COMPATIBLE_REVISION`). `docs/debug-protocol.md`; tests `bin/test_serial`, `tools/test_serial.sh`, `bin/test_qt_serial`. Qt: same flags + Console menu (Dev Unit, Serial Console).
+- **Boot ROM exception entries** (rev 12): both Boot ROMs have a fixed table at `$E0:0044` (ABORT/NMI/IRQ/BRK/COP, reached by a cartridge's own
+  vector stubs: the CPU still reads every vector from the cartridge). Retail locks; the dev image asks the host for a handler image over the UART
+  (`--exception-handler FILE`). A dev unit with the dev Boot ROM also raises ABORT for ROM writes / unmapped accesses (latch `$D8004C`). `docs/exceptions.md`;
+  `tools/test_exception.sh`.
 - **Cartridge slot + movies**: `System::insertCartridge` (Stop 'n' Swop: replaces it in one instant, no reset/verify),
   `ejectCartridge` (yank: banks `$00-$7F`/`$E2` read `CA FE CA FE...`, not `$FF`), `softReset`, `hardReset` (power cycle,
   state-identical to a fresh System). `.zpm` movies (`include/movie.h`, `bin/zp_movie`, `zeropoint_sdl --record/--play`,

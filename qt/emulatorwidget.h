@@ -87,6 +87,8 @@ public:
     // = no TCP). Opened the first time a dev unit powers on.
     void setSerialEndpoints(const QStringList &outs, const QStringList &ins, int tcpPort)
     { serialOuts = outs; serialIns = ins; serialTcpPort = tcpPort; }
+    // A handler image for the dev Boot ROM's exception requests (docs/exceptions.md); answered by the host end of the port.
+    void setExceptionHandler(const QString &path) { exceptionHandlerPath = path; }
     // Host -> guest: queued, then fed in by the emulation thread a few bytes per tick (recorded when recording).
     void serialSend(const QByteArray &bytes);
 
@@ -188,6 +190,7 @@ private:
     bool devUnit = false;
     QStringList serialOuts, serialIns;
     int serialTcpPort = -1;
+    QString exceptionHandlerPath;
     std::unique_ptr<ZeroPoint::SerialHost> serialHost;   // made on the first dev-unit power-on, kept for the widget's life
     std::mutex serialMutex;
     QByteArray serialTx;                    // guest -> GUI, drained by drainSerialOutput()

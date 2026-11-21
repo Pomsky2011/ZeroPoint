@@ -26,7 +26,8 @@ it stopped doing so.** (Why replay can't silently drift: `docs/determinism-proof
   A core replays the revisions from `System::MIN_COMPATIBLE_REVISION` up to its own: revision 11 added the dev unit, and with it
   off the machine is bit-identical to revision 10, so rev-10 movies still replay (and their checkpoints still match). A movie
   from an older or newer revision is refused (`--ignore-core-revision` to try anyway). A movie that uses the dev unit or
-  `serial` events must say revision 11 or later.
+  `serial` events must say revision 11 or later. Revision 12 added the dev unit's faults (docs/exceptions.md), which need a Boot
+  ROM carrying the exception table, so revision 10 and 11 movies still replay bit for bit.
 
 Movie time keeps counting while a halted CPU freezes the machine, and across resets, so a reset event on a halted machine
 still lands at its cycle.

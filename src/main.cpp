@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     std::cout << "ZeroPoint Emulator\n";
     std::cout << "==================\n";
     std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify] [--no-idle-skip]\n";
-    std::cout << "       [--dev-unit [--serial-out FILE|-] [--serial-in FILE|-] [--serial-tcp PORT]]\n";
+    std::cout << "       [--dev-unit [--serial-out FILE|-] [--serial-in FILE|-] [--serial-tcp PORT] [--exception-handler FILE]]\n";
     std::cout << "       [--two-players] [--speed] [--swap-rom rom.zpb]... [--record out.zpm [--author NAME]] [--play in.zpm [--roms PATH]...] [--frames N]\n";
     std::cout << "Keys: arrows/z x c v/a s d f/shift/enter = player 1 (i j k l/7 8 9 0/u o n m = player 2 with --two-players)\n";
     std::cout << "      F1 soft reset, F2 hard reset (power cycle), F3 yank the cartridge, F4 Stop 'n' Swop (next --swap-rom)\n";
@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
     bool noVerify = false;
     bool devUnit = false;                            // --dev-unit: debug serial UART, signature checks always pass (docs/debug-protocol.md)
     std::vector<std::string> serialOuts, serialIns;
+    std::string exceptionHandler;                    // --exception-handler FILE: answers the dev Boot ROM's handler requests
     long serialTcpPort = -1;
     bool idleSkip = System::idlePollSkipDefault();   // --no-idle-skip turns the poll fast-forward off (docs/idle-poll-skip.md)
     bool twoPlayers = false;
@@ -99,6 +100,8 @@ int main(int argc, char** argv) {
             serialOuts.push_back(argv[++i]);
         } else if (std::strcmp(argv[i], "--serial-in") == 0 && i + 1 < argc) {
             serialIns.push_back(argv[++i]);
+        } else if (std::strcmp(argv[i], "--exception-handler") == 0 && i + 1 < argc) {
+            exceptionHandler = argv[++i];
         } else if (std::strcmp(argv[i], "--serial-tcp") == 0 && i + 1 < argc) {
             serialTcpPort = std::atol(argv[++i]);
         } else if (std::strcmp(argv[i], "--no-verify") == 0) {
@@ -156,7 +159,7 @@ int main(int argc, char** argv) {
     }
     system.setVerifySignatures(!noVerify && System::verifySignaturesDefault());
     if (devUnit) system.setDevUnit(true);   // before any boot: the Boot ROM reads it. (A movie being played sets its own.)
-    if (!devUnit && (!serialOuts.empty() || !serialIns.empty() || serialTcpPort >= 0))
+    if (!devUnit && (!serialOuts.empty() || !serialIns.empty() || serialTcpPort >= 0 || !exceptionHandler.empty()))
         std::cerr << "note: --serial-* only does anything with --dev-unit (or a dev-unit movie)\n";
     // Movies set the machine up themselves (the pinned boot ROM, APU BIOS and cartridge), so a recording replays from
     // exactly the state it started in; dev mode isn't part of that state, so it can't be combined with them.
@@ -222,6 +225,7 @@ int main(int argc, char** argv) {
         if (serialOuts.empty() && serialTcpPort < 0) serialOuts.push_back("-");   // a dev unit's console goes to the terminal by default
         for (const std::string& o : serialOuts) ok = serialHost->addOutput(o, err) && ok;
         for (const std::string& in : serialIns) ok = serialHost->addInput(in, err) && ok;
+        if (!exceptionHandler.empty()) ok = serialHost->setExceptionHandler(exceptionHandler, err) && ok;
         if (serialTcpPort >= 0) {
             if (serialTcpPort > 65535) { err = "--serial-tcp wants a port number"; ok = false; }
             else ok = serialHost->listenTcp((uint16_t)serialTcpPort, err) && ok;
