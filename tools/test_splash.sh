@@ -29,6 +29,10 @@ while read -r frame want; do
     # scanline count had stopped covering). Every pixel the splash draws is opaque (drawn black is 000000ff), so alpha 0 = never drawn.
     undrawn=$(python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); print(sum(1 for i in range(3,len(d),4) if d[i]==0))' "$TMP/f_$frame.rgba")
     if [ "$undrawn" = 0 ]; then echo "  ok  : splash frame $frame has no undrawn pixels"; else echo "  FAIL: splash frame $frame has $undrawn undrawn pixels (alpha 0): the draw-ahead LEAD is off for this timing"; fail=1; fi
+    # once the slide-in is over (about frame 72) the plaque must be exactly the Boot ROM's logo bitmap, edges included
+    if [ "$frame" -ge 80 ]; then
+        if msg=$(python3 "$HERE/check_splash_logo.py" "$TMP/f_$frame.rgba" "$ROOT/ZPbootROM/build/logo_patch.bin"); then echo "  ok  : splash frame $frame has the logo exactly"; else echo "  FAIL: splash frame $frame: $msg"; fail=1; fi
+    fi
 done < <(grep -v '^#' "$HERE/splash_golden.txt")
 [ $fail -eq 0 ] && echo "all ok"
 exit $fail

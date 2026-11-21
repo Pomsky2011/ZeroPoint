@@ -1,7 +1,8 @@
 # test_splash.sh: sha256 of the boot ROM splash's latched frames (raw RGBA, 256x256), recorded from the emulator with the rev-13 raster (a frame is 1/60 s),
-# the retimed splash (SLIDE_DIV 1, FADE_DIV 8) and LEAD 7 (docs: gen_mosaic.py). Each frame was checked for undrawn (alpha 0) pixels and looked at: 20 = plaque entering,
-# 45 = rows crossing mid slide-in, 100 = settled, strobe rising, 150 = strobe near white. frame sha256
-20 a3db9b0d297a889ae317de5fc0e36fd3d0c6552ba7681aa9d2960e58555a91bc
-45 33d2e2f036bb8bbac61ce4028a73c6052b80cec8a604b342a0ff25b1798bad44
-100 3b2ff03a655af4f97cb3a76eabc6616eb79102f4100b65307e220cfaa1426457
-150 7bd55db6a1da1e44109b0c82160d11b3fbe42193819c3e7156e6282af291b0ea
+# the retimed splash (SLIDE_DIV 1, FADE_DIV 8), LEAD 7 and the logo launched on its own scanline (all in ZPbootROM/ppu/code/gen_mosaic.py). Each frame was checked
+# for undrawn (alpha 0) pixels and looked at: 20 = plaque entering, 45 = rows crossing mid slide-in, 100 = settled, strobe rising, 150 = strobe near white.
+# The settled ones are also checked pixel for pixel against the logo bitmap (tools/check_splash_logo.py). frame sha256
+20 50f32525a4540ab77f60c5735e8f32e957de71a8e58a781cb49b7a0a5e547c5a
+45 e3f58ffb12d5b392996c14057dc0a8e3f2baf10e91da311b8246e063e9faf4da
+100 452b237e2641df94185d0295b8fdae6d6aaf908393f6b7d0deda9216a1607f2e
+150 dcd185725deebe56c8f61eef32684296dea2372c6a59f3abb335d5c0f63daa08
