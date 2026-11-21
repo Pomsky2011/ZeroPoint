@@ -39,7 +39,7 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **BCD decimal mode** - For financial calculations
 - **Interrupts** - BRK, COP, IRQ, NMI, RTI
 - **Full 65816 compatibility** + 8086-inspired extensions
-- Test suite: 5/5 tests passing ✅
+- Interrupt vectors are read from the cartridge (`$00:FFE4-$FFFE`); the Boot ROM adds fixed exception entry points (see Dev unit below)
 
 ### PPU (Picture Processing Unit)
 - **Microcode-based graphics processor** @ 68.011355 MHz
@@ -56,21 +56,29 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **Batched executor (`--jit`)** - Fast interpreter path that runs whole instructions and collapses timing stalls, 1.2x-4x faster than per-cycle ticking (not native code generation, despite the flag name)
 
 ### APU (Audio Processing Unit)
-- **8-bit RISC processor** @ 4.25 MHz (~1.06 MIPS)
-- **4 cycles per instruction** - 1 million instructions/second
+- **8-bit RISC processor** @ 4.25 MHz (~2.1 MIPS: 2 cycles per instruction); an opt-in fast mode runs it at 8.5 MHz (~4.25 MIPS) at the price of bus contention on the CPU's APU window
 - **57 instruction mnemonics** (5-bit opcode + 11-bit operands)
 - **16-bit stack** with push/pop operations and function calls
 - **Up to 256 × 8-bit registers** + special registers (PC, SP, RP, DP, DB, BF)
-- **MMP** - Music Mixing Processor for 16 mono channels with per-channel pan
+- **MMP** - Music Mixing Processor: 16 sample channels with per-channel pitch, volume and pan, plus a stereo PCM stream port (how a whole song plays)
 - **SST** - Sample Storage System with looping and effects
 - **64 KiB addressable memory** + 448 KiB banked ROM
 - **Full-system audio output** - `System` polls the MMP mixer at 48 kHz and the SDL frontend pushes it live to the audio device, so cartridge-generated sound reaches real speakers, not just the standalone APU test tool
 
 ### Boot ROM
-- **Bank $E0** - 64 KiB, read-only, mapped at construction; hardware reset lands here instead of bank $00 whenever a boot ROM is loaded
-- **Default stub** (`examples/boot-rom/boot.asm`) - Reads the cartridge entry point from I/O and hands off control via a Work-RAM JMP-long trampoline; does not verify anything
-- **Alternate Boot ROM loading** - `System::loadBootROM()` / `--boot` flag for loading a custom boot ROM in place of the default stub
-- **Signature verification** - the separate `ZPbootROM` project (loaded via `--boot`) verifies RSA-2048/SHA-256-signed ROM trailers (v1/v2/v3, see `docs/zpb-format.md`) before jumping to the cartridge entry point, and halts on any failure. v3 also includes hardware-enforced runtime chunk verification (unverified data chunks read as poison until checked via a `COP #$FF` call into the Boot ROM) so an 8 MB cartridge doesn't have to hash its entire data region at boot
+- **Native (HLE) boot** - with no `--boot`, `System` boots the cartridge itself: it verifies the signature (strict by default), jumps to the entry point and answers the Boot ROM's `COP #$F0-$FF` services natively (`docs/boot-hle.md`)
+- **Real Boot ROM** - the separate `ZPbootROM` project, loaded with `--boot`: splash screen and boot jingle, RSA-2048 signature verification of zpbuild-signed ROM trailers (v1/v2/v3, `docs/zpb-format.md`), hardware-assisted BLAKE2s hashing, and a handoff to the cartridge (`docs/boot-handoff.md`). Any failure halts. v3 adds runtime chunk verification (unverified data chunks read as poison until checked via `COP #$FF`). Services for cartridges: trig/sqrt (`COP #$F0-$F6`) and PPU program load (`COP #$F7`)
+- **Two images** - `ZPbootROM/build.sh` builds `bootrom.bin` (retail: contains no dev-unit code) and `bootrom_dev.bin` (the same, plus the dev-unit hooks below)
+- **Default stub** (`examples/boot-rom/boot.asm`) - a 35-byte trampoline for standalone use; verifies nothing
+- **Bank $E0** - 64 KiB (banks `$E0-$E1` for the real ROM), read-only; hardware reset lands here whenever a Boot ROM is loaded
+
+### Dev unit, debug serial port and exception entries
+- **Dev unit** (`zeropoint_sdl --dev-unit`, `zeropoint_qt --dev-unit`) - a host-only switch the guest can read but never set. It turns the debug serial port (`$D8003C-$D8003E`) into a 115200-baud UART (`--serial-out`, `--serial-in`, `--serial-tcp`; typed input is recorded in movies; the Qt frontend has a Serial Console window) and makes signature checks always pass. A retail unit has the port's registers but nothing ever reads them (`docs/debug-protocol.md`)
+- **Exception entries** - both Boot ROMs have a fixed table at `$E0:0044` that a cartridge's own vector stubs can jump to. The retail image locks; the dev image asks the host for a handler image over the UART (`--exception-handler FILE`), and a dev unit also raises ABORT for writes to ROM and unmapped accesses. A fault inside the handler is a double fault and locks (`docs/exceptions.md`)
+
+### Movies and determinism
+- **Determinism** - same ROM + input gives the same state on any host or thread count; checked by `test_determinism`, `fuzz_determinism` and cross-host golden digests (`docs/determinism.md`)
+- **Movies** (`.zpm`) - record and replay both controllers, resets, cartridge swaps and serial input at exact master cycles, with embedded state checkpoints (`--record`, `--play`, `bin/zp_movie`; `docs/movies.md`)
 
 ### DMA Controller ✅ COMPLETE!
 - **16 independent channels** @ 34.005678 MHz
@@ -79,7 +87,6 @@ ZeroPoint is a fantasy console with custom programmable graphics (PPU) and audio
 - **Interrupt-aware** - Pauses during CPU interrupts, resumes automatically
 - **I/O registers** - Full status monitoring at $D80020-$D8002F
 - **Integrated** - Connected to CPU memory system with callbacks
-- Test suite: 7/7 tests passing ✅
 
 ### Hardware Timers ✅ COMPLETE! ✨ NEW!
 - **8 independent timers** with CPU IRQ support
@@ -180,6 +187,8 @@ no `.app`/`.icns` packaging (plain executables only). See
 - `bin/run_demo <demo.bin> [--jit]` - Run PPU demo with SDL window (optional batched-executor mode)
 - `bin/test_demo <demo.bin>` - Run PPU demo headless (testing)
 - `bin/run_apu_demo <program.bin>` - Run APU program with audio output
+- `bin/zp_movie` - inspect, seal and replay `.zpm` movies
+- `bin/test_serial`, `bin/test_exception`, `bin/test_qt_serial` - dev unit, serial port and exception-entry tests (`tools/test_serial.sh`, `tools/test_exception.sh`)
 
 ## Creating Demos
 
@@ -204,9 +213,10 @@ cd ../ZeroPoint/build
 ## Documentation
 
 ### Core Documentation
-- `CLAUDE.md` - **Condensed system architecture** (184 lines, all essential info)
+- `CLAUDE.md` - **Condensed system architecture** (the working reference for the whole project)
 - `README.md` - This file (quick start and overview)
-- `TODO.md` - Development status and roadmap
+- `ROADMAP.md` / `TODO.md` - What is left, and what a release needs
+- `docs/` - Per-subsystem documentation: `boot-hle.md`, `boot-handoff.md`, `zpb-format.md`, `debug-protocol.md`, `exceptions.md`, `movies.md`, `determinism.md`, `ppu.md`, `display.md`, `dma.md`
 - `docs/INSTRUCTION_IMPLEMENTATION_GUIDE.md` - **Complete guide for implementing CPU/PPU/APU instructions** (400+ lines) ✨ NEW!
 
 ### CPU (DEF88186)
@@ -238,7 +248,11 @@ cd ../ZeroPoint/build
 
 **DMA**: ✅ **COMPLETE!** All 4 transfer modes implemented with 16-channel support. Fully integrated with CPU memory system and interrupt handling. Comprehensive test suite (7/7 passing).
 
-**Boot ROM**: ✅ **INFRASTRUCTURE COMPLETE!** Bank $E0 mapped read-only, hardware reset hands off to the cartridge via the default stub or a custom `--boot` ROM. The separate `ZPbootROM` project (opt-in via `--boot`) adds full RSA-2048/SHA-256 signature verification of zpbuild-signed ROM trailers, halting on failure instead of booting.
+**Boot ROM**: ✅ **COMPLETE.** Native (HLE) boot by default, or the real `ZPbootROM` (retail or dev image) via `--boot`: signature verification, splash, jingle, handoff, math and PPU-load services, and exception entries.
+
+**Dev tooling**: ✅ dev unit with a debug serial UART, handler images for exceptions, and movie record/replay, on both the SDL and Qt frontends (the Vulkan target only plays PPU programs, with no `System` behind it).
+
+The emulator core is at **revision 12** (`System::CORE_REVISION`). Everything added after revision 10 is off on a retail unit, so ROMs, movies and golden hashes from revision 10 still run identically.
 
 ## License
 

@@ -1,361 +1,50 @@
-# ZeroPoint Roadmap to Final Release
+# ZeroPoint Roadmap
 
-## Current Status (2026-07-17)
+Status as of **2026-11-21**. The emulator, the Boot ROM and the dev/debug tooling are built; what is left is mostly release
+engineering, coverage and documentation. (The old phase plan, week estimates and checklist here described the project as it was in
+July and had gone stale; the history is in `git log`. Day-to-day open items are in `TODO.md`, the architecture is in `CLAUDE.md`.)
 
-### ✅ Complete & Production Ready
-- **CPU (DEF88186)**: All 256 opcodes, hardware multiply/divide, loops, interrupts ✅
-- **PPU**: Display system, tiles (with tile banking), palettes, interrupts, VOC, concurrent TILEDRAW blitter, batched executor (`--jit`) ✅
-- **APU**: All 47 instructions, MMP audio (16 stereo channels), SST system ✅
-- **DMA**: All 4 transfer modes, 16 channels, interrupt-aware ✅
-- **C Compiler**: ~95% complete! Pointers, structs, unions, enums, typedef, arrays, all operators, all control flow ✅
-- **Development Tools**: Assemblers (CPU/PPU/APU), ROM builder, disassemblers ✅
-- **Boot ROM**: System initialization and cartridge handoff, plus RSA-2048/SHA-256 signature verification of zpbuild-signed (v2/v3) ROM trailers — hardware-enforced runtime chunk verification for v3's chunked-data-manifest (`ZPbootROM/def88186/rsa.def`) ✅
-- **Basic CLI debugger** (`bin/debugger`): register inspection, single-instruction stepping, CPU-PC breakpoints, raw memory read/write across CPU/PPU/APU ✅
+## What is done
 
-### 🔧 Remaining Core Work
-- **System Integration**: CPU ↔ PPU ↔ APU communication polish (Phase 1)
-- **Debuggers**: PPU/APU-specific debugging views beyond the basic CLI debugger (Phase 3)
-- **Documentation**: User manual, tutorials, examples (Phase 5)
+- **Hardware:** the DEF88186 CPU (all 256 opcodes), PPU (tiles, banks, the concurrent TILEDRAW blitter, line blitter, tile-row queue,
+  layers/sprites microcode), APU (MMP mixer, stream port, ADPCM player, ZPA sequencer), DMA, timers, interrupt controller, BLAKE2s engine.
+- **Boot:** a native (HLE) boot, and the real `ZPbootROM`: splash, jingle, RSA-2048 verification of v1/v2/v3 signed ROMs, chunk
+  verification, math and PPU-load services, handoff, exception entries. Two images: retail (no dev code) and dev.
+- **Dev unit:** a host-only switch with a debug serial UART, handler images for exceptions, dev-unit faults, and serial input
+  recorded in movies. SDL and Qt frontends.
+- **Movies and determinism:** `.zpm` record/replay with checkpoints, cross-host golden digests, fuzzers, sanitizer builds.
+- **Toolchain (`ZPdevtools`):** assemblers and disassemblers for all three processors, the linker and signer, two C compilers, an SDK,
+  and a rewritten documentation tree whose tables are generated and whose code blocks are assembled by a checker.
+- **Platforms:** Windows, Linux, macOS on x64 and ARM64, all built by CI (green as of `ec2b89e`).
+- **Compatibility rule:** the emulator is frozen at revision 10 behaviour. The core is at revision 12 and everything added since is
+  off on a retail unit, so revision 10 ROMs, movies and golden hashes still run identically.
 
-**The hardware emulation, boot/signing chain, and a basic debugger are done. Most remaining work is deeper debugging tooling and documentation.**
+## What a release needs
 
----
+None of this exists yet.
 
-## Phase 1: Core System Integration (2-3 weeks)
+1. **A release process.** No tags, GitHub releases, version number (only `CORE_REVISION`) or changelog exist. Decide the version
+   scheme and what a release ships: emulator binaries per platform, the retail `bootrom.bin`, and the ZPdevtools bundle.
+2. **A Boot ROM distribution decision.** `*.bin` is not tracked, so `bootrom.bin` has to be built and published. The dev image bypasses
+   signatures, so decide whether it ships at all, and how it is named so nobody mistakes it for retail. Any movie pinning a Boot ROM
+   by hash needs the file it was recorded with.
+3. **CI coverage.** ZPbootROM and ZPdevtools have no CI. ZeroPoint's CI only builds: `test_serial`, `test_exception`,
+   `test_qt_serial`, the handoff test and the determinism goldens do not run there (they need the sibling repos and the ROM builds).
+   A release workflow that checks out all three repos, builds both Boot ROMs and runs the suites would close this.
+4. **A clean test run.** `test_hle_cop` fails (pre-existing); fix it or waive it explicitly.
+5. **Runtime checks on Windows and macOS** for the serial port, the Qt console and the exception flow.
+6. **An adversarial review of the dev/retail separation** (the latch, the dev image, the exception table, the fault gating) before
+   anything security-relevant is called secure.
+7. **Docs:** a user manual and a getting-started guide ("hello world" from assembly to a signed ROM running on the emulator); this
+   README and `docs/` are current, the manual does not exist.
+8. **Examples:** a small demo collection for PPU, APU and CPU, and a complete game demo (`ZPdevtools/examples/` has the building blocks;
+   the game template lives in its own repo).
 
-### 1.1 System Boot & Initialization ⚡ CRITICAL
-- [x] **Boot ROM implementation** — bank $E0, default stub + ZPbootROM splash;
-  RSA-2048/SHA-256 signature verification (v1/v2/v3 trailers) and v3 runtime
-  chunk verification via `COP #$FF` are done (see `docs/zpb-format.md`)
-  - System initialization sequence
-  - Hardware detection and setup
-  - Default interrupt vectors
-  - [ ] Basic diagnostics — hardware self-test lives in
-    `examples/boot-rom/tester/`, not yet the default boot path
-  - User program loader
-- [ ] **Memory mapping finalization**
-  - CPU memory map validation ($00-$FF banks)
-  - APU window ($A0xxxx) integration
-  - PPU window ($B0xxxx) integration
-  - I/O registers ($D80000-$D80047) finalization
-- [ ] **Interrupt vector system**
-  - Proper IRQ/NMI handling in CPU
-  - Interrupt priority and masking
-  - Vector table at $FFFA-$FFFF
-  - CPU interrupt integration with PPU/APU
+## Beyond 1.0 (optional)
 
-**Deliverable**: Bootable system that initializes all hardware and loads user programs
-
-### 1.2 Inter-Component Communication ⚡ CRITICAL
-- [ ] **CPU ↔ PPU interface**
-  - CPU writes to PPU window ($B0xxxx)
-  - CPU reads from PPU VOC registers
-  - CPU triggers PPU operations via I/O registers
-  - Test: CPU-controlled graphics demo
-- [ ] **CPU ↔ APU interface**
-  - CPU writes to APU window ($A0xxxx)
-  - CPU controls MMP channels from main program
-  - APU status register reads
-  - Test: CPU-triggered audio playback
-- [ ] **DMA integration testing**
-  - CPU-initiated DMA transfers to PPU
-  - CPU-initiated DMA transfers to APU
-  - Multi-channel concurrent transfers
-  - Performance benchmarking
-
-**Deliverable**: Unified system where CPU can control all components
-
-### 1.3 System-Level Testing
-- [ ] **Integration test suite**
-  - CPU + PPU rendering test
-  - CPU + APU audio test
-  - CPU + DMA transfer test
-  - Full system test (all components active)
-- [ ] **Performance validation**
-  - Clock synchronization verification
-  - Timing accuracy measurement
-  - Frame rate stability (60 Hz target)
-  - Audio sync validation (48 kHz)
-
-**Deliverable**: Comprehensive test suite proving system stability
-
----
-
-## Phase 2: Toolchain Completion (2-3 weeks)
-
-### 2.1 C Compiler Polish (OPTIONAL)
-- [ ] **Multi-dimensional array subscripting**
-  - Direct `matrix[i][j]` syntax (currently requires workaround)
-  - Code generation for nested subscripts
-  - Test: Matrix operations
-- [ ] **Struct initialization**
-  - Complete struct initializer lists
-  - Nested struct initialization
-  - Test: Complex data structure init
-- [ ] **Function pointers** (optional)
-  - Function pointer declaration
-  - Function pointer calls
-  - Callbacks and dispatch tables
-  - Test: Event system
-- [ ] **Preprocessor integration** (optional)
-  - #include, #define, #ifdef support
-  - Or document using cpp separately
-
-**Deliverable**: C compiler supporting 100% of practical C89 features
-
-**Note**: C compiler is already ~95% complete! Pointers, structs, unions, enums, typedef, arrays, all operators, and all control flow are DONE.
-
-### 2.2 Development Tools Enhancement
-- [ ] **Disassembler improvements**
-  - Better formatting and comments
-  - Symbol table support
-  - Cross-references
-- [ ] **Assembler macros**
-  - Macro definition and expansion
-  - Conditional assembly
-  - Include file support
-  - Better error messages
-- [ ] **ROM builder enhancements**
-  - Metadata embedding
-  - Compression support
-  - Multiple program segments
-  - Debug symbol export
-
-**Deliverable**: Professional-grade development toolchain
-
----
-
-## Phase 3: Developer Experience (1-2 weeks)
-
-### 3.1 Debugging Tools ⚡ HIGH PRIORITY
-- [x] **CPU debugger** — `bin/debugger` (`tools/debugger.cpp`): headless REPL,
-  register inspection, memory read/write, PC breakpoints, single-instruction
-  stepping (whole master clock, so PPU/APU/DMA stay in sync), `continue`
-  - Register inspection
-  - Memory viewer/editor
-  - Breakpoints
-  - Single-step execution
-  - [ ] Call stack trace
-- [ ] **PPU debugger**
-  - PC tracing
-  - Register watch points
-  - VRAM viewer
-  - Tile/palette inspector
-  - Frame capture
-- [ ] **APU debugger**
-  - Register/stack inspection
-  - Audio channel viewer
-  - Waveform display
-  - Sample inspector
-
-**Deliverable**: Interactive debugging environment
-
-### 3.2 Emulator Features
-- [x] **Window scaling options** — configurable scale in Qt settings dialog (`qt/mainwindow.cpp`)
-  - Fullscreen mode
-  - Aspect ratio options
-  - Scanline filters (optional)
-- [ ] **Save states**
-  - Full system state serialization
-  - Quick save/load hotkeys
-  - Multiple save slots
-- [ ] **Input handling**
-  - Keyboard mapping configuration
-  - Gamepad support
-  - Input recording/playback
-
-**Deliverable**: User-friendly emulator with modern features
-
----
-
-## Phase 4: Performance & Polish (1-2 weeks)
-
-### 4.1 Performance Optimization
-- [ ] **JIT compiler stabilization**
-  - Debug and fix remaining ARM64 issues
-  - Add safety checks and error handling
-  - Performance benchmarking vs interpreter
-  - Make JIT default when stable
-- [ ] **Interpreter optimization**
-  - Instruction dispatch optimization
-  - Memory access caching
-  - Hot path optimization
-- [ ] **Display optimization**
-  - Hardware scrolling implementation
-  - Display caching strategies
-  - Reduce render overhead
-
-**Deliverable**: Stable 60 FPS performance on all platforms
-
-### 4.2 Code Quality & Testing
-- [ ] **Extended test suites**
-  - CPU: All instruction categories
-  - PPU: All rendering modes
-  - APU: All audio features
-  - System: Edge cases and stress tests
-- [ ] **Code cleanup**
-  - Remove debug output (or gate behind flags)
-  - Consistent error handling
-  - Code documentation
-  - Memory leak checking
-- [ ] **CI/CD enhancement**
-  - Automated testing on all platforms
-  - Performance regression detection
-  - Binary artifact generation
-
-**Deliverable**: High-quality, well-tested codebase
-
----
-
-## Phase 5: Documentation & Examples (1-2 weeks)
-
-### 5.1 Documentation Completion
-- [ ] **User manual**
-  - Getting started guide
-  - System architecture overview
-  - Programming tutorials
-  - API reference
-  - Troubleshooting guide
-- [ ] **Developer guide**
-  - Building from source
-  - Contributing guidelines
-  - Architecture deep-dive
-  - Porting guide
-- [ ] **Specification documents**
-  - Complete hardware specification
-  - Instruction set reference
-  - Memory map reference
-  - Timing diagrams
-
-**Deliverable**: Comprehensive documentation package
-
-### 5.2 Example Programs
-- [ ] **PPU demo collection**
-  - Hello World (simple pixel)
-  - Color bars and gradients
-  - Tile-based graphics
-  - Sprite animation
-  - Scrolling background
-  - Particle effects
-- [ ] **APU demo collection**
-  - Tone generation
-  - Music playback
-  - Sound effects
-  - Multi-channel mixing
-- [ ] **Full game demo**
-  - Simple game using all components
-  - C source code included
-  - Build instructions
-  - Educational comments
-
-**Deliverable**: 10+ example programs demonstrating all features
-
----
-
-## Phase 6: Final Release Preparation (1 week)
-
-### 6.1 Release Engineering
-- [ ] **Version 1.0 feature freeze**
-- [ ] **Final testing pass**
-  - All platforms (Windows, Linux, macOS)
-  - All architectures (x64, ARM64)
-  - All example programs
-- [ ] **Release notes**
-  - Feature list
-  - Known limitations
-  - Future roadmap
-  - Credits and acknowledgments
-- [ ] **Licensing**
-  - Choose license (MIT, GPL, Apache, etc.)
-  - Add license headers to all files
-  - Third-party attribution
-- [ ] **Distribution packages**
-  - Binary releases for all platforms
-  - Source code archive
-  - Documentation bundle
-  - Example programs collection
-
-**Deliverable**: ZeroPoint 1.0 Release
-
----
-
-## Post-Release: Optional Enhancements
-
-### Graphics Extensions
-- [ ] Hardware scrolling
-- [x] ~~Sprite system~~ — by design, not planned as a dedicated layer; done manually on top of the tile system
-- [ ] Additional blending modes
-- [ ] Transparency effects
-
-### Audio Extensions
-- [ ] Reverb/echo effects implementation
-- [x] Cubic (Catmull-Rom) sample interpolation — replaces linear; true Gaussian windowing not pursued
-- [ ] Advanced sample looping
-- [ ] Real-time audio effects
-
-### JIT Extensions
-- [ ] ARMv8/ARMv7/ARMv6 (Switch, PS Vita, 3DS)
-- [ ] PowerPC 32-bit (Wii, Wii U)
-- [ ] PowerPC 64-bit (Xbox 360, PS3)
-- [ ] RISC-V support
-
-### Community Features
-- [ ] Online program repository
-- [ ] Program sharing and rating
-- [ ] Collaborative development tools
-- [ ] Discord/forum community
-
----
-
-## Timeline Summary
-
-| Phase | Duration | Priority | Deliverable |
-|-------|----------|----------|-------------|
-| 1. Core System Integration | 2-3 weeks | ⚡ Critical | Bootable unified system |
-| 2. Toolchain Polish | 1 week | Low | C compiler 100% (optional) |
-| 3. Developer Experience | 1-2 weeks | ⚡ High | Debugging tools |
-| 4. Performance & Polish | 1-2 weeks | Medium | Stable 60 FPS |
-| 5. Documentation & Examples | 1-2 weeks | ⚡ High | Complete docs |
-| 6. Final Release Prep | 1 week | ⚡ Critical | v1.0 Release |
-| **Total** | **7-11 weeks** | | **ZeroPoint 1.0** |
-
-**Note**: C compiler is essentially complete (~95%), so Phase 2 is mostly optional polish!
-
----
-
-## Success Criteria for v1.0
-
-### Functional Requirements ✅
-- [x] Boot ROM initializes all hardware
-- [ ] CPU can control PPU and APU via memory windows
-- [ ] DMA transfers work reliably
-- [ ] C compiler can build non-trivial programs (with pointers and structs)
-- [ ] Debugger allows inspection of all components
-- [ ] 60 FPS sustained performance on modern hardware
-- [ ] Clean audio at 48 kHz with no glitches
-- [ ] All test suites pass (CPU, PPU, APU, DMA, System)
-
-### User Experience ✅
-- [ ] Installation takes < 5 minutes
-- [ ] "Hello World" program works in < 10 minutes
-- [ ] Documentation covers all features
-- [ ] Example programs demonstrate all capabilities
-- [ ] Error messages are clear and helpful
-
-### Quality Standards ✅
-- [ ] No crashes on valid programs
-- [ ] Memory leaks < 1 KB/hour
-- [ ] Code coverage > 80% (where applicable)
-- [ ] Works on Windows, Linux, macOS (x64 + ARM64)
-- [ ] Professional documentation
-
----
-
-## Notes
-
-- **Critical Path**: Phases 1, 5, and 6 are on the critical path to release
-- **Parallelization**: Phases 2 and 3 can be developed concurrently
-- **Optional Features**: Post-release items are nice-to-have, not blockers
-- **Community Input**: Consider beta release after Phase 5 for feedback
-
-**Target Release Date**: 3 months from start of Phase 1
+- **Hardware:** APU-initiated DMA or an APU-to-CPU interrupt (a new revision, needs a spec first), reverb and effects on the APU,
+  more blend modes.
+- **Tooling:** PPU and APU debugger views, save states, a guest-side serial monitor, assembler macros, compiler optimisation passes.
+- **Targets:** JIT for ARMv8/7/6 (Switch, Vita, 3DS), PowerPC 32/64 (Wii/U, 360, PS3), RISC-V. The current "JIT" is the batched
+  executor, not native codegen.
+- **Community:** a program repository and sharing tools.

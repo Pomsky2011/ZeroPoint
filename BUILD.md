@@ -211,6 +211,23 @@ cd build/bin
 ./test_dma          # Test DMA controller
 ```
 
+### Boot ROMs
+The real Boot ROM lives in the sibling `ZPbootROM` repo and needs `ZPdevtools` built next to it:
+```bash
+cd ../ZPdevtools && make
+cd ../ZPbootROM && ./build.sh        # build/bootrom.bin (retail) and build/bootrom_dev.bin (dev)
+cd ../ZeroPoint
+./build/bin/zeropoint_sdl game.zpb --boot ../ZPbootROM/build/bootrom.bin
+```
+Without `--boot` the emulator boots natively. The dev image only skips verification on a dev unit (`--dev-unit`).
+
+### Dev unit, serial port and exception tests
+These need `ZPdevtools` and both Boot ROM images built as above:
+```bash
+sh tools/test_serial.sh       # UART unit tests, a guest program on the SDL frontend, record + replay, the Qt frontend
+sh tools/test_exception.sh    # exception entries with the real Boot ROMs (about half a minute)
+```
+
 ### Dev Tools
 ```bash
 cd ../ZPdevtools
@@ -223,7 +240,6 @@ executables/zplink -o test.elf --cpu cpu.bin@0x8000 --entry 0x8000 && executable
 
 - `CLAUDE.md` - System architecture overview
 - `README.md` - Quick start and features
-- `TODO.md` - Development status
-- `ZPdevtools/README.md` - Dev tools documentation
-- `ZPdevtools/README_DOS.txt` - DOS build instructions
-- `ZPdevtools/C89_PORTING_GUIDE.txt` - C89 compatibility guide
+- `ROADMAP.md` / `TODO.md` - What is left, and what a release needs
+- `ZPdevtools/README.md` - Dev tools documentation (index: `ZPdevtools/docs/README.md`)
+- `ZPdevtools/docs/dos/README.md` - DOS build instructions and the C89 rules

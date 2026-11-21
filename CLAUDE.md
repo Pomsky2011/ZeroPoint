@@ -2,7 +2,7 @@
 
 Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
-## Status: emulator + boot ROM done (dev-unit boot ROM); only ZPdevtools work remains
+## Status: emulator + Boot ROM done (retail and dev images); only ZPdevtools work and release engineering remain
 
 **All new revisions must be backwards compatible with revision 10** (`System::CORE_REVISION`, now 12: dev unit + its faults, off = rev 10).
 ROMs, movies and goldens that run on rev 10 must keep running identically. Don't change emulation
