@@ -14,8 +14,11 @@ of finished work, which had gone stale; it was cut down to what is actually open
 
 - **CI has not seen it.** The determinism goldens (`tools/determinism_golden.txt`) were regenerated on one Linux x86-64 host; the other five CI
   platforms have to confirm they match. Same for the splash goldens (`tools/splash_golden.txt`).
-- **`test_hle_cop.sh` and `test_cart_slot.sh` were not run** after the raster change: they need `../ZPgameTemplate/build/game.elf`, which is not
-  checked out here. Their cycle costs are CPU-side, so they should be unaffected, but that is unverified.
+- **`test_hle_cop.sh` fails 5 checks since the raster change** (run 2026-11-21, 30 others pass): the `COP #$F7` PPU load, `pages=4,5,16,64,256`,
+  where the real Boot ROM takes 1800/2375/6981/27705/110613 cycles and the HLE charges 1944/2376/7128/27864/110808 (0-8% over; the PPU bytes
+  and A match, but the real ROM leaves `$034A` 00 where the HLE has 01). The stretched raster changed the real ROM's PPU handshake wait, so the
+  HLE's cost model needs retuning, not the emulation. `test_cart_slot.sh` passes. Both build their own stub cartridge now (`tools/stub_elf.sh`),
+  no longer `../ZPgameTemplate/build/game.elf`.
 - **`TIMER_HBLANK_PERIOD` is still master/4096** (~3.8 scanlines), not one scanline (`LINE_CYCLES`). It was never one; left alone so the timer set
   did not change twice. Make it `LINE_CYCLES` if a program ever wants a per-scanline tick (it would not be phase-locked to the raster either).
 - **The frontends (Qt, SDL) were not run interactively** on the 1/60 s frame; `test_frame_pacer`, `test_latch_skip` and the Qt offscreen tests pass.

@@ -47,7 +47,7 @@ Don't change emulation behavior; if a change truly can't avoid it, ask first. Ru
 - **Layers + sprites microcode** (`ZPdevtools/ucode/layers`, `docs/ppu/layers.md`): two scrolling 64x64 BG layers, per-band sprite lists (3 priorities: behind BG0 / between / above; `docs/ppu/layers.md`) and
   one standstill window layer above all (textbox/HUD spans; solid ones cull the BG under them) on that queue; `bin/test_layers <layers.bin>` checks whole frames against a reference and that no band goes late, even saturated.
   Demo cart: `ZPdevtools/ucode/layers/demo/build_demo.py` -> `build/demo.zpb`, run with `zeropoint_sdl` (or `dump_splash none <cart> ...` headless).
-  C library for the console side: `ZPdevtools/include/zeropoint/zp_layers.h` (`docs/sdk/README.md`), example `examples/layers-game/`, tests `tests/cc/t16-t18`, `tests/layers/run.sh`.
+  C library for the console side: `ZPdevtools/include/zeropoint/zp_layers.h` (`docs/sdk/README.md`), example = the game template `ZPdevtools/game-template` (art as PNGs through `scripts/png2zp.py`, `docs/tools/png2zp.md`; `examples/layers-game/` builds it), tests `tests/cc/t16-t18`, `tests/layers/run.sh`, `scripts/test_png2zp.py`.
 
 - **Boot ROM splash logo**: the ZEROPOINT plaque is drawn by the line blitter, one run per scanline, odd rows sliding in
   from the right and even from the left (slide-out at handoff). A display frame is 1/60 s (rev 13; the animation divisors

@@ -60,6 +60,7 @@ if [ "$MODE" = all ]; then
     echo "== C compilers and the layers library (ZPdevtools)"
     if need "$DEV/llvm_compiler/zpcc" "cc suite" && need "$DEV/c_compiler/def88186cc" "cc suite"; then
         t cc_suite env ZP_BUILD="$ZP/build" bash "$DEV/tests/cc/run.sh"
+        t png2zp python3 "$DEV/scripts/test_png2zp.py"
         t layers_lib env ZP_BUILD="$ZP/build" bash "$DEV/tests/layers/run.sh"
     fi
     echo "== determinism and movies"
