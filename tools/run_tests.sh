@@ -57,6 +57,11 @@ if [ "$MODE" = all ]; then
         python3 "$DEV/ucode/layers/gen_layers.py" > "$LOG/gen_layers.log" 2>&1
         for seed in 1 2 3; do t "test_layers_seed$seed" "$BIN/test_layers" "$DEV/ucode/layers/build/layers.bin" "$seed"; done
     fi
+    echo "== C compilers and the layers library (ZPdevtools)"
+    if need "$DEV/llvm_compiler/zpcc" "cc suite" && need "$DEV/c_compiler/def88186cc" "cc suite"; then
+        t cc_suite env ZP_BUILD="$ZP/build" bash "$DEV/tests/cc/run.sh"
+        t layers_lib env ZP_BUILD="$ZP/build" bash "$DEV/tests/layers/run.sh"
+    fi
     echo "== determinism and movies"
     t test_determinism_hle "$BIN/test_determinism" none "$DEMO" 2
     t test_batched_hle "$BIN/test_batched" none "$DEMO" 2
