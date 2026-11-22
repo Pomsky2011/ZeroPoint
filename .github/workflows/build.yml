@@ -312,9 +312,11 @@ jobs:
         echo ""
         echo "================================"
 
-  # A pushed tag v* (e.g. v1.0.0-rc1) turns the six platform builds into a GitHub release: a tag with a '-' in it (-rc1, -beta) is a
-  # pre-release. The notes are docs/release-notes/<tag>.md. The Boot ROM / APU BIOS zips are binaries built outside CI (the ZPbootROM
-  # source is private) and are uploaded to the release by hand afterwards.
+  # A pushed tag v* (e.g. v1.0.0-rc2) turns the six platform builds into a GitHub release: a tag with a '-' in it (-rc1, -beta) is a
+  # pre-release. The notes are docs/release-notes/<tag>.md. The Boot ROM and APU BIOS are binaries built outside CI (the ZPbootROM
+  # source is private): they are committed in bootroms/ (tools/update_bootroms.sh refreshes them) and this job puts that directory
+  # into every platform zip, next to the emulator, and also makes a zeropoint-bootroms zip of it. (GitHub releases of this repo are
+  # immutable, so nothing can be added by hand after the release exists: everything has to be created here.)
   release:
     name: GitHub release
     needs: [build-windows, build-windows-arm64, build-linux, build-linux-arm64, build-macos-intel, build-macos-arm64]
@@ -332,14 +334,24 @@ jobs:
       with:
         path: artifacts
 
+    - name: Check the Boot ROM and APU BIOS binaries
+      run: |
+        # what the release ships must be what bootroms/SHA256SUMS.txt says (a movie pins the Boot ROM by hash: no accidental swap)
+        (cd bootroms && sha256sum -c SHA256SUMS.txt)
+        test -f bootroms/bootrom.bin && test -f bootroms/dev/bootrom_dev.bin && test -f bootroms/bios_full.bin
+
     - name: Package
       run: |
         mkdir dist
         for d in artifacts/*; do
           # the frontends and tools, not the test/fuzz/bench binaries
           find "$d" -type f \( -name 'test_*' -o -name 'fuzz_*' -o -name 'bench_*' -o -name 'make_test_rom*' -o -name 'dump_cpu_table*' \) -delete
+          # the Boot ROM and APU BIOS go next to the emulator: zeropoint_sdl game.zpb --boot bootroms/bootrom.bin
+          mkdir "$d/bootroms" && cp -r bootroms/. "$d/bootroms/"
           (cd "$d" && zip -r -q "$GITHUB_WORKSPACE/dist/$(basename "$d")-$GITHUB_REF_NAME.zip" .)
         done
+        # ...and on their own, for people who already have the emulator
+        (cd bootroms && zip -r -q "$GITHUB_WORKSPACE/dist/zeropoint-bootroms-$GITHUB_REF_NAME.zip" .)
         (cd dist && sha256sum *.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
     - name: Create the release

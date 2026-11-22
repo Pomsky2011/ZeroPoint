@@ -57,8 +57,10 @@ tools/test_arm64_alloc
 
 # Compiled assembly/ROM files
 *.bin
+!/bootroms/**/*.bin
 *.rom
 *.txt
+!/bootroms/*.txt
 # ...except the cross-platform determinism digests CI checks (tools/fuzz_determinism --golden-check)
 !tools/determinism_golden.txt
 !CMakeLists.txt

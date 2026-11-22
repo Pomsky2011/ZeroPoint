@@ -1,0 +1,13 @@
+ZeroPoint Boot ROM and APU BIOS: the binary files in this archive are in the public domain
+
+To the extent possible under law, Alexander White has dedicated the binary files in this archive to the public domain
+worldwide, under the CC0 1.0 Universal Public Domain Dedication: https://creativecommons.org/publicdomain/zero/1.0/
+
+You can copy, modify, distribute, disassemble, decompile, reverse engineer and use these files for any purpose,
+commercial or not, without asking permission and without attribution.
+
+This applies to the binaries only. The source code they were built from (the private ZPbootROM repository) is not part
+of this dedication: it is not published, and its copyright is not waived. Publishing or sharing that source without
+the author's permission is not allowed.
+
+The files are provided as is, without warranty of any kind.
