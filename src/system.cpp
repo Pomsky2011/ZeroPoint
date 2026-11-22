@@ -1,5 +1,6 @@
 #include "system.h"
 #include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <fstream>
@@ -192,6 +193,8 @@ bool System::cacheROM(const ROM& rom) {
     // it immediately below, for callers that don't want the power-on delay.)
     pendingRomData.assign(rom.getData(), rom.getData() + rom.getSize());
     cartridgeMapped = false;
+    cpu.unmapSave();   // (a cartridge already on the bus must not keep pointing at bytes that are about to be reallocated)
+    saveBytes.assign(rom.getSaveSize(), 0xFF);   // a new cartridge's SRAM is blank (erased: all $FF) until the host loads a .sav
 
     // Same "not mapped until reset()" deferral as pendingRomData - see the
     // cartridge-bus comment below. Empty (and bank $E2 cleared at reset)
@@ -238,7 +241,14 @@ bool System::cacheROM(const ROM& rom) {
 void System::mapCartridgeNow() {
     cpu.mapCartridge(pendingRomData.data(), pendingRomData.size(), pendingSignedMetadata.data(),
                      pendingSignedMetadata.size(), pendingTrailerVersion, pendingCodeSize, pendingChunkCount);
+    if (!saveBytes.empty()) cpu.mapSave(saveBytes.data(), saveBytes.size());
     cartridgeMapped = true;
+}
+
+bool System::setSave(const uint8_t* data, size_t size) {
+    if (saveBytes.empty() || size != saveBytes.size()) return false;
+    std::memcpy(saveBytes.data(), data, size);
+    return true;
 }
 
 bool System::insertCartridge(const std::vector<uint8_t>& image) {
@@ -256,6 +266,7 @@ bool System::insertCartridge(const std::vector<uint8_t>& image) {
 void System::ejectCartridge() {
     idleDetect.drop(cpu);
     cpu.ejectCartridge();
+    saveBytes.clear();   // the SRAM left with the cartridge (CPU only pointed at it, and has just unmapped it)
     pendingRomData.clear();
     pendingSignedMetadata.clear();
     pendingTrailerVersion = 0;
@@ -1268,6 +1279,12 @@ std::vector<std::pair<const char*, uint64_t>> System::hashParts(bool presentatio
         mixv(pendingTrailerVersion); mixv(pendingCodeSize); mixv(pendingChunkCount);
         mixv(pendingRomData.size()); mixv(pendingSignedMetadata.size());
     })});
+    if (!saveBytes.empty()) {   // only a cartridge with SRAM has this part: every other machine hashes as it did on revision 13
+        out.push_back({"save", part([&](auto mixv) {
+            mixv(saveBytes.size());
+            for (uint8_t b : saveBytes) mixv(b);
+        })});
+    }
     out.push_back({"audio", part([&](auto mixv) {
         mixv(audioDigest);
         if (presentation) {   // what is waiting to be drained is the host's business, not the machine's

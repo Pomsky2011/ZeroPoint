@@ -31,6 +31,7 @@ public:
 
     // The command line's --dev-unit / --serial-out / --serial-in / --serial-tcp / --exception-handler (same as zeropoint_sdl). Call before loading.
     void setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort, const QString &exceptionHandler);
+    void setSavesEnabled(bool on);   // --no-save turns the .sav files off (EmulatorWidget::setSavesEnabled)
 
 private slots:
     void onLoadROM();

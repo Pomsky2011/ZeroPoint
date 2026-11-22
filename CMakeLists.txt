@@ -136,6 +136,7 @@ set(CORE_SOURCES
     src/default_boot_rom.cpp
     src/boot_hle/boot_hle.cpp
     src/movie.cpp
+    src/save_file.cpp
 )
 
 set(CORE_HEADERS
@@ -147,6 +148,7 @@ set(CORE_HEADERS
     include/apu.h
     include/cpu.h
     include/movie.h
+    include/save_file.h
 )
 
 add_library(zeropoint_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
@@ -268,6 +270,16 @@ else()
     target_link_libraries(test_qt_movie zeropoint_core zeropoint_serial_host Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
 endif()
 
+# The Qt frontend's .sav handling (QT_QPA_PLATFORM=offscreen; tools/test_save_cli.sh runs it)
+add_executable(test_qt_save tools/test_qt_save.cpp qt/emulatorwidget.cpp qt/audiooutput.cpp qt/emulatorwidget.h qt/audiooutput.h)
+target_include_directories(test_qt_save PRIVATE ${CMAKE_SOURCE_DIR}/qt)
+set_target_properties(test_qt_save PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if(QT_VERSION_MAJOR EQUAL 6)
+    target_link_libraries(test_qt_save zeropoint_core zeropoint_serial_host Qt6::Core Qt6::Widgets ${ZP_SDL2_TARGET})
+else()
+    target_link_libraries(test_qt_save zeropoint_core zeropoint_serial_host Qt5::Core Qt5::Widgets ${ZP_SDL2_TARGET})
+endif()
+
 # The Qt frontend's debug serial port (dev unit) end to end (QT_QPA_PLATFORM=offscreen; tools/test_serial.sh runs it)
 add_executable(test_qt_serial tools/test_qt_serial.cpp qt/emulatorwidget.cpp qt/audiooutput.cpp qt/emulatorwidget.h qt/audiooutput.h)
 target_include_directories(test_qt_serial PRIVATE ${CMAKE_SOURCE_DIR}/qt)
@@ -387,6 +399,18 @@ target_link_libraries(test_movie zeropoint_core)
 # Cartridge slot (yank / Stop 'n' Swop), hard vs soft reset, port 2 controller (tools/test_cart_slot.sh)
 add_executable(test_cart_slot tools/test_cart_slot.cpp)
 target_link_libraries(test_cart_slot zeropoint_core)
+
+# Cartridge battery SRAM: header size code, banks $C0-$C7 mirroring, dirty flag, resets/yank/swap (docs/cart-save.md)
+add_executable(test_cart_save tools/test_cart_save.cpp)
+target_link_libraries(test_cart_save zeropoint_core)
+
+# A real cartridge (ZPgameTemplate) keeping its state in save RAM across power cycles, through SaveFile (tools/run_tests.sh)
+add_executable(test_game_save tools/test_game_save.cpp)
+target_link_libraries(test_game_save zeropoint_core)
+
+# The dev Boot ROM's save wipe: four shoulder inputs held on a dev unit (needs ../ZPbootROM's images; tools/run_tests.sh boot)
+add_executable(test_save_wipe tools/test_save_wipe.cpp)
+target_link_libraries(test_save_wipe zeropoint_core)
 
 # Debug serial port: the dev unit's UART, its host end, and serial input in movies (docs/debug-protocol.md)
 add_executable(test_serial tools/test_serial.cpp)
@@ -648,6 +672,15 @@ set_target_properties(test_movie PROPERTIES
 )
 
 set_target_properties(test_cart_slot PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+set_target_properties(test_cart_save PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+set_target_properties(test_game_save PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+set_target_properties(test_save_wipe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 set_target_properties(test_blake2s_engine PROPERTIES

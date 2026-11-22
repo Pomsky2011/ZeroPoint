@@ -4,7 +4,7 @@ Fantasy console with custom PPU (graphics), APU (audio), and DEF88186 CPU.
 
 ## Status: emulator + Boot ROM done (retail and dev images); only ZPdevtools work and release engineering remain
 
-**All new revisions must be backwards compatible with revision 13** (`System::CORE_REVISION`, now 13: the stretched raster). Rev 13 deliberately broke
+**All new revisions must be backwards compatible with revision 13** (`System::CORE_REVISION`, now 14: rev 14 added cartridge save RAM, which a ROM without it never sees). Rev 13 deliberately broke
 everything before it (a line is 4343 cycles, was 340: `docs/display.md`); ROMs, movies and goldens that run on rev 13 must keep running identically.
 Don't change emulation behavior; if a change truly can't avoid it, ask first. Run `tools/run_tests.sh` (all suites, ~7 min).
 
@@ -110,6 +110,9 @@ Don't change emulation behavior; if a change truly can't avoid it, ask first. Ru
   vector stubs: the CPU still reads every vector from the cartridge). Retail locks; the dev image asks the host for a handler image over the UART
   (`--exception-handler FILE`). A dev unit with the dev Boot ROM also raises ABORT for ROM writes / unmapped accesses (latch `$D8004C`). `docs/exceptions.md`;
   `tools/test_exception.sh`.
+- **Cartridge save RAM** (rev 14): header flags bits 4-7 = size code (`512 << n` bytes, `zpbuild --save-size 8K`), banks `$C0-$C7`, blank = `$FF`, kept across resets,
+  gone with a yank; `System::saveData/setSave/saveDirty`, host `.sav` via `SaveFile` (SDL/Qt, `--save/--no-save`); movies embed the starting save and never touch the file;
+  dev Boot ROM + dev unit + all four shoulder inputs = wipe. `docs/cart-save.md`; tests `bin/test_cart_save`, `test_game_save`, `test_save_wipe`, `fuzz_determinism <dir> --save`.
 - **Cartridge slot + movies**: `System::insertCartridge` (Stop 'n' Swop: replaces it in one instant, no reset/verify),
   `ejectCartridge` (yank: banks `$00-$7F`/`$E2` read `CA FE CA FE...`, not `$FF`), `softReset`, `hardReset` (power cycle,
   state-identical to a fresh System). `.zpm` movies (`include/movie.h`, `bin/zp_movie`, `zeropoint_sdl --record/--play`,
@@ -180,6 +183,7 @@ Don't change emulation behavior; if a change truly can't avoid it, ask first. Ru
 - **$A0**: APU Window (64 KB)
 - **$B0**: PPU Window (64 KB)
 - **$BE-$BF**: Shadow Work RAM (128 KB)
+- **$C0-$C7**: cartridge battery SRAM (512 KB window, mirrored; only mapped if the header asks, `docs/cart-save.md`)
 - **$D8**: I/O Registers (96 bytes, $D80000-$D8005F)
 - **$E0**: Boot ROM (64 KB) — read-only, mapped by `System` at construction
   time via `CPU::loadBootROM()`. Hardware reset lands the CPU here (instead

@@ -15,7 +15,7 @@ namespace ZeroPoint {
 struct ZPBHeader {
     char magic[4];           // "ZPB\0"
     uint8_t version;         // Format version (currently 1)
-    uint8_t reserved;        // Reserved for future use
+    uint8_t flags;           // bit 0 signed (zpbuild); bits 4-7 save-size code (SAVE_CODE_*, docs/cart-save.md)
     uint16_t headerSize;     // Header size (64 bytes)
     uint32_t romSize;        // ROM data size in bytes
     uint32_t entryPoint;     // Entry point address
@@ -25,6 +25,12 @@ struct ZPBHeader {
 #pragma pack(pop)
 
 static_assert(sizeof(ZPBHeader) == 64, "ZPBHeader must be 64 bytes");
+
+// Battery-backed save RAM (docs/cart-save.md): header flags bits 4-7 hold n, the cartridge's SRAM is 512 << n bytes
+// (n = 1..10: 1 KiB..512 KiB), 0 = no SRAM. A ROM that predates it has 0 there.
+constexpr uint8_t SAVE_CODE_SHIFT = 4;
+constexpr uint8_t SAVE_CODE_MAX = 10;
+constexpr size_t saveSizeForCode(unsigned code) { return code == 0 ? 0 : size_t(512) << code; }
 
 class ROM {
 public:
@@ -47,6 +53,8 @@ public:
     const std::string& getTitle() const { return title; }
     const std::string& getDeveloper() const { return developer; }
     uint32_t getEntryPoint() const { return entryPoint; }
+    // Bytes of battery SRAM the header asks for (0 = none).
+    size_t getSaveSize() const { return saveSize; }
 
     // True for a version-2 (zpbuild-signed) ROM: a "ZPSG" trailer (32-byte
     // SHA-256 digest + 256-byte RSA-2048 signature) follows the payload on
@@ -94,6 +102,7 @@ private:
     std::string title;
     std::string developer;
     uint32_t entryPoint;
+    size_t saveSize = 0;
     std::string errorMessage;
     bool signedRom = false;
     uint8_t rawHeader[RAW_HEADER_SIZE] = {};

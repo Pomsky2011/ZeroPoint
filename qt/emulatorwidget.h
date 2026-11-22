@@ -14,6 +14,7 @@
 #include <thread>
 #include "system.h"
 #include "movie.h"
+#include "save_file.h"
 #include "frame_pacer.h"
 #include "keybindings.h"
 #include "audiooutput.h"
@@ -81,6 +82,10 @@ public:
     // next loadROM()/bootBIOS()/startRecording() (a movie being played decides for itself). Off by default: it is a
     // host setting, so it is never remembered between runs.
     void setDevUnit(bool on) { devUnit = on; }
+    // Battery save RAM (docs/cart-save.md): a cartridge that has some keeps it in <rom>.sav beside the ROM, read when the ROM
+    // loads and written every couple of seconds while it changes and when the cartridge leaves or the machine stops. A
+    // movie never touches the file. Off: the SRAM starts blank and nothing is written. Takes effect on the next load.
+    void setSavesEnabled(bool on) { savesEnabled = on; }
     bool devUnitOn() const { return devUnit; }
     // Where the guest's bytes go besides the Serial Console, and where host bytes come from (the same endpoints as the
     // SDL frontend's --serial-out / --serial-in / --serial-tcp: "-" is stdout/stdin, otherwise a file or FIFO; port < 0
@@ -137,9 +142,15 @@ private:
     std::atomic<bool> twoPlayers{false};
     enum Action : unsigned { ACT_SOFT_RESET = 1, ACT_HARD_RESET = 2, ACT_YANK = 4, ACT_SWAP = 8 };
     std::atomic<unsigned> pendingActions{0};
-    std::mutex swapMutex;                   // guards swapImage/swapTitle
+    std::mutex swapMutex;                   // guards swapImage/swapTitle/swapSave/swapSavePath
     std::vector<uint8_t> swapImage;
     std::string swapTitle;
+    std::vector<uint8_t> swapSave;          // the swapped-in cartridge's .sav contents ({} = none yet), for a recording's log
+    std::string swapSavePath;               // ...and where it is ("" = saves off)
+
+    // .sav of the cartridge in the slot, outside movies. Owned by whichever thread owns `system`.
+    ZeroPoint::SaveFile saveFile;
+    bool savesEnabled = true;
 
     // Movies. `session`/`library` belong to emuThread while it runs (like `system`).
     ZeroPoint::MovieSession session;

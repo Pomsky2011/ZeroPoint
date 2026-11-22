@@ -34,6 +34,9 @@ struct MovieEvent {
 struct MovieRom {
     Sha256 sha{};                       // of the whole .zpb file
     std::string title;                  // informational
+    // The cartridge's battery SRAM as it was when this ROM went into the slot (docs/cart-save.md): the bytes themselves, so a
+    // replay starts from exactly the save the recording did. Empty = blank ($FF), which is also what every ROM without SRAM has.
+    std::vector<uint8_t> save;
 };
 
 struct Movie {
@@ -84,6 +87,7 @@ public:
         std::string bootRomPath;        // "" = native boot ROM
         std::string apuBiosPath;        // "" = native APU BIOS
         std::string cartridgePath;      // "" = empty slot at power-on
+        std::vector<uint8_t> save;      // the cartridge's SRAM contents at power-on ({} = blank); must match its size
         bool verifySignatures = true;
         bool devUnit = false;           // record on a dev unit (needed for the debug serial port)
         uint64_t checkpointInterval = System::CYCLES_PER_FRAME * 64;
@@ -111,7 +115,8 @@ public:
     // Host -> guest byte on the debug serial port. Recording: apply + log at cycle(). Playing: ignored. (Without a movie
     // a frontend calls System::serialReceive() itself.) Only does anything on a dev unit.
     void serialIn(uint8_t byte);
-    bool insert(const std::vector<uint8_t>& image, const std::string& title);
+    // `save` is the new cartridge's SRAM contents ({} = blank); it goes into the movie so the replay swaps in the same bytes.
+    bool insert(const std::vector<uint8_t>& image, const std::string& title, const std::vector<uint8_t>& save = {});
 
     // Playback state.
     bool finished() const { return currentMode == Mode::Playing && movieCycle >= movie.lengthCycles; }
@@ -142,7 +147,8 @@ private:
                       const std::vector<uint8_t>* cartImage, std::string& error);
     bool applyEvent(const MovieEvent& e);
     void log(MovieEvent e);
-    int addRom(const std::vector<uint8_t>& image, const std::string& title);
+    int addRom(const std::vector<uint8_t>& image, const std::string& title, const std::vector<uint8_t>& save);
+    bool applySave(const std::vector<uint8_t>& save, std::string& error);
     uint64_t runMachine(uint64_t cycles);
 };
 

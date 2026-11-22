@@ -17,6 +17,7 @@ int main(int argc, char *argv[])
     const QStringList args = QApplication::arguments();
     QString romPath;
     bool devUnit = false;
+    bool savesEnabled = true;
     QStringList serialOuts, serialIns;
     int serialTcpPort = -1;
     QString exceptionHandler;
@@ -25,6 +26,8 @@ int main(int argc, char *argv[])
         const bool more = i + 1 < args.size();
         if (a == "--dev-unit") {
             devUnit = true;
+        } else if (a == "--no-save") {
+            savesEnabled = false;
         } else if (a == "--serial-out" && more) {
             serialOuts << args.at(++i);
         } else if (a == "--serial-in" && more) {
@@ -42,7 +45,7 @@ int main(int argc, char *argv[])
             romPath = a;
         } else {
             std::fprintf(stderr, "unknown argument: %s\n", qPrintable(a));
-            std::fprintf(stderr, "usage: %s [game.zpb] [--dev-unit [--serial-out FILE|-] [--serial-in FILE|-] [--serial-tcp PORT] [--exception-handler FILE]]\n",
+            std::fprintf(stderr, "usage: %s [game.zpb] [--dev-unit [--serial-out FILE|-] [--serial-in FILE|-] [--serial-tcp PORT] [--exception-handler FILE]] [--no-save]\n",
                          qPrintable(args.at(0)));
             return 1;
         }
@@ -51,6 +54,7 @@ int main(int argc, char *argv[])
         std::fprintf(stderr, "note: --serial-* and --exception-handler only do anything with --dev-unit\n");
 
     MainWindow window;
+    window.setSavesEnabled(savesEnabled);
     window.setSerialOptions(devUnit, serialOuts, serialIns, serialTcpPort, exceptionHandler);
     window.show();
 

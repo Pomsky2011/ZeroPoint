@@ -288,6 +288,11 @@ void MainWindow::buildMovieMenu()
     updateMovieActions();
 }
 
+void MainWindow::setSavesEnabled(bool on)
+{
+    emulatorWidget->setSavesEnabled(on);
+}
+
 void MainWindow::setSerialOptions(bool devUnit, const QStringList &outs, const QStringList &ins, int tcpPort, const QString &exceptionHandler)
 {
     emulatorWidget->setSerialEndpoints(outs, ins, tcpPort);

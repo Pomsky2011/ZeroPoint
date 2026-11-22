@@ -4,6 +4,7 @@
 #include "window.h"
 #include "movie.h"
 #include "serial_host.h"
+#include "save_file.h"
 #include <chrono>
 #include "frame_pacer.h"
 #include <cmath>
@@ -71,11 +72,13 @@ int main(int argc, char** argv) {
     std::cout << "Usage: zeropoint_sdl [rom.rom] [--dev] [--scale N] [--boot boot.bin] [--apu-bios bios.bin] [--no-verify] [--no-idle-skip]\n";
     std::cout << "       [--dev-unit [--serial-out FILE|-] [--serial-in FILE|-] [--serial-tcp PORT] [--exception-handler FILE]]\n";
     std::cout << "       [--two-players] [--speed] [--swap-rom rom.zpb]... [--record out.zpm [--author NAME]] [--play in.zpm [--roms PATH]...] [--frames N]\n";
+    std::cout << "       [--save FILE | --no-save]   (battery save RAM: default is the ROM's name with .sav; movies never write it)\n";
     std::cout << "Keys: arrows/z x c v/a s d f/shift/enter = player 1 (i j k l/7 8 9 0/u o n m = player 2 with --two-players)\n";
     std::cout << "      F1 soft reset, F2 hard reset (power cycle), F3 yank the cartridge, F4 Stop 'n' Swop (next --swap-rom)\n";
     std::cout << "Press ESC to exit\n\n";
 
     std::string romPath;
+    SaveFile saveFile;                               // the main ROM's (and each swapped-in ROM's) .sav, outside movies
     std::string bootPath;
     std::string apuBiosPath;
     bool devMode = false;
@@ -90,6 +93,8 @@ int main(int argc, char** argv) {
     std::string recordPath, playPath, author;
     long maxTicks = -1;   // --frames N: stop by itself after N 60 Hz ticks (headless runs, CI)
     std::vector<std::string> romDirs, swapRoms;
+    std::string savePath;                            // --save FILE: the main ROM's .sav (default: next to the ROM)
+    bool noSave = false;                             // --no-save: SRAM starts blank and is never written
     int scale = 2;
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--dev") == 0) {
@@ -122,6 +127,10 @@ int main(int argc, char** argv) {
             author = argv[++i];
         } else if (std::strcmp(argv[i], "--roms") == 0 && i + 1 < argc) {
             romDirs.push_back(argv[++i]);
+        } else if (std::strcmp(argv[i], "--save") == 0 && i + 1 < argc) {
+            savePath = argv[++i];
+        } else if (std::strcmp(argv[i], "--no-save") == 0) {
+            noSave = true;
         } else if (std::strcmp(argv[i], "--swap-rom") == 0 && i + 1 < argc) {
             swapRoms.push_back(argv[++i]);
         } else if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
@@ -198,6 +207,14 @@ int main(int argc, char** argv) {
         setup.verifySignatures = !noVerify && System::verifySignaturesDefault();
         setup.devUnit = devUnit;
         setup.author = author;
+        if (!noSave && !romPath.empty()) {   // the movie starts from the save you have (a recording never writes it back)
+            std::ifstream f(romPath, std::ios::binary);
+            const std::vector<uint8_t> image((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            std::string note;
+            const std::string path = savePath.empty() ? SaveFile::pathFor(romPath) : savePath;
+            if (SaveFile::load(path, SaveFile::sizeFor(image), setup.save, note)) std::cout << "Recording starts from the save in " << path << "\n";
+            if (!note.empty()) std::cerr << note << "\n";
+        }
         if (!movieSession.beginRecording(system, setup, movieError)) {
             std::cerr << movieError << "\n";
             return 1;
@@ -287,6 +304,10 @@ int main(int argc, char** argv) {
             std::cerr << "Failed to load ROM: " << romPath << "\n";
             return 1;
         }
+        std::string note;
+        saveFile.attach(system, noSave ? "" : savePath.empty() ? SaveFile::pathFor(romPath) : savePath, note);
+        if (!note.empty()) std::cerr << note << "\n";
+        if (saveFile.active()) std::cout << "Save RAM: " << system.saveSize() << " bytes in " << saveFile.path() << "\n";
         system.powerOn();
     }
 
@@ -338,7 +359,11 @@ int main(int argc, char** argv) {
             if ((hotkeys & Window::HOTKEY_SWAP) && !swapRoms.empty()) {
                 std::vector<uint8_t> image;
                 const std::string& path = swapRoms[nextSwap++ % swapRoms.size()];
-                if (!readImage(path, image) || !movieSession.insert(image, std::filesystem::path(path).filename().string()))
+                std::vector<uint8_t> save;
+                std::string note;
+                if (readImage(path, image) && !noSave) SaveFile::load(SaveFile::pathFor(path), SaveFile::sizeFor(image), save, note);
+                if (!note.empty()) std::cerr << note << "\n";
+                if (!readImage(path, image) || !movieSession.insert(image, std::filesystem::path(path).filename().string(), save))
                     std::cerr << "Can't swap in " << path << "\n";
             }
         } else {
@@ -346,12 +371,23 @@ int main(int argc, char** argv) {
             system.getCPU().setPlayer2Input(direction2, control2, buttons2);
             if (hotkeys & Window::HOTKEY_SOFT_RESET) system.softReset();
             if (hotkeys & Window::HOTKEY_HARD_RESET) system.hardReset();
-            if (hotkeys & Window::HOTKEY_YANK) system.ejectCartridge();
+            if (hotkeys & Window::HOTKEY_YANK) {
+                saveFile.flush(system);   // the cartridge takes its SRAM with it: write it down first
+                system.ejectCartridge();
+            }
             if ((hotkeys & Window::HOTKEY_SWAP) && !swapRoms.empty()) {
                 std::vector<uint8_t> image;
                 const std::string& path = swapRoms[nextSwap++ % swapRoms.size()];
-                if (!readImage(path, image) || !system.insertCartridge(image)) std::cerr << "Can't swap in " << path << "\n";
+                saveFile.flush(system);
+                if (!readImage(path, image) || !system.insertCartridge(image)) {
+                    std::cerr << "Can't swap in " << path << "\n";
+                } else {
+                    std::string note;
+                    saveFile.attach(system, noSave ? "" : SaveFile::pathFor(path), note);
+                    if (!note.empty()) std::cerr << note << "\n";
+                }
             }
+            saveFile.poll(system, std::chrono::duration<double>(frameStart.time_since_epoch()).count());
         }
 
         const int due = pacer.framesDue(std::chrono::duration<double>(frameStart.time_since_epoch()).count());
@@ -396,6 +432,10 @@ int main(int argc, char** argv) {
     }
 
     int exitCode = 0;
+    if (!saveFile.flush(system)) {
+        std::cerr << "Couldn't write the save: " << saveFile.error() << "\n";
+        exitCode = 1;
+    }
     if (moviePlaying) {
         if (!movieSession.failure().empty()) {
             std::cerr << "Playback failed: " << movieSession.failure() << "\n";

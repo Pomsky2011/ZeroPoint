@@ -20,6 +20,10 @@ it stopped doing so.** (Why replay can't silently drift: `docs/determinism-proof
     chunk poison); the CPU keeps executing; `CART_ENTRY` reads 0; chunk gating is gone
   - `insert N`: Stop 'n' Swop: ROM `N` of the table is mapped in that instant (replacing whatever was there). No reset, no
     boot ROM, no signature check; trailer-v3 chunks start unverified
+- **Save RAM** (`docs/cart-save.md`): a ROM table entry may carry the cartridge's **starting save**, the bytes themselves, so a
+  replay starts from exactly the save the recording did whatever the host has (the replay never reads or writes a `.sav`; neither does
+  a recording: it only takes the file's contents as its start). A cartridge that starts blank (`$FF`) stores nothing. The same
+  cartridge swapped in twice with different saves is two table entries. Save contents are the `save` part of every checkpoint.
 - **Checkpoints**: `System::machineHashParts()` (cpu incl. all RAM, ppu, display, apu, dma, timers+irq, clock, cartridge, audio) at
   intervals. A replay checks each one and reports `DESYNC at movie cycle C: state differs in: cpu, apu`.
 - `coreRevision`: `System::CORE_REVISION`. Bump it whenever a change to the emulation changes what a program computes.
@@ -27,6 +31,8 @@ it stopped doing so.** (Why replay can't silently drift: `docs/determinism-proof
   4343 master cycles, not 340, so a frame is 1/60 s), which changes the cycle at which everything that watches the display happens, so
   it replays only revision 13: a movie from an older or newer revision is refused (`--ignore-core-revision` to try anyway). (Revisions 11
   and 12 had added the dev unit and its faults, docs/exceptions.md, without changing a retail unit, and revision-10 movies still replayed on them.)
+  Revision 14 added the cartridge's battery save RAM; a cartridge without it is the revision-13 machine, so 13 movies still replay
+  (`MIN_COMPATIBLE_REVISION` stays 13) and a movie that carries a save must say revision 14.
   A movie that uses the dev unit or `serial` events must say revision 11 or later.
 
 Movie time keeps counting while a halted CPU freezes the machine, and across resets, so a reset event on a halted machine
@@ -49,10 +55,10 @@ and audio draining therefore can't cause a false desync, and `fuzz_determinism` 
 ## File format (`.zpm`, little-endian, integer-only)
 
 ```
-"ZPM\x1A"  u16 format-version(1)  u32 coreRevision  u64 lengthCycles
+"ZPM\x1A"  u16 format-version(1, or 2 when a ROM carries a save)  u32 coreRevision  u64 lengthCycles
 u8 flags (1 verify signatures, 2 native boot ROM, 4 native APU BIOS, 8 dev unit)
 [32 bytes sha256 boot ROM, if not native]  [32 bytes sha256 APU BIOS, if not native]
-varint initialRom+1 (0 = empty slot)   varint nRoms   nRoms x { 32 bytes sha256, varint len + title }
+varint initialRom+1 (0 = empty slot)   varint nRoms   nRoms x { 32 bytes sha256, varint len + title [, varint saveLen + save bytes: version 2] }
 varint len + author   varint len + description   varint checkpointInterval
 varint nEvents  then per event: varint cycleDelta  u8 type  payload
    1 Input      u8 port(0/1) u8 dir u8 ctrl u8 btn      2 SoftReset   3 HardReset   4 Yank
@@ -73,6 +79,7 @@ boot hle                       # or  boot sha256:<hex>  or  boot path/to/bootrom
 apubios hle
 rom 0 game.zpb                 # hashed from the file; dis prints  rom 0 sha256:<hex> game.zpb
 rom 1 other.zpb
+save 1 other.sav               # optional: that ROM's starting save RAM (a file; dis prints hex:<bytes> so asm gives the same movie back)
 initial 0                      # or none
 @0       input 1 0x40 0x01 0x00    # port (1|2), dir, ctrl, btn
 @200000  input 2 0x01 0x03 0x00

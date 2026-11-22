@@ -12,7 +12,7 @@ The .zpb format is the ROM file format for ZeroPoint console games. It contains 
 |--------|------|----------|---------------------------------------|
 | 0x00   | 4    | char[4]  | Magic number: "ZPB\0"                 |
 | 0x04   | 1    | uint8    | Format version (currently 1)          |
-| 0x05   | 1    | uint8    | Reserved                              |
+| 0x05   | 1    | uint8    | Flags: bit 0 signed (zpbuild); bits 4-7 save-RAM size code (`512 << n` bytes, 0 = none; `cart-save.md`); other bits 0 |
 | 0x06   | 2    | uint16   | Header size (64 bytes)                |
 | 0x08   | 4    | uint32   | ROM size in bytes                     |
 | 0x0C   | 4    | uint32   | Entry point address                   |

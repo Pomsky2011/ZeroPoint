@@ -109,7 +109,13 @@ struct Reader {
 };
 
 constexpr uint8_t MAGIC[4] = {'Z', 'P', 'M', 0x1A};
-constexpr uint16_t FORMAT_VERSION = 1;
+// Version 1 is the original; version 2 adds each ROM's starting save (docs/cart-save.md). serialize() writes version 1 unless a
+// ROM carries a save, so a movie that doesn't use save RAM is the same bytes it always was.
+constexpr uint16_t FORMAT_VERSION_1 = 1;
+constexpr uint16_t FORMAT_VERSION_2 = 2;
+constexpr uint32_t MIN_SAVE_REVISION = 14;
+
+bool validSaveSize(uint64_t n) { return n >= 1024 && n <= 512 * 1024 && (n & (n - 1)) == 0; }
 
 }  // namespace
 
@@ -119,7 +125,9 @@ std::vector<uint8_t> Movie::serialize() const {
     std::vector<uint8_t> out;
     Writer w{out};
     w.bytes(MAGIC, 4);
-    w.u16(FORMAT_VERSION);
+    bool anySave = false;
+    for (const MovieRom& r : roms) anySave |= !r.save.empty();
+    w.u16(anySave ? FORMAT_VERSION_2 : FORMAT_VERSION_1);
     w.u32(coreRevision);
     w.u64(lengthCycles);
     w.u8((verifySignatures ? 1 : 0) | (hleBoot ? 2 : 0) | (hleApuBios ? 4 : 0) | (devUnit ? 8 : 0));
@@ -127,7 +135,11 @@ std::vector<uint8_t> Movie::serialize() const {
     if (!hleApuBios) w.bytes(apuBios.data(), 32);
     w.varint((uint64_t)(initialRom + 1));
     w.varint(roms.size());
-    for (const MovieRom& r : roms) { w.bytes(r.sha.data(), 32); w.str(r.title); }
+    for (const MovieRom& r : roms) {
+        w.bytes(r.sha.data(), 32);
+        w.str(r.title);
+        if (anySave) { w.varint(r.save.size()); w.bytes(r.save.data(), r.save.size()); }
+    }
     w.str(author);
     w.str(description);
     w.varint(checkpointInterval);
@@ -164,7 +176,8 @@ bool Movie::parse(const uint8_t* data, size_t size, Movie& out, std::string& err
         if (fnv(data, size - 8) != want) return fail("movie is corrupt (checksum mismatch)");
     }
     r.pos = 4;
-    if (r.u16() != FORMAT_VERSION) return fail("unsupported movie format version");
+    const uint16_t version = r.u16();
+    if (version != FORMAT_VERSION_1 && version != FORMAT_VERSION_2) return fail("unsupported movie format version");
     out.coreRevision = r.u32();
     out.lengthCycles = r.u64();
     const uint8_t flags = r.u8();
@@ -185,7 +198,16 @@ bool Movie::parse(const uint8_t* data, size_t size, Movie& out, std::string& err
         MovieRom m;
         r.bytes(m.sha.data(), 32);
         m.title = r.str();
-        out.roms.push_back(m);
+        if (version >= FORMAT_VERSION_2) {
+            const uint64_t len = r.varint();
+            if (len) {
+                if (!r.ok || !validSaveSize(len) || len > r.n - r.pos) return fail("bad save size in the ROM table");
+                if (out.coreRevision < MIN_SAVE_REVISION) return fail("a movie with save RAM needs core revision 14 or later");
+                m.save.resize((size_t)len);
+                r.bytes(m.save.data(), (size_t)len);
+            }
+        }
+        out.roms.push_back(std::move(m));
     }
     out.author = r.str();
     out.description = r.str();
@@ -269,7 +291,15 @@ std::string Movie::toText() const {
     if (devUnit) o << "devunit on\n";
     o << "boot " << (hleBoot ? "hle" : "sha256:" + toHex(bootRom)) << "\n";
     o << "apubios " << (hleApuBios ? "hle" : "sha256:" + toHex(apuBios)) << "\n";
-    for (size_t i = 0; i < roms.size(); i++) o << "rom " << i << " sha256:" << toHex(roms[i].sha) << " " << roms[i].title << "\n";
+    for (size_t i = 0; i < roms.size(); i++) {
+        o << "rom " << i << " sha256:" << toHex(roms[i].sha) << " " << roms[i].title << "\n";
+        if (!roms[i].save.empty()) {   // the bytes themselves, so that asm gives back the same movie
+            static const char* digits = "0123456789abcdef";
+            std::string h;
+            for (uint8_t b : roms[i].save) { h += digits[b >> 4]; h += digits[b & 15]; }
+            o << "save " << i << " hex:" << h << "\n";
+        }
+    }
     o << "initial " << (initialRom < 0 ? std::string("none") : std::to_string(initialRom)) << "\n";
     o << "checkpoint-interval " << checkpointInterval << "\n";
     if (!author.empty()) o << "author " << author << "\n";
@@ -340,6 +370,24 @@ bool Movie::fromText(const std::string& text, Movie& out, std::string& error) {
             std::string given = restOfLine();
             m.title = given.empty() ? title : given;
             out.roms.push_back(m);
+        }
+        else if (word == "save") {
+            // save <rom index> <file.sav | hex:<bytes>>: the cartridge's SRAM when that ROM goes into the slot
+            size_t idx; std::string v;
+            if (!(ls >> idx >> v) || idx >= out.roms.size()) return fail("save <index of a rom declared above> <file or hex:bytes>");
+            std::vector<uint8_t> bytes;
+            if (v.compare(0, 4, "hex:") == 0) {
+                const std::string h = v.substr(4);
+                auto nib = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; };
+                if (h.size() % 2) return fail("odd number of hex digits in save");
+                for (size_t i = 0; i < h.size(); i += 2) {
+                    const int a = nib(h[i]), b = nib(h[i + 1]);
+                    if (a < 0 || b < 0) return fail("bad hex digit in save");
+                    bytes.push_back((uint8_t)(a * 16 + b));
+                }
+            } else if (!readFile(v, bytes)) return fail("cannot read save file '" + v + "'");
+            if (!validSaveSize(bytes.size())) return fail("a save is a power of two between 1 KiB and 512 KiB");
+            out.roms[idx].save = std::move(bytes);
         }
         else if (word == "initial") { std::string v; ls >> v; out.initialRom = v == "none" ? -1 : std::atoi(v.c_str()); }
         else if (word == "checkpoint-interval") { unsigned long long v; ls >> v; out.checkpointInterval = v; }
@@ -429,11 +477,20 @@ bool MovieSession::setupMachine(const RecordSetup& s, const std::vector<uint8_t>
     sys->setDevUnit(movie.devUnit);
     sys->ejectCartridge();
     if (cartImage && !sys->loadROMImage(*cartImage)) { error = "cannot load the cartridge image"; return false; }
+    if (cartImage && movie.initialRom >= 0 && !applySave(movie.roms[(size_t)movie.initialRom].save, error)) return false;
     sys->hardReset();
     // The host side of the machine starts from a defined state too: player 1 plugged in and idle, player 2 unplugged.
     sys->getCPU().setPlayerInput(0, 0, PlayerInput::CTRL_CONNECTION, 0);
     sys->getCPU().setPlayerInput(1, 0, 0, 0);
     return true;
+}
+
+// The movie's starting save for the cartridge that has just gone into the slot (blank when it has none recorded). Empty is
+// "blank" and always fits; bytes must be exactly the cartridge's SRAM size.
+bool MovieSession::applySave(const std::vector<uint8_t>& save, std::string& error) {
+    if (save.empty() || sys->setSave(save)) return true;
+    error = "the save this movie carries is " + std::to_string(save.size()) + " bytes, the cartridge's SRAM is " + std::to_string(sys->saveSize());
+    return false;
 }
 
 bool MovieSession::beginRecording(System& system, const RecordSetup& setup, std::string& error) {
@@ -457,7 +514,7 @@ bool MovieSession::beginRecording(System& system, const RecordSetup& setup, std:
     }
     if (!setup.cartridgePath.empty()) {
         if (!readFile(setup.cartridgePath, cart)) { error = "cannot read " + setup.cartridgePath; return false; }
-        movie.initialRom = addRom(cart, std::filesystem::path(setup.cartridgePath).filename().string());
+        movie.initialRom = addRom(cart, std::filesystem::path(setup.cartridgePath).filename().string(), setup.save);
     }
     if (!setupMachine(setup, boot.empty() ? nullptr : &boot, apu.empty() ? nullptr : &apu, cart.empty() ? nullptr : &cart, error))
         return false;
@@ -504,12 +561,19 @@ bool MovieSession::beginPlayback(System& system, const Movie& m, const RomLibrar
     return true;
 }
 
-int MovieSession::addRom(const std::vector<uint8_t>& image, const std::string& title) {
+// One table entry per (image, starting save): the same cartridge swapped in twice with different saves is two entries.
+// A save that is all $FF is a blank one, stored as none (so a ROM without SRAM, or a fresh one, adds nothing to the file).
+int MovieSession::addRom(const std::vector<uint8_t>& image, const std::string& title, const std::vector<uint8_t>& saveIn) {
     const Sha256 sha = sha256Of(image.data(), image.size());
-    for (size_t i = 0; i < movie.roms.size(); i++) if (movie.roms[i].sha == sha) return (int)i;
+    std::vector<uint8_t> save = saveIn;
+    bool blank = true;
+    for (uint8_t b : save) blank &= b == 0xFF;
+    if (blank) save.clear();
+    for (size_t i = 0; i < movie.roms.size(); i++) if (movie.roms[i].sha == sha && movie.roms[i].save == save) return (int)i;
     MovieRom r;
     r.sha = sha;
     r.title = title;
+    r.save = std::move(save);
     movie.roms.push_back(r);
     romImages.push_back(image);
     return (int)movie.roms.size() - 1;
@@ -532,6 +596,7 @@ bool MovieSession::applyEvent(const MovieEvent& e) {
                 return false;
             }
             if (!sys->insertCartridge(image)) { failureText = "the swapped-in cartridge is not a valid ROM image"; return false; }
+            if (!applySave(movie.roms[e.rom].save, failureText)) return false;
             return true;
         }
         case MovieEvent::Checkpoint: {
@@ -635,13 +700,14 @@ void MovieSession::yank() {
     MovieEvent e; e.type = MovieEvent::Yank; log(e);
 }
 
-bool MovieSession::insert(const std::vector<uint8_t>& image, const std::string& title) {
+bool MovieSession::insert(const std::vector<uint8_t>& image, const std::string& title, const std::vector<uint8_t>& save) {
     if (currentMode != Mode::Recording) return false;
     ROM probe;
     if (!probe.loadMemory(image.data(), image.size())) return false;   // never log what the machine would refuse
+    if (!save.empty() && save.size() != probe.getSaveSize()) return false;   // nor a save that does not fit it
     MovieEvent e;
     e.type = MovieEvent::Insert;
-    e.rom = (uint32_t)addRom(image, title);
+    e.rom = (uint32_t)addRom(image, title, save);
     log(e);
     return true;
 }

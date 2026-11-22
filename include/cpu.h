@@ -193,6 +193,18 @@ public:
                       uint32_t codeSize, uint32_t chunkCount);
     void ejectCartridge();
     bool isCartridgeInserted() const { return cartridgeInserted; }
+    // The cartridge's battery SRAM (docs/cart-save.md): banks $C0-$C7, a 512 KiB window the `size` bytes of `data` (a power of
+    // two, 1 KiB..512 KiB) are mirrored across. The bytes belong to the caller (System keeps the save across resets and
+    // swaps); the CPU only points at them, so they must outlive the mapping. A cartridge with no SRAM never calls this and
+    // those banks stay unmapped, exactly as before revision 14. ejectCartridge() unmaps it; a yank leaves the window reading
+    // EMPTY_SLOT_EVEN/ODD like the ROM banks.
+    static constexpr uint8_t SAVE_FIRST_BANK = 0xC0;
+    static constexpr uint8_t SAVE_LAST_BANK = 0xC7;
+    void mapSave(uint8_t* data, size_t size);
+    void unmapSave();   // drop the mapping only (the window reads open bus): the owner is about to change the bytes it points at
+    // True once a write has changed a byte of the SRAM since the last call; clears it. The host's cue to flush the .sav.
+    bool takeSaveDirty() { const bool d = saveDirtyFlag; saveDirtyFlag = false; return d; }
+    bool isSaveDirty() const { return saveDirtyFlag; }
     // Zero every RAM bank (a power cycle).
     void clearRAM();
     void loadROM(const uint8_t* data, size_t size, uint8_t startBank);
@@ -564,7 +576,8 @@ private:
             RAM,
             PPU_WINDOW,
             APU_WINDOW,
-            IO_REGISTERS
+            IO_REGISTERS,
+            SRAM            // battery save RAM: dataSize bytes mirrored over every bank of the region, not owned (see mapSave)
         };
 
         Type type;
@@ -720,6 +733,8 @@ private:
     void noteReadFault(uint32_t address);
     uint8_t p2Direction = 0, p2Control = 0, p2Buttons = 0;   // port 2 controller; set by setPlayer2Input()
     bool cartridgeInserted = false;
+    bool saveDirtyFlag = false;        // host-side, not machine state (takeSaveDirty())
+    bool saveSlotYanked = false;       // a cartridge with SRAM left: its window reads the empty-slot pattern (state, hashed)
 
     // BLAKE2s engine ($D80060-$D8009F, docs/blake2s-engine.md): hashes cartridge ROM in the background so the Boot ROM
     // never has to hash in software. The digest is computed when the job starts (ROM is immutable while inserted) but

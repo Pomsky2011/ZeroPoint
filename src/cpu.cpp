@@ -41,7 +41,7 @@ CPU::CPU()
 }
 
 CPU::~CPU() {
-    for (MemoryRegion& r : memoryMap) delete[] r.data;
+    for (MemoryRegion& r : memoryMap) if (r.type != MemoryRegion::SRAM) delete[] r.data;   // (SRAM bytes are System's)
 }
 
 void CPU::reset() {
@@ -1685,7 +1685,7 @@ void CPU::rebuildBankTable() {
     bankWritable.fill(0);
 
     for (int b = 0; b < 256; ++b) {
-        if (count[b] == 1 && fullRegion[b]) {
+        if (count[b] == 1 && fullRegion[b] && fullRegion[b]->type != MemoryRegion::SRAM) {
             bankFast[b] = fullRegion[b];       // single whole-bank region
             const MemoryRegion* r = fullRegion[b];
             if (r->data) {
@@ -1707,7 +1707,7 @@ void CPU::rebuildBankTable() {
                 }
             }
         } else if (count[b] >= 1) {
-            bankScan[b] = true;                // partial/multiple: needs scan
+            bankScan[b] = true;                // partial/multiple (or mirrored SRAM): needs scan
         }
         // count[b] == 0 -> unmapped: both stay null/false (open bus)
     }
@@ -1746,6 +1746,7 @@ uint8_t CPU::readMapped(uint32_t address) {
         // Everything else unmapped returns open bus (0xFF).
         const uint8_t bank = (address >> 16) & 0xFF;
         if (!cartridgeInserted && (bank <= 0x7F || bank == 0xE2)) return (address & 1) ? EMPTY_SLOT_ODD : EMPTY_SLOT_EVEN;
+        if (saveSlotYanked && bank >= SAVE_FIRST_BANK && bank <= SAVE_LAST_BANK) return (address & 1) ? EMPTY_SLOT_ODD : EMPTY_SLOT_EVEN;
         return 0xFF;
     }
 
@@ -1767,6 +1768,12 @@ uint8_t CPU::readMapped(uint32_t address) {
                 return region->data[dataOffset];
             }
             return 0xFF;
+        }
+
+        case MemoryRegion::SRAM: {
+            if (!region->data || !region->dataSize) return 0xFF;
+            const size_t window = (static_cast<size_t>(bank - region->startBank) << 16) | offset;
+            return region->data[window & (region->dataSize - 1)];
         }
 
         case MemoryRegion::PPU_WINDOW: {
@@ -1825,6 +1832,14 @@ void CPU::writeMapped(uint32_t address, uint8_t value) {
             if (dataOffset < region->dataSize) {
                 region->data[dataOffset] = value;
             }
+            break;
+        }
+
+        case MemoryRegion::SRAM: {
+            if (!region->data || !region->dataSize) break;
+            const size_t window = (static_cast<size_t>(bank - region->startBank) << 16) | offset;
+            uint8_t& cell = region->data[window & (region->dataSize - 1)];
+            if (cell != value) { cell = value; saveDirtyFlag = true; }
             break;
         }
 
@@ -2003,13 +2018,42 @@ void CPU::mapCartridge(const uint8_t* rom, size_t romSize, const uint8_t* meta, 
     if (trailerVersion == 3) configureDataGating(codeSize, chunkCount);
     else clearDataGating();
     cartridgeInserted = true;
+    saveSlotYanked = false;   // a new cartridge: the old window is its own SRAM or plain open bus
+}
+
+void CPU::unmapSave() {
+    for (auto it = memoryMap.begin(); it != memoryMap.end();) {
+        it = it->type == MemoryRegion::SRAM ? memoryMap.erase(it) : it + 1;
+    }
+    rebuildBankTable();
+}
+
+void CPU::mapSave(uint8_t* data, size_t size) {
+    for (auto it = memoryMap.begin(); it != memoryMap.end();) {
+        it = it->type == MemoryRegion::SRAM ? memoryMap.erase(it) : it + 1;
+    }
+    MemoryRegion region;
+    region.type = MemoryRegion::SRAM;
+    region.startBank = SAVE_FIRST_BANK;
+    region.endBank = SAVE_LAST_BANK;
+    region.startOffset = 0x0000;
+    region.endOffset = 0xFFFF;
+    region.data = data;
+    region.dataSize = size;
+    memoryMap.push_back(region);
+    useMemoryMap = true;
+    saveSlotYanked = false;
+    rebuildBankTable();
 }
 
 void CPU::ejectCartridge() {
     for (auto it = memoryMap.begin(); it != memoryMap.end();) {
         const bool cartRom = it->type == MemoryRegion::ROM && it->endBank <= 0x7F;
         const bool metadata = it->startBank == 0xE2 && it->endBank == 0xE2;   // signed header/trailer + chunk bitmap
-        if (cartRom || metadata) {
+        if (it->type == MemoryRegion::SRAM) {
+            it = memoryMap.erase(it);   // the bytes are System's: they stay for the next mapping
+            saveSlotYanked = true;
+        } else if (cartRom || metadata) {
             delete[] it->data;
             it = memoryMap.erase(it);
         } else {
@@ -2026,6 +2070,7 @@ void CPU::clearRAM() {
     for (const MemoryRegion& r : memoryMap) {
         if (r.type == MemoryRegion::RAM && r.data) std::memset(r.data, 0, r.dataSize);
     }
+    saveSlotYanked = false;   // (the SRAM itself is battery-backed: not touched)
 }
 
 void CPU::markChunkVerified(uint32_t chunk) {
@@ -3043,6 +3088,7 @@ uint64_t CPU::stateHash() const {
     mixv(irqPending); mixv(nmiPending); mixv(abortPending);
     mixv(p1Direction); mixv(p1Control); mixv(p1Buttons);
     mixv(p2Direction); mixv(p2Control); mixv(p2Buttons); mixv(cartridgeInserted);
+    if (saveSlotYanked) mixv(saveSlotYanked);   // (only after a cartridge with SRAM was pulled: every older hash is unchanged)
     serialSettle();   // the guest-visible TX queue is whatever the cycle counter says, not whenever the host last looked
     mixv(ppuRegSelect); mixv(dmaConfigIndex); mix(dmaConfigBuffer, sizeof dmaConfigBuffer); mixv(devModeFlag);
     // Only a dev unit has these: a retail unit's hash is exactly what it was before the UART existed.

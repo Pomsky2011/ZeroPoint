@@ -40,7 +40,7 @@ int main() {
     ZPBHeader header{};
     std::memcpy(header.magic, "ZPB", 4);
     header.version = 1;
-    header.reserved = 0;
+    header.flags = 0;
     header.headerSize = sizeof(ZPBHeader);
     header.romSize = static_cast<uint32_t>(payload.size());
     header.entryPoint = kCartEntry;

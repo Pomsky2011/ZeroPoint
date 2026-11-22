@@ -38,6 +38,7 @@ bool ROM::loadStream(std::istream& file) {
     entryPoint = 0;
     errorMessage.clear();
     signedRom = false;
+    saveSize = 0;
     std::memset(rawHeader, 0, sizeof(rawHeader));
     trailer.clear();
     trailerVersion = 0;
@@ -79,6 +80,14 @@ bool ROM::loadStream(std::istream& file) {
         setError("Invalid ROM size: " + std::to_string(header.romSize));
         return false;
     }
+
+    // Save size code (header flags bits 4-7): refuse the codes no cartridge can use rather than guess
+    const unsigned saveCode = header.flags >> SAVE_CODE_SHIFT;
+    if (saveCode > SAVE_CODE_MAX) {
+        setError("Unsupported save size code: " + std::to_string(saveCode));
+        return false;
+    }
+    saveSize = saveSizeForCode(saveCode);
 
     // Extract metadata
     title = std::string(header.title, strnlen(header.title, 32));

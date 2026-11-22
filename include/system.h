@@ -115,6 +115,18 @@ public:
     bool insertCartridge(const std::vector<uint8_t>& image);
     void ejectCartridge();
     bool hasCartridge() const { return romLoaded; }
+
+    // Battery save RAM (docs/cart-save.md). A cartridge whose header asks for it (ROM::getSaveSize()) gets that many bytes of
+    // non-volatile RAM at banks $C0-$C7. It belongs to the cartridge: loading or inserting one starts it blank (all $FF),
+    // the host puts the saved bytes in with setSave(), and it goes with the cartridge on ejectCartridge(). softReset()
+    // and hardReset() keep it (it is battery-backed). The host reads it with saveData() and watches saveDirty() to know
+    // when to flush a .sav file; neither the debug serial port nor anything else on the guest side can reach it but the bus.
+    size_t saveSize() const { return saveBytes.size(); }                          // 0: no cartridge, or one without SRAM
+    const std::vector<uint8_t>& saveData() const { return saveBytes; }
+    bool setSave(const uint8_t* data, size_t size);                               // false (and nothing changes) unless size == saveSize()
+    bool setSave(const std::vector<uint8_t>& data) { return setSave(data.data(), data.size()); }
+    bool saveDirty() const { return cpu.isSaveDirty(); }
+    bool takeSaveDirty() { return cpu.takeSaveDirty(); }
     void softReset() { reset(); }
     void hardReset();
     // Bump when a change to the emulation changes what any program computes (a movie pins this; docs/movies.md).
@@ -126,7 +138,9 @@ public:
     // Revision 13 stretched the raster: a line is LINE_CYCLES (4343) master cycles instead of 340, so a frame is 1/60 s and every
     // cycle count measured in scanlines or frames changed. A deliberate break: nothing recorded on revision 12 or earlier replays
     // (MIN_COMPATIBLE_REVISION = CORE_REVISION), and the compatibility rule restarts from 13.
-    static constexpr uint32_t CORE_REVISION = 13;
+    // Revision 14 added the cartridge's battery SRAM (banks $C0-$C7, only when the header asks for it: a cartridge without
+    // one has exactly the bus it had on revision 13, so everything recorded on 13 replays: MIN_COMPATIBLE_REVISION stays 13).
+    static constexpr uint32_t CORE_REVISION = 14;
     static constexpr uint32_t MIN_COMPATIBLE_REVISION = 13;
 
     // Load a real Boot ROM image (bank $E0) - e.g. ZPbootROM's bootrom.bin, or a demo that never hands
@@ -347,6 +361,9 @@ private:
     std::string romTitle;
     std::string romDeveloper;
     uint32_t entryPoint;
+    // The inserted cartridge's battery SRAM (empty: it has none). CPU::mapSave() points at these bytes, so they are only ever
+    // resized by cacheROM()/ejectCartridge(), which remap; setSave() copies in place.
+    std::vector<uint8_t> saveBytes;
 
     // ~0.5s @ 60 fps. Not actually stepped/spent (this emulator has no
     // meaningful "thrash" to simulate - it's deterministic and zero-init'd

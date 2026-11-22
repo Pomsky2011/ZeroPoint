@@ -35,6 +35,7 @@ cd "$ZP" || exit 2
 DEMO="$DEV/ucode/layers/demo/build/demo.zpb"       # a v2-signed cartridge that exercises both layers, sprites, the window and the line blitter
 RETAIL="$BOOT/build/bootrom.bin"
 DEVBOOT="$BOOT/build/bootrom_dev.bin"
+GAME="$ROOT/ZPgameTemplate/build/game.zpb"          # the game template (its hero position lives in save RAM)
 NOPPU="$BOOT/tests/handoff/build/noppu.zpb"
 WITHPPU="$BOOT/tests/handoff/build/withppu.zpb"
 
@@ -42,7 +43,7 @@ if [ "$MODE" = quick ] || [ "$MODE" = all ]; then
     echo "== unit tests"
     for n in test_cpu test_ppu test_dma test_apu_clock test_mmp test_line_blit test_blit_order test_tile_attrs test_tiledraw_clip \
              test_tile_lut test_tile_rowclip test_row_queue test_queue_timing test_frame_pacer test_stream test_serial test_diag_rom \
-             test_boot_rom test_white_fill; do
+             test_boot_rom test_white_fill test_cart_save; do
         t "$n" "$BIN/$n"
     done
     t fuzz_queue "$BIN/fuzz_queue" 1 12
@@ -69,6 +70,9 @@ if [ "$MODE" = all ]; then
     t fuzz_determinism_golden "$BIN/fuzz_determinism" "$LOG" --golden-check "$ZP/tools/determinism_golden.txt"
     t test_movie "$BIN/test_movie" "$LOG"
     t test_movie_cli sh "$ZP/tools/test_movie_cli.sh"
+    echo "== save RAM"
+    t test_save_cli sh "$ZP/tools/test_save_cli.sh"
+    need "$GAME" "game_save" && t test_game_save "$BIN/test_game_save" none "$GAME" "$LOG/game_save"
 fi
 
 if [ "$MODE" = boot ] || [ "$MODE" = all ]; then
@@ -80,6 +84,8 @@ if [ "$MODE" = boot ] || [ "$MODE" = all ]; then
         need "$DEVBOOT" "exception" && t test_exception sh "$ZP/tools/test_exception.sh"
         need "$DEMO" "determinism_boot" && t test_determinism_boot "$BIN/test_determinism" "$RETAIL" "$DEMO" 8
         need "$DEMO" "latch_skip" && t test_latch_skip "$BIN/test_latch_skip" "$RETAIL" "$DEMO"
+        need "$DEVBOOT" "save_wipe" && t test_save_wipe "$BIN/test_save_wipe" "$DEVBOOT" "$RETAIL" "$LOG"
+        need "$DEVBOOT" "game_save_boot" && need "$GAME" "game_save_boot" && t test_game_save_boot "$BIN/test_game_save" "$DEVBOOT" "$GAME" "$LOG/game_save_boot" --dev-unit --settle 700
     fi
 fi
 

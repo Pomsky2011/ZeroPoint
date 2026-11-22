@@ -11,7 +11,11 @@
 // stderr at the end - the quickest way to see where a hung program is. ZP_STOP=<hex pc> also stops the first time the
 // PC (in bank $80) reaches that address, so the trace ends on the way in. With ZP_TRACE set it also stops the moment
 // the PC leaves the loaded image (a run-off-the-end or a wild return).
+//
+// ZP_SAVE_SIZE=<bytes> puts a dummy cartridge with that much battery save RAM in the slot (banks $C0-$C7, docs/cart-save.md; a power
+// of two, 1024..524288) so a test can use the SDK's zp_save.h; the SRAM starts blank ($FF).
 #include "system.h"
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
@@ -31,6 +35,19 @@ int main(int argc, char** argv) {
     std::ifstream f(argv[2], std::ios::binary);
     std::vector<uint8_t> img((std::istreambuf_iterator<char>(f)), {});
     CPU& cpu = sys.getCPU();
+    if (const char* saveSize = std::getenv("ZP_SAVE_SIZE"); saveSize && *saveSize) {
+        const unsigned long n = std::strtoul(saveSize, nullptr, 0);
+        unsigned code = 1;
+        while (code <= SAVE_CODE_MAX && saveSizeForCode(code) != n) code++;
+        if (code > SAVE_CODE_MAX) { std::fprintf(stderr, "ZP_SAVE_SIZE must be a power of two from 1024 to 524288\n"); return 2; }
+        std::vector<uint8_t> cart(64 + 256, 0);   // a header and 256 bytes nobody runs: only the SRAM matters here
+        std::memcpy(cart.data(), "ZPB\0", 4);
+        cart[4] = 1;
+        cart[5] = (uint8_t)(code << SAVE_CODE_SHIFT);
+        cart[6] = 64;
+        cart[9] = 1;   // ROM size 256
+        if (!sys.insertCartridge(cart)) return 2;
+    }
     for (size_t i = 0; i < img.size(); i++) cpu.writeByte(0x800200 + i, img[i]);
     cpu.writeByte(0x808000, 0);
     cpu.writeByte(0x808001, 0);

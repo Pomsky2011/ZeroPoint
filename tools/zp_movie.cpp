@@ -119,7 +119,11 @@ int cmdInfo(const std::string& path) {
     std::printf("signatures    : %s\n", m.devUnit ? "dev unit: always pass" : m.verifySignatures ? "verified at boot" : "not verified");
     if (m.devUnit) std::printf("dev unit      : yes (debug serial port is a UART)\n");
     std::printf("starts with   : %s\n", m.initialRom < 0 ? "an empty slot" : m.roms[(size_t)m.initialRom].title.c_str());
-    for (size_t i = 0; i < m.roms.size(); i++) std::printf("  rom %zu       : %s  %s\n", i, toHex(m.roms[i].sha).c_str(), m.roms[i].title.c_str());
+    for (size_t i = 0; i < m.roms.size(); i++) {
+        std::printf("  rom %zu       : %s  %s", i, toHex(m.roms[i].sha).c_str(), m.roms[i].title.c_str());
+        if (!m.roms[i].save.empty()) std::printf("  (starts with a %zu-byte save, sha256 %s)", m.roms[i].save.size(), toHex(sha256Of(m.roms[i].save.data(), m.roms[i].save.size())).c_str());
+        std::printf("\n");
+    }
     std::printf("events        : %zu  (P1 input %zu, P2 input %zu, soft resets %zu, hard resets %zu, yanks %zu, swaps %zu, serial bytes in %zu)\n",
                 m.events.size() - checks, inputs[0], inputs[1], resets[0], resets[1], yanks, inserts, serials);
     std::printf("checkpoints   : %zu%s\n", checks, checks ? "" : "   (unsealed: nothing to verify; run `zp_movie seal`)");

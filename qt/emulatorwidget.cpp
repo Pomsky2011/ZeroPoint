@@ -58,6 +58,8 @@ void EmulatorWidget::createSystem()
 void EmulatorWidget::destroySystem()
 {
     halt();
+    if (system && !saveFile.flush(*system)) qWarning("Couldn't write the save: %s", saveFile.error().c_str());
+    saveFile.detach();
     session = ZeroPoint::MovieSession();   // its System* would dangle
     system.reset();
     poweredOn = false;
@@ -94,6 +96,11 @@ bool EmulatorWidget::loadROM(const QString &path)
     if (!system->loadROM(path.toStdString()) || !applyBootROM() || !applyApuBios()) {
         destroySystem();
         return false;
+    }
+    {
+        std::string note;
+        saveFile.attach(*system, savesEnabled ? ZeroPoint::SaveFile::pathFor(path.toStdString()) : std::string(), note);
+        if (!note.empty()) qWarning("%s", note.c_str());
     }
     wireSerial();
     system->powerOn();
@@ -249,12 +256,14 @@ void EmulatorWidget::emuLoop()
             const uint8_t d1 = input & 0xFF, c1 = (input >> 8) & 0xFF, b1 = (input >> 16) & 0xFF;
             const uint8_t d2 = two ? (input2 & 0xFF) : 0, b2 = two ? ((input2 >> 16) & 0xFF) : 0;
             const uint8_t c2 = two ? static_cast<uint8_t>(((input2 >> 8) & 0xFF) | PlayerInput::CTRL_CONNECTION) : 0;
-            std::vector<uint8_t> swapped;
-            std::string swappedTitle;
+            std::vector<uint8_t> swapped, swappedSave;
+            std::string swappedTitle, swappedSavePath;
             if (actions & ACT_SWAP) {
                 std::lock_guard<std::mutex> lock(swapMutex);
                 swapped.swap(swapImage);
+                swappedSave.swap(swapSave);
                 swappedTitle = swapTitle;
+                swappedSavePath = swapSavePath;
             }
             if (kind == 1) {   // recording: logged at the exact movie cycle, then applied
                 session.input(0, d1, c1, b1);
@@ -262,14 +271,25 @@ void EmulatorWidget::emuLoop()
                 if (actions & ACT_SOFT_RESET) session.softReset();
                 if (actions & ACT_HARD_RESET) session.hardReset();
                 if (actions & ACT_YANK) session.yank();
-                if (!swapped.empty()) session.insert(swapped, swappedTitle);
+                if (!swapped.empty()) session.insert(swapped, swappedTitle, swappedSave);
             } else {
                 system->getCPU().setPlayerInput(d1, c1, b1);
                 system->getCPU().setPlayer2Input(d2, c2, b2);
                 if (actions & ACT_SOFT_RESET) system->softReset();
                 if (actions & ACT_HARD_RESET) system->hardReset();
-                if (actions & ACT_YANK) system->ejectCartridge();
-                if (!swapped.empty()) system->insertCartridge(swapped);
+                if (actions & ACT_YANK) {
+                    saveFile.flush(*system);   // the cartridge takes its SRAM with it: write it down first
+                    system->ejectCartridge();
+                }
+                if (!swapped.empty()) {
+                    saveFile.flush(*system);
+                    if (system->insertCartridge(swapped)) {
+                        std::string note;
+                        saveFile.attach(*system, swappedSavePath, note);
+                        if (!note.empty()) qWarning("%s", note.c_str());
+                    }
+                }
+                saveFile.poll(*system, std::chrono::duration<double>(Clock::now().time_since_epoch()).count());
             }
             if (actions & (ACT_SOFT_RESET | ACT_HARD_RESET)) audio.flush();
         }
@@ -536,7 +556,10 @@ void EmulatorWidget::yankCartridge()
         pendingActions |= ACT_YANK;
         return;
     }
-    if (poweredOn) system->ejectCartridge();
+    if (poweredOn) {
+        saveFile.flush(*system);
+        system->ejectCartridge();
+    }
 }
 
 bool EmulatorWidget::swapCartridge(const QString &romPath, QString *error)
@@ -558,11 +581,23 @@ bool EmulatorWidget::swapCartridge(const QString &romPath, QString *error)
             std::lock_guard<std::mutex> lock(swapMutex);
             swapImage = std::move(image);
             swapTitle = QFileInfo(romPath).fileName().toStdString();
+            swapSavePath = savesEnabled ? ZeroPoint::SaveFile::pathFor(romPath.toStdString()) : std::string();
+            swapSave.clear();
+            std::string note;
+            if (!swapSavePath.empty() && !ZeroPoint::SaveFile::load(swapSavePath, probe.getSaveSize(), swapSave, note) && !note.empty())
+                qWarning("%s", note.c_str());
         }
         pendingActions |= ACT_SWAP;
         return true;
     }
-    if (poweredOn) system->insertCartridge(image);
+    if (poweredOn) {
+        saveFile.flush(*system);
+        if (system->insertCartridge(image)) {
+            std::string note;
+            saveFile.attach(*system, savesEnabled ? ZeroPoint::SaveFile::pathFor(romPath.toStdString()) : std::string(), note);
+            if (!note.empty()) qWarning("%s", note.c_str());
+        }
+    }
     return true;
 }
 
@@ -576,6 +611,17 @@ bool EmulatorWidget::startRecording(const QString &moviePath, const QString &aut
     setup.verifySignatures = ZeroPoint::System::verifySignaturesDefault();
     setup.devUnit = devUnit;
     setup.author = author.toStdString();
+    if (savesEnabled && !currentRomPath.isEmpty()) {   // the movie starts from the save you have (and never writes it back)
+        QFile rom(currentRomPath);
+        std::string note;
+        if (rom.open(QIODevice::ReadOnly)) {
+            const QByteArray bytes = rom.readAll();
+            const std::vector<uint8_t> image(bytes.begin(), bytes.end());
+            ZeroPoint::SaveFile::load(ZeroPoint::SaveFile::pathFor(currentRomPath.toStdString()), ZeroPoint::SaveFile::sizeFor(image),
+                                      setup.save, note);
+            if (!note.empty()) qWarning("%s", note.c_str());
+        }
+    }
     std::string err;
     if (!session.beginRecording(*system, setup, err)) {
         if (error) *error = QString::fromStdString(err);

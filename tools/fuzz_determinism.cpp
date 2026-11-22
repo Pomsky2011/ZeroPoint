@@ -4,6 +4,7 @@
 //   fuzz_determinism <workdir> --seed N        (one seed, verbose)
 //   fuzz_determinism <workdir> --golden-write <file> <count> <max-frames>
 //   fuzz_determinism <workdir> --golden-check <file>
+//   fuzz_determinism <workdir> --save [first-seed] [count] [max-frames]      (the cartridges carry battery save RAM)
 //
 // The golden file holds, per seed, one 64-bit digest of every checkpoint of the reference run. The digests are pure
 // integer arithmetic over emulated state, so they must come out identical on every host (CI checks them on all of
@@ -70,18 +71,24 @@ struct Scenario {
     std::vector<uint8_t> rom;    // cartridge payload
     uint32_t entry = 0;
     std::vector<std::vector<uint8_t>> spare;   // .zpb images a Stop 'n' Swop can insert
+    unsigned saveCode = 0;       // --save: the main cartridge's save-RAM size code (header flags bits 4-7)
     std::vector<Event> events;   // sorted by cycle
     uint64_t endCycle = 0;
 };
 
+// --save: every cartridge asks for battery save RAM (a size code of its own, drawn from a second generator so the base scenarios, and the
+// golden digests built on them, are untouched) and the schedule pokes and DMAs into banks $C0-$C7.
+bool g_saveMode = false;
+
 // An unsigned .zpb image (header + payload).
-std::vector<uint8_t> makeImage(const std::vector<uint8_t>& payload, uint32_t entry) {
+std::vector<uint8_t> makeImage(const std::vector<uint8_t>& payload, uint32_t entry, unsigned saveCode = 0) {
 #pragma pack(push, 1)
     struct { char magic[4]; uint8_t version, reserved; uint16_t headerSize; uint32_t romSize, entry; char title[32]; char dev[16]; } h;
 #pragma pack(pop)
     std::memset(&h, 0, sizeof h);
     std::memcpy(h.magic, "ZPB", 4);
     h.version = 1;
+    h.reserved = (uint8_t)(saveCode << SAVE_CODE_SHIFT);
     h.headerSize = 64;
     h.romSize = (uint32_t)payload.size();
     h.entry = entry;
@@ -100,7 +107,9 @@ std::vector<uint8_t> randomBytes(Rng& r, size_t n) {
 
 Scenario makeScenario(uint64_t seed, int maxFrames) {
     Rng r(seed);
+    Rng sr(seed ^ 0x5AFE5AFEull);   // only drawn from with --save
     Scenario sc;
+    if (g_saveMode) sc.saveCode = sr.below(SAVE_CODE_MAX + 1);
     // A whole bank of random code (a short ROM would let the PC run into open bus, which reads $FF = HLT), with the HLT
     // opcode itself taken out so the guest keeps running: the machine is frozen once the CPU halts, which would waste
     // every later event.
@@ -112,7 +121,8 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
         std::vector<uint8_t> payload = randomBytes(r, 4096 + r.below(61441));
         for (auto& b : payload)
             if (b == 0xFF) b = r.byte() & 0xFE;
-        sc.spare.push_back(makeImage(payload, r.below(0x1000)));
+        const uint32_t entry = r.below(0x1000);
+        sc.spare.push_back(makeImage(payload, entry, g_saveMode ? sr.below(SAVE_CODE_MAX + 1) : 0));
     }
     const uint64_t frames = 2 + r.below((uint32_t)maxFrames);
     sc.endCycle = frames * System::CYCLES_PER_FRAME;
@@ -165,6 +175,25 @@ Scenario makeScenario(uint64_t seed, int maxFrames) {
             }
         }
         sc.events.push_back(std::move(e));
+    }
+    if (g_saveMode) {   // the save window: random stores, and DMA transfers into it (DMA writes take the same bus path)
+        const int extra = 6 + (int)sr.below(40);
+        for (int i = 0; i < extra; i++) {
+            Event e;
+            e.cycle = sr.next() % sc.endCycle;
+            if (sr.below(4) == 0) {
+                e.kind = Kind::Dma;
+                e.blob = randomBytes(sr, 9);
+                e.blob[3] = 0x80;
+                e.blob[6] = (uint8_t)(0xC0 + sr.below(8));
+                e.blob[7] = (uint8_t)(1 + sr.below(4));
+            } else {
+                e.kind = Kind::Poke;
+                e.addr = 0xC00000 + sr.below(0x80000);
+                e.value = sr.byte();
+            }
+            sc.events.push_back(std::move(e));
+        }
     }
     // Stable by cycle: ties keep generation order, so every variant applies them identically.
     for (size_t i = 1; i < sc.events.size(); i++)
@@ -260,7 +289,7 @@ std::vector<Checkpoint> run(const Scenario& sc, const std::string& romPath, Mode
 }
 
 bool writeRom(const Scenario& sc, const std::string& path) {
-    const std::vector<uint8_t> image = makeImage(sc.rom, sc.entry);
+    const std::vector<uint8_t> image = makeImage(sc.rom, sc.entry, sc.saveCode);
     FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;
     std::fwrite(image.data(), 1, image.size(), f);
@@ -390,14 +419,19 @@ int main(int argc, char** argv) {
     uint64_t first = 1, count = 100;
     int maxFrames = 8;
     bool verbose = false;
-    if (argc > 3 && !std::strcmp(argv[2], "--seed")) {
-        first = std::strtoull(argv[3], nullptr, 10);
+    int skip = 2;   // arguments before the seed range
+    if (argc > 2 && !std::strcmp(argv[2], "--save")) {
+        g_saveMode = true;
+        skip = 3;
+    }
+    if (argc > skip + 1 && !std::strcmp(argv[skip], "--seed")) {
+        first = std::strtoull(argv[skip + 1], nullptr, 10);
         count = 1;
         verbose = true;
     } else {
-        if (argc > 2) first = std::strtoull(argv[2], nullptr, 10);
-        if (argc > 3) count = std::strtoull(argv[3], nullptr, 10);
-        if (argc > 4) maxFrames = std::atoi(argv[4]);
+        if (argc > skip) first = std::strtoull(argv[skip], nullptr, 10);
+        if (argc > skip + 1) count = std::strtoull(argv[skip + 1], nullptr, 10);
+        if (argc > skip + 2) maxFrames = std::atoi(argv[skip + 2]);
     }
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     uint64_t bad = 0;

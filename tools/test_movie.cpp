@@ -60,6 +60,24 @@ std::vector<uint8_t> echoRom(uint8_t slot) {
     return out;
 }
 
+// A cartridge with 2 KiB of battery SRAM (header flags bits 4-7 = 2): every loop it stores player 1's buttons into SRAM[0] and
+// copies SRAM[0] and SRAM[1] (whatever the movie's starting save put there) into work RAM at $80:slot, $80:slot+1.
+std::vector<uint8_t> saveRom(uint8_t slot) {
+    const uint8_t code[] = {
+        0x3D, 0x32, 0x00, 0xD8, 0x55, 0x00, 0x00, 0xC0,                  // lda $D80032 ; sta $C00000
+        0x3D, 0x00, 0x00, 0xC0, 0x55, (uint8_t)(slot + 0), 0x00, 0x80,   // lda $C00000 ; sta $80:slot
+        0x3D, 0x01, 0x00, 0xC0, 0x55, (uint8_t)(slot + 1), 0x00, 0x80,   // lda $C00001 ; sta $80:slot+1
+        0x10, 0x00, 0x00, 0x00,                                          // jmp $00:0000
+    };
+    std::vector<uint8_t> out = echoRom(slot);
+    out.resize(64 + sizeof code);
+    out[5] = 2 << SAVE_CODE_SHIFT;
+    out[8] = sizeof code; out[9] = 0;
+    std::snprintf(reinterpret_cast<char*>(&out[0x10]), 32, "save%u", slot);
+    std::memcpy(out.data() + 64, code, sizeof code);
+    return out;
+}
+
 void writeFile(const std::string& path, const std::vector<uint8_t>& d) {
     std::ofstream f(path, std::ios::binary);
     f.write(reinterpret_cast<const char*>(d.data()), (std::streamsize)d.size());
@@ -241,6 +259,125 @@ int main(int argc, char** argv) {
         Movie m;
         std::string e2;
         check(!Movie::parse(bytes.data(), bytes.size(), m, e2), "a flipped byte fails the checksum");
+    }
+
+    // ---- save RAM -----------------------------------------------------------------------------------------------------
+    std::printf("save RAM (docs/cart-save.md)\n");
+    {
+        check(loaded.serialize()[4] == 1 && loaded.serialize()[5] == 0, "a movie without save RAM is still format version 1");
+
+        const std::vector<uint8_t> sA = saveRom(0x40), sB = saveRom(0x60);
+        writeFile(work + "/sa.zpb", sA);
+        writeFile(work + "/sb.zpb", sB);
+        RomLibrary slib;
+        slib.add(work);
+        std::vector<uint8_t> startA(2048), startB(2048);
+        for (size_t i = 0; i < startA.size(); i++) { startA[i] = (uint8_t)(i * 3 + 1); startB[i] = (uint8_t)(0xA0 ^ i); }
+
+        Movie savedMovie;
+        uint64_t savedHash = 0;
+        std::vector<uint8_t> finalSaveA;
+        {
+            System sys;
+            MovieSession rec;
+            MovieSession::RecordSetup setup;
+            setup.cartridgePath = work + "/sa.zpb";
+            setup.verifySignatures = false;
+            setup.checkpointInterval = F * 2 + 7;
+            setup.save = startA;
+            check(rec.beginRecording(sys, setup, err), err.empty() ? "recording starts with a save loaded" : err.c_str());
+            check(sys.saveData() == startA, "the machine starts with that save");
+            rec.run(F);
+            rec.input(0, 0, on, PlayerInput::BTN_2);
+            rec.run(2 * F);
+            rec.softReset();
+            rec.run(F);
+            rec.input(0, 0, on, PlayerInput::BTN_3);
+            rec.run(F);
+            check(sys.saveData()[0] == PlayerInput::BTN_3, "the guest wrote the player's buttons into SRAM");
+            finalSaveA = sys.saveData();
+            check(!rec.insert(sB, "sb.zpb", std::vector<uint8_t>(4096, 1)), "a save of the wrong size is refused at insert, and not logged");
+            check(rec.insert(sB, "sb.zpb", startB), "Stop 'n' Swop to another save cartridge with its own save");
+            rec.run(F);
+            rec.input(0, 0, on, PlayerInput::BTN_1);
+            rec.run(F);
+            rec.hardReset();   // a power cycle keeps the battery RAM
+            rec.run(F);
+            savedHash = sys.machineHash();
+            savedMovie = rec.finishRecording();
+            check(savedMovie.roms.size() == 2 && savedMovie.roms[0].save == startA && savedMovie.roms[1].save == startB,
+                  "the movie embeds each cartridge's starting save");
+            check(sys.saveData()[0] == PlayerInput::BTN_1 && sys.saveData()[1] == startB[1], "...and the second cartridge's save survived the hard reset");
+        }
+        const std::vector<uint8_t> bytes = savedMovie.serialize();
+        check(bytes[4] == 2 && bytes[5] == 0, "it is format version 2");
+        Movie parsed;
+        check(Movie::parse(bytes.data(), bytes.size(), parsed, err) && parsed.serialize() == bytes && parsed.roms[0].save == startA, "version 2 round-trips");
+        {
+            Movie back;
+            const std::string text = savedMovie.toText();
+            check(Movie::fromText(text, back, err) && back.serialize() == bytes, err.empty() ? "text form carries the saves and round-trips exactly" : err.c_str());
+        }
+
+        auto replaySave = [&](const Movie& m, std::string& report) {
+            System sys;
+            MovieSession play;
+            if (!play.beginPlayback(sys, m, slib, report)) return false;
+            while (!play.finished() && !play.desynced() && play.failure().empty()) play.run(F);
+            if (play.desynced()) { report = play.desyncReport(); return false; }
+            if (!play.failure().empty()) { report = play.failure(); return false; }
+            return sys.machineHash() == savedHash;
+        };
+        std::string report;
+        check(replaySave(parsed, report), report.empty() ? "replays from the embedded saves: every checkpoint and the final hash match" : report.c_str());
+        {
+            // The host's own .sav must not matter: a System that already holds some other save replays the same.
+            System sys;
+            sys.loadROMImage(sA);
+            sys.setSave(std::vector<uint8_t>(2048, 0x11));
+            sys.powerOn();
+            MovieSession play;
+            check(play.beginPlayback(sys, parsed, slib, err), "playback on a System that holds a different save");
+            while (!play.finished() && !play.desynced() && play.failure().empty()) play.run(F);
+            check(!play.desynced() && play.failure().empty() && sys.machineHash() == savedHash, "...replays identically");
+        }
+        {
+            Movie m = parsed;
+            m.roms[0].save[1] ^= 0x40;
+            report.clear();
+            const bool ok = replaySave(m, report);
+            std::printf("      (%s)\n", report.c_str());
+            check(!ok && report.find("DESYNC") != std::string::npos, "a different starting save desyncs");
+        }
+        {
+            Movie m = parsed;
+            m.roms[0].save.assign(1024, 0x55);   // right shape, wrong size for this cartridge
+            report.clear();
+            check(!replaySave(m, report) && report.find("SRAM") != std::string::npos, "a save of the wrong size for its cartridge is refused by name");
+        }
+        {
+            Movie m = parsed;
+            m.coreRevision = 13;
+            const std::vector<uint8_t> b13 = m.serialize();
+            Movie t;
+            check(!Movie::parse(b13.data(), b13.size(), t, err) && err.find("revision 14") != std::string::npos, "save RAM in a revision-13 movie is rejected (revision 13 had none)");
+        }
+        {
+            // Blank saves cost nothing: recording a save cartridge that starts blank is a version 1 movie.
+            System sys;
+            MovieSession rec;
+            MovieSession::RecordSetup setup;
+            setup.cartridgePath = work + "/sa.zpb";
+            setup.verifySignatures = false;
+            check(rec.beginRecording(sys, setup, err), "recording a save cartridge that starts blank");
+            rec.run(F);
+            const Movie blank = rec.finishRecording();
+            check(blank.serialize()[4] == 1 && blank.roms[0].save.empty(), "a blank start is stored as nothing (format version 1)");
+            report.clear();
+            System sys2;
+            MovieSession play;
+            check(play.beginPlayback(sys2, blank, slib, report) && sys2.saveData() == std::vector<uint8_t>(2048, 0xFF), "...and replays from a blank ($FF) save");
+        }
     }
 
     // ---- formats ------------------------------------------------------------------------------------------------------
