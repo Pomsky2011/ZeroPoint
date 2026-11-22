@@ -64,7 +64,7 @@ void put(const QString& path, const QByteArray& d) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    setenv("ZEROPOINT_NO_VERIFY", "1", 1);   // the test cartridges are unsigned
+    qputenv("ZEROPOINT_NO_VERIFY", "1");   // the test cartridges are unsigned
     QApplication app(argc, argv);
     if (argc < 2) { std::fprintf(stderr, "usage: %s <workdir>\n", argv[0]); return 2; }
     const QString work = argv[1];

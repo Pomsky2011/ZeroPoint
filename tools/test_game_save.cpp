@@ -13,6 +13,7 @@
 // With a real Boot ROM give it --dev-unit (the template is dev-signed) and --settle ~700 (the splash takes a few seconds).
 #include "save_file.h"
 #include "system.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
